@@ -8,10 +8,11 @@ import { localDb } from '../db';
 import { deleteExpenseLocal } from '../sync';
 import { ExpenseEditor } from '../components/ExpenseEditor';
 import { BalancesTab } from '../components/BalancesTab';
+import { ChartsTab } from '../components/ChartsTab';
 import { ActivityTab, VersionLog } from '../components/ActivityTab';
 import { AttachmentRow } from '../components/Attachments';
 
-type Tab = 'expenses' | 'balances' | 'activity';
+type Tab = 'expenses' | 'balances' | 'charts' | 'activity';
 
 export function GroupPage() {
   const { groupId } = useParams<{ groupId: string }>();
@@ -75,9 +76,14 @@ export function GroupPage() {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">{group.name}</h1>
-        <button onClick={() => void createInvite()} className="text-sm text-teal-700 underline">
-          Invite link
-        </button>
+        <span className="flex gap-3 text-sm">
+          <a href={`/api/groups/${group.id}/export.csv`} download className="text-slate-500 underline">
+            CSV
+          </a>
+          <button onClick={() => void createInvite()} className="text-teal-700 underline">
+            Invite link
+          </button>
+        </span>
       </div>
       {inviteUrl && (
         <p className="break-all rounded bg-teal-50 p-2 text-sm text-teal-900">
@@ -86,7 +92,7 @@ export function GroupPage() {
       )}
       {inviteError && <p className="text-sm text-red-600">{inviteError}</p>}
       <nav className="flex gap-2 border-b border-slate-200">
-        {(['expenses', 'balances', 'activity'] as const).map((t) => (
+        {(['expenses', 'balances', 'charts', 'activity'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -176,6 +182,10 @@ export function GroupPage() {
           meId={user.id}
           nameOf={nameOf}
         />
+      )}
+
+      {tab === 'charts' && (
+        <ChartsTab expenses={liveExpenses} nameOf={nameOf} defaultCurrency={group.defaultCurrency} />
       )}
 
       {tab === 'activity' && (

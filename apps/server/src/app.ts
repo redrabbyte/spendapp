@@ -5,6 +5,7 @@ import { authRoutes } from './routes/auth.js';
 import { expenseRoutes } from './routes/expenses.js';
 import { groupRoutes } from './routes/groups.js';
 import { inviteRoutes } from './routes/invites.js';
+import { exportRoutes } from './routes/export.js';
 import { fxRoutes } from './routes/fx.js';
 import { googleRoutes } from './routes/google.js';
 import { pushRoutes } from './routes/push.js';
@@ -22,6 +23,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(attachmentRoutes);
   await app.register(pushRoutes);
   await app.register(googleRoutes);
+  await app.register(exportRoutes);
   app.get('/api/health', async () => ({ ok: true }));
   return app;
 }
