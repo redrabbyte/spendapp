@@ -6,6 +6,8 @@ export const uuid = z.string().uuid();
 export const currencyCode = z.string().regex(/^[A-Z]{3}$/, 'ISO 4217 code');
 const minorAmount = z.number().int().safe();
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD');
+// Expense date carries an optional time (date-only kept for old rows).
+const isoDateTime = z.string().regex(/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?)?$/, 'YYYY-MM-DDTHH:MM');
 
 export const registerSchema = z.object({
   email: z.string().email().max(254),
@@ -52,7 +54,7 @@ export const upsertExpenseSchema = z.object({
   description: z.string().trim().min(1).max(200),
   category: z.string().trim().min(1).max(40),
   note: z.string().max(2000).default(''),
-  expenseDate: isoDate,
+  expenseDate: isoDateTime,
   currency: currencyCode,
   amountMinor: minorAmount.positive(),
   // For a non-default-currency entry: rate frozen at creation, as default

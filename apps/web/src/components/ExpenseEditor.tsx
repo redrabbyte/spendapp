@@ -25,6 +25,15 @@ const toInput = (minor: number, ccy: string): string => formatMinor(minor, ccy).
 
 const trimNum = (n: number): string => String(Math.round(n * 100) / 100);
 
+// Value for a datetime-local input: current local time, or an existing
+// entry's stored value (date-only rows get midnight, kept as local).
+function localDateTimeInput(iso?: string): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  if (iso) return iso.length <= 10 ? `${iso}T00:00` : iso.slice(0, 16);
+  const d = new Date();
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 function sameRecord(a: Record<string, string>, b: Record<string, string>): boolean {
   const ak = Object.keys(a);
   if (ak.length !== Object.keys(b).length) return false;
@@ -57,7 +66,7 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
   const [amountManual, setAmountManual] = useState(Boolean(existing));
   const [currency, setCurrency] = useState(existing?.currency ?? group.defaultCurrency);
   const [category, setCategory] = useState(existing?.category ?? 'other');
-  const [date, setDate] = useState(existing?.expenseDate ?? new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => localDateTimeInput(existing?.expenseDate));
   const [note, setNote] = useState(existing?.note ?? '');
   const [mode, setMode] = useState<Mode>(meta?.mode ?? 'equal');
 
@@ -448,7 +457,7 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
             <option key={c}>{c}</option>
           ))}
         </select>
-        <input className={input} type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+        <input className={input} type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} required />
       </div>
 
       <fieldset className="flex flex-col gap-1 text-sm">

@@ -11,6 +11,7 @@ import { VersionLog } from '../components/ActivityTab';
 import { ExpenseEditor } from '../components/ExpenseEditor';
 import { SyncPendingBadge } from '../components/SyncPendingBadge';
 import { usePendingExpenseIds } from '../pending';
+import { fmtDateTime } from './Group';
 
 export function ExpenseDetailPage() {
   const { groupId, expenseId } = useParams<{ groupId: string; expenseId: string }>();
@@ -110,10 +111,7 @@ export function ExpenseDetailPage() {
             {pending.has(expense.id) && <SyncPendingBadge />}
           </h1>
           <p className="text-sm text-slate-500">
-            {expense.expenseDate} · {expense.category}
-          </p>
-          <p className="text-xs text-slate-400">
-            added {new Date(expense.createdAt).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
+            {fmtDateTime(expense.expenseDate)} · {expense.category}
           </p>
         </div>
         <span className="flex flex-col items-end whitespace-nowrap">

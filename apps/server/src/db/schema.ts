@@ -77,7 +77,8 @@ export const expenses = mysqlTable(
     description: varchar('description', { length: 200 }).notNull(),
     category: varchar('category', { length: 40 }).notNull(),
     note: text('note').notNull(),
-    expenseDate: date('expense_date', { mode: 'string' }).notNull(),
+    // ISO date or date+time string (client wall-clock, e.g. 2026-07-24T14:30)
+    expenseDate: varchar('expense_date', { length: 32 }).notNull(),
     currency: char('currency', { length: 3 }).notNull(),
     amountMinor: money('amount_minor').notNull(),
     rateToDefault: decimal('rate_to_default', { precision: 18, scale: 8 }),

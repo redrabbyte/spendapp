@@ -14,6 +14,14 @@ import { SyncPendingBadge } from '../components/SyncPendingBadge';
 
 type Tab = 'expenses' | 'balances' | 'charts' | 'activity';
 
+// Date-only rows (old entries) show just the date; date+time rows show both.
+export function fmtDateTime(iso: string): string {
+  const d = new Date(iso.length <= 10 ? `${iso}T00:00` : iso);
+  return iso.length <= 10
+    ? d.toLocaleDateString()
+    : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+}
+
 export function GroupPage() {
   const { groupId } = useParams<{ groupId: string }>();
   const { user } = useAuth();
@@ -128,7 +136,7 @@ export function GroupPage() {
                     <span className="whitespace-nowrap">{formatMinor(e.amountMinor, e.currency)}</span>
                   </div>
                   <div className="text-sm text-slate-500">
-                    {e.expenseDate} · {e.category} · paid by{' '}
+                    {fmtDateTime(e.expenseDate)} · {e.category} · paid by{' '}
                     {e.splits
                       .filter((s) => s.paidMinor > 0)
                       .map((s) => nameOf(s.userId))
