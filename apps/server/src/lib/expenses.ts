@@ -1,7 +1,8 @@
 import { eq } from 'drizzle-orm';
-import { computeOwed, validateSplits, type UpsertExpense } from '@spendapp/shared';
+import { computeOwed, formatMinor, validateSplits, type UpsertExpense } from '@spendapp/shared';
 import { db, schema } from '../db/index.js';
 import { bumpGroupVersion, isMember, logActivity } from './groups.js';
+import { notifyGroup } from './notify.js';
 
 export type ApplyResult = { ok: true } | { ok: false; status: number; reason: string };
 
@@ -102,6 +103,10 @@ export async function applyExpenseUpsert(
       await tx.insert(schema.processedMutations).values({ mutationId, userId, createdAt: now });
     }
   });
+  if (!failure) {
+    const verb = opts.revive ? 'restored' : 'saved';
+    notifyGroup(input.groupId, userId, `${verb} “${input.description}” (${formatMinor(input.amountMinor, input.currency)})`);
+  }
   return failure ?? { ok: true };
 }
 
@@ -142,5 +147,6 @@ export async function applyExpenseDelete(
       await tx.insert(schema.processedMutations).values({ mutationId, userId, createdAt: now });
     }
   });
+  if (!expense.deletedAt) notifyGroup(expense.groupId, userId, 'deleted an expense');
   return { ok: true }; // deleting twice is not an error
 }
