@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { upsertExpenseSchema, uuid, type SplitMeta } from './schemas.js';
+import { upsertExpenseSchema, upsertPaymentSchema, uuid, type SplitMeta } from './schemas.js';
 
 /**
  * Sync protocol. Every mutation envelope carries a schema version `v`; the
@@ -23,6 +23,16 @@ export const mutationSchema = z.discriminatedUnion('type', [
     type: z.literal('expense.delete'),
     groupId: uuid,
     data: z.object({ expenseId: uuid }),
+  }),
+  // Revert past a delete: an explicit, aware restore — exempt from the
+  // deletes-win rule that drops unaware concurrent edits (design §11).
+  z.object({ ...envelope, type: z.literal('expense.restore'), groupId: uuid, data: upsertExpenseSchema }),
+  z.object({ ...envelope, type: z.literal('payment.upsert'), groupId: uuid, data: upsertPaymentSchema }),
+  z.object({
+    ...envelope,
+    type: z.literal('payment.delete'),
+    groupId: uuid,
+    data: z.object({ paymentId: uuid }),
   }),
 ]);
 export type Mutation = z.infer<typeof mutationSchema>;
@@ -71,6 +81,24 @@ export interface ExpenseDto {
   deletedAt: string | null;
 }
 
+export interface PaymentDto {
+  id: string;
+  groupId: string;
+  fromUser: string;
+  toUser: string;
+  currency: string;
+  amountMinor: number;
+  settlesCurrency: string | null;
+  rate: string | null;
+  settledMinor: number | null;
+  paidOn: string;
+  note: string;
+  createdBy: string;
+  updatedAt: string;
+  version: number;
+  deletedAt: string | null;
+}
+
 export interface ActivityDto {
   id: string;
   groupId: string;
@@ -87,6 +115,7 @@ export interface GroupChanges {
   group: GroupDto;
   members: MemberDto[];
   expenses: ExpenseDto[];
+  payments: PaymentDto[];
   activity: ActivityDto[];
   nextCursor: number;
 }

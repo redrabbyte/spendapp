@@ -16,6 +16,7 @@ export async function applyExpenseUpsert(
   userId: string,
   input: UpsertExpense,
   mutationId?: string,
+  opts: { revive?: boolean } = {},
 ): Promise<ApplyResult> {
   if (!(await isMember(userId, input.groupId))) return { ok: false, status: 404, reason: 'not found' };
 
@@ -53,10 +54,11 @@ export async function applyExpenseUpsert(
       failure = { ok: false, status: 409, reason: 'id belongs to another group' };
       return;
     }
-    if (existing?.deletedAt) {
+    if (existing?.deletedAt && !opts.revive) {
       failure = { ok: false, status: 409, reason: 'expense was deleted' }; // deletes win
       return;
     }
+    const reviving = Boolean(existing?.deletedAt && opts.revive);
 
     const version = await bumpGroupVersion(tx, input.groupId);
     const row = {
@@ -71,6 +73,7 @@ export async function applyExpenseUpsert(
       updatedBy: userId,
       updatedAt: now,
       version,
+      deletedAt: null, // no-op unless reviving
     };
     if (existing) {
       await tx.update(schema.expenses).set(row).where(eq(schema.expenses.id, input.id));
@@ -90,7 +93,7 @@ export async function applyExpenseUpsert(
       groupId: input.groupId,
       version,
       actorId: userId,
-      type: existing ? 'expense.updated' : 'expense.created',
+      type: reviving ? 'expense.restored' : existing ? 'expense.updated' : 'expense.created',
       entityType: 'expense',
       entityId: input.id,
       payload: { snapshot: { ...input } },

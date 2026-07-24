@@ -3,8 +3,10 @@ import {
   SYNC_PROTOCOL,
   type ExpenseDto,
   type Mutation,
+  type PaymentDto,
   type SyncResponse,
   type UpsertExpense,
+  type UpsertPayment,
 } from '@spendapp/shared';
 import { api, ApiError } from './api';
 import { localDb, type OutboxItem } from './db';
@@ -50,15 +52,19 @@ export async function syncNow(): Promise<void> {
     // Entities with still-pending local edits keep their optimistic state;
     // they'll win server-side too (LWW by arrival).
     const remaining = await localDb.outbox.toArray();
-    const pendingExpenseIds = new Set(
-      remaining.map((o) =>
-        o.mutation.type === 'expense.upsert' ? o.mutation.data.id : o.mutation.data.expenseId,
-      ),
-    );
+    const pendingExpenseIds = new Set<string>();
+    const pendingPaymentIds = new Set<string>();
+    for (const o of remaining) {
+      const m = o.mutation;
+      if (m.type === 'expense.upsert' || m.type === 'expense.restore') pendingExpenseIds.add(m.data.id);
+      else if (m.type === 'expense.delete') pendingExpenseIds.add(m.data.expenseId);
+      else if (m.type === 'payment.upsert') pendingPaymentIds.add(m.data.id);
+      else pendingPaymentIds.add(m.data.paymentId);
+    }
 
     await localDb.transaction(
       'rw',
-      [localDb.groups, localDb.members, localDb.expenses, localDb.activity, localDb.cursors],
+      [localDb.groups, localDb.members, localDb.expenses, localDb.payments, localDb.activity, localDb.cursors],
       async () => {
         const seenGroups = new Set(Object.keys(res.changes));
         for (const [groupId, ch] of Object.entries(res.changes)) {
@@ -66,6 +72,9 @@ export async function syncNow(): Promise<void> {
           for (const m of ch.members) await localDb.members.put(m); // leftAt kept: history stays readable
           for (const e of ch.expenses) {
             if (!pendingExpenseIds.has(e.id)) await localDb.expenses.put(e);
+          }
+          for (const p of ch.payments) {
+            if (!pendingPaymentIds.has(p.id)) await localDb.payments.put(p);
           }
           for (const a of ch.activity) await localDb.activity.put(a);
           await localDb.cursors.put({ groupId, version: ch.nextCursor });
@@ -76,6 +85,7 @@ export async function syncNow(): Promise<void> {
           await localDb.groups.delete(g.id);
           await localDb.members.where('groupId').equals(g.id).delete();
           await localDb.expenses.where('groupId').equals(g.id).delete();
+          await localDb.payments.where('groupId').equals(g.id).delete();
           await localDb.activity.where('groupId').equals(g.id).delete();
           await localDb.cursors.delete(g.id);
         }
@@ -149,6 +159,75 @@ export async function deleteExpenseLocal(expense: ExpenseDto): Promise<void> {
   };
   await localDb.transaction('rw', [localDb.expenses, localDb.outbox], async () => {
     await localDb.expenses.put({ ...expense, deletedAt: now });
+    await localDb.outbox.add({ mutation } as OutboxItem);
+  });
+  scheduleSync();
+}
+
+/** Explicit revive of a tombstoned expense — exempt from deletes-win. */
+export async function restoreExpenseLocal(snapshot: UpsertExpense, meId: string): Promise<void> {
+  const now = new Date().toISOString();
+  const existing = await localDb.expenses.get(snapshot.id);
+  const doc: ExpenseDto = {
+    ...snapshot,
+    createdBy: existing?.createdBy ?? meId,
+    updatedBy: meId,
+    updatedAt: now,
+    version: existing?.version ?? 0,
+    deletedAt: null,
+  };
+  const mutation: Mutation = {
+    id: crypto.randomUUID(),
+    v: MUTATION_SCHEMA_VERSION,
+    type: 'expense.restore',
+    groupId: snapshot.groupId,
+    data: snapshot,
+    clientTs: now,
+  };
+  await localDb.transaction('rw', [localDb.expenses, localDb.outbox], async () => {
+    await localDb.expenses.put(doc);
+    await localDb.outbox.add({ mutation } as OutboxItem);
+  });
+  scheduleSync();
+}
+
+export async function upsertPaymentLocal(input: UpsertPayment, meId: string): Promise<void> {
+  const now = new Date().toISOString();
+  const existing = await localDb.payments.get(input.id);
+  const doc: PaymentDto = {
+    ...input,
+    createdBy: existing?.createdBy ?? meId,
+    updatedAt: now,
+    version: existing?.version ?? 0,
+    deletedAt: null,
+  };
+  const mutation: Mutation = {
+    id: crypto.randomUUID(),
+    v: MUTATION_SCHEMA_VERSION,
+    type: 'payment.upsert',
+    groupId: input.groupId,
+    data: input,
+    clientTs: now,
+  };
+  await localDb.transaction('rw', [localDb.payments, localDb.outbox], async () => {
+    await localDb.payments.put(doc);
+    await localDb.outbox.add({ mutation } as OutboxItem);
+  });
+  scheduleSync();
+}
+
+export async function deletePaymentLocal(payment: PaymentDto): Promise<void> {
+  const now = new Date().toISOString();
+  const mutation: Mutation = {
+    id: crypto.randomUUID(),
+    v: MUTATION_SCHEMA_VERSION,
+    type: 'payment.delete',
+    groupId: payment.groupId,
+    data: { paymentId: payment.id },
+    clientTs: now,
+  };
+  await localDb.transaction('rw', [localDb.payments, localDb.outbox], async () => {
+    await localDb.payments.put({ ...payment, deletedAt: now });
     await localDb.outbox.add({ mutation } as OutboxItem);
   });
   scheduleSync();

@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie';
-import type { ActivityDto, ExpenseDto, GroupDto, MemberDto, Mutation } from '@spendapp/shared';
+import type { ActivityDto, ExpenseDto, GroupDto, MemberDto, Mutation, PaymentDto } from '@spendapp/shared';
 
 export interface OutboxItem {
   seq?: number;
@@ -21,6 +21,7 @@ class LocalDb extends Dexie {
   groups!: Table<GroupDto, string>;
   members!: Table<MemberDto, [string, string]>;
   expenses!: Table<ExpenseDto, string>;
+  payments!: Table<PaymentDto, string>;
   activity!: Table<ActivityDto, string>;
   outbox!: Table<OutboxItem, number>;
   cursors!: Table<CursorRow, string>;
@@ -34,6 +35,9 @@ class LocalDb extends Dexie {
       activity: 'id, groupId, [groupId+version]',
       outbox: '++seq',
       cursors: 'groupId',
+    });
+    this.version(2).stores({
+      payments: 'id, groupId',
     });
   }
 }
