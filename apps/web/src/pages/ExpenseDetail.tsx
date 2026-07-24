@@ -8,6 +8,8 @@ import { addCommentLocal, deleteExpenseLocal } from '../sync';
 import { AttachmentRow } from '../components/Attachments';
 import { VersionLog } from '../components/ActivityTab';
 import { ExpenseEditor } from '../components/ExpenseEditor';
+import { SyncPendingBadge } from '../components/SyncPendingBadge';
+import { usePendingExpenseIds } from '../pending';
 
 export function ExpenseDetailPage() {
   const { groupId, expenseId } = useParams<{ groupId: string; expenseId: string }>();
@@ -38,6 +40,7 @@ export function ExpenseDetailPage() {
   }, [members]);
 
   const activeMembers = useMemo(() => (members ?? []).filter((m) => m.leftAt === null), [members]);
+  const pending = usePendingExpenseIds();
 
   const comments = useMemo(
     () =>
@@ -70,7 +73,10 @@ export function ExpenseDetailPage() {
 
       <header className="flex items-start justify-between gap-2">
         <div>
-          <h1 className="text-xl font-semibold">{expense.description}</h1>
+          <h1 className="flex items-center gap-2 text-xl font-semibold">
+            {expense.description}
+            {pending.has(expense.id) && <SyncPendingBadge />}
+          </h1>
           <p className="text-sm text-slate-500">
             {expense.expenseDate} · {expense.category}
           </p>

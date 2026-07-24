@@ -46,6 +46,10 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
   const meta = existing?.splitMeta;
   const [description, setDescription] = useState(existing?.description ?? '');
   const [amount, setAmount] = useState(existing ? toInput(existing.amountMinor, existing.currency) : '');
+  // In exact mode with a single payer, the total auto-fills from the sum of
+  // the per-person amounts UNTIL the user types a total of their own; from
+  // then on that manual total is the reference the remainder is measured against.
+  const [amountManual, setAmountManual] = useState(Boolean(existing));
   const [currency, setCurrency] = useState(existing?.currency ?? group.defaultCurrency);
   const [category, setCategory] = useState(existing?.category ?? 'other');
   const [date, setDate] = useState(existing?.expenseDate ?? new Date().toISOString().slice(0, 10));
@@ -163,6 +167,37 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
     setAmount((prev) => (prev === next ? prev : next));
   }, [multiPayer, paid, currency, members]);
 
+  // Exact mode, single payer, no manual total yet: keep the total = sum of the
+  // entered amounts, so entering amounts alone fills the expense total.
+  useEffect(() => {
+    if (multiPayer || mode !== 'exact' || amountManual) return;
+    let sum = 0;
+    let any = false;
+    for (const m of members) {
+      const v = exact[m.userId];
+      if (!v?.trim()) continue;
+      try {
+        sum += parseToMinor(v, currency);
+        any = true;
+      } catch {
+        return;
+      }
+    }
+    const next = any ? toInput(sum, currency) : '';
+    setAmount((prev) => (prev === next ? prev : next));
+  }, [multiPayer, mode, amountManual, exact, currency, members]);
+
+  const parseSafe = (s: string | undefined): number => {
+    if (!s?.trim()) return 0;
+    try {
+      return parseToMinor(s, currency);
+    } catch {
+      return 0;
+    }
+  };
+  const exactEntered = members.reduce((s, m) => s + parseSafe(exact[m.userId]), 0);
+  const exactRemaining = parseSafe(amount) - exactEntered;
+
   const percentEntered = members.reduce((s, m) => {
     const v = Number((percent[m.userId] ?? '').replace(',', '.'));
     return s + (Number.isFinite(v) ? v : 0);
@@ -241,7 +276,10 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
           placeholder="0.00"
           inputMode="decimal"
           value={amount}
-          onChange={(e) => setAmount(e.target.value)}
+          onChange={(e) => {
+            setAmount(e.target.value);
+            setAmountManual(e.target.value.trim() !== '');
+          }}
           readOnly={multiPayer}
           title={multiPayer ? 'total = sum of payer amounts' : undefined}
           required
@@ -329,6 +367,28 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
               {percentRemaining >= 0 ? `${percentRemaining}% remaining` : `${-percentRemaining}% over`}
             </span>
           )}
+          {mode === 'exact' &&
+            (amountManual || multiPayer ? (
+              <span
+                className={`ml-2 ${
+                  exactRemaining === 0
+                    ? 'text-emerald-700'
+                    : exactRemaining < 0
+                      ? 'text-red-600'
+                      : 'text-slate-500'
+                }`}
+              >
+                {exactRemaining === 0
+                  ? 'balanced'
+                  : exactRemaining > 0
+                    ? `${toInput(exactRemaining, currency)} ${currency} remaining`
+                    : `${toInput(-exactRemaining, currency)} ${currency} over`}
+              </span>
+            ) : (
+              <span className="ml-2 text-slate-400">
+                total {toInput(exactEntered, currency)} {currency} (from amounts)
+              </span>
+            ))}
         </legend>
         <div className="flex flex-wrap gap-3">
           {members.map((m) => (

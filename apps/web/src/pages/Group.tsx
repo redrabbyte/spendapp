@@ -5,10 +5,12 @@ import { formatMinor } from '@spendapp/shared';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import { localDb } from '../db';
+import { usePendingExpenseIds } from '../pending';
 import { ExpenseEditor } from '../components/ExpenseEditor';
 import { BalancesTab } from '../components/BalancesTab';
 import { ChartsTab } from '../components/ChartsTab';
 import { ActivityTab } from '../components/ActivityTab';
+import { SyncPendingBadge } from '../components/SyncPendingBadge';
 
 type Tab = 'expenses' | 'balances' | 'charts' | 'activity';
 
@@ -18,6 +20,7 @@ export function GroupPage() {
   const [tab, setTab] = useState<Tab>('expenses');
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [inviteError, setInviteError] = useState<string | null>(null);
+  const pending = usePendingExpenseIds();
 
   // undefined = still querying, null = definitely not in the local mirror
   const group = useLiveQuery(
@@ -114,7 +117,10 @@ export function GroupPage() {
                   className="block rounded border border-slate-200 px-4 py-3 hover:border-teal-600"
                 >
                   <div className="flex justify-between gap-2">
-                    <span className="font-medium">{e.description}</span>
+                    <span className="flex items-center gap-1.5 font-medium">
+                      {e.description}
+                      {pending.has(e.id) && <SyncPendingBadge />}
+                    </span>
                     <span className="whitespace-nowrap">{formatMinor(e.amountMinor, e.currency)}</span>
                   </div>
                   <div className="text-sm text-slate-500">
