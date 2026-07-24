@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from 'react';
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from './auth';
 import { GroupPage } from './pages/Group';
@@ -13,14 +14,31 @@ function RequireAuth({ children }: { children: JSX.Element }) {
   return children;
 }
 
+function subscribeOnline(cb: () => void) {
+  window.addEventListener('online', cb);
+  window.addEventListener('offline', cb);
+  return () => {
+    window.removeEventListener('online', cb);
+    window.removeEventListener('offline', cb);
+  };
+}
+
 export function App() {
   const { user, logout } = useAuth();
+  const online = useSyncExternalStore(subscribeOnline, () => navigator.onLine);
   return (
     <div className="mx-auto min-h-dvh max-w-2xl">
       <header className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-        <Link to="/" className="text-lg font-semibold text-teal-700">
-          SpendApp
-        </Link>
+        <span className="flex items-center gap-2">
+          <Link to="/" className="text-lg font-semibold text-teal-700">
+            SpendApp
+          </Link>
+          {!online && (
+            <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+              offline — changes will sync later
+            </span>
+          )}
+        </span>
         {user && (
           <div className="flex items-center gap-3 text-sm">
             <span className="text-slate-600">{user.displayName}</span>

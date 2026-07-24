@@ -2,6 +2,7 @@ import cookie from '@fastify/cookie';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import fp from 'fastify-plugin';
 import { resolveSession, type SessionUser } from '../lib/sessions.js';
 
 declare module 'fastify' {
@@ -15,7 +16,12 @@ declare module 'fastify' {
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
-export async function securityPlugin(app: FastifyInstance): Promise<void> {
+// fp() breaks Fastify's plugin encapsulation on purpose: the hooks and the
+// requireUser decorator below must apply to every route in the app, not
+// just inside this plugin's scope.
+export const securityPlugin = fp(securityPluginImpl);
+
+async function securityPluginImpl(app: FastifyInstance): Promise<void> {
   await app.register(helmet, {
     contentSecurityPolicy: {
       directives: {

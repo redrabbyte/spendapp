@@ -1,23 +1,17 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { COMMON_CURRENCIES } from '@spendapp/shared';
 import { api } from '../api';
-import type { GroupInfo } from '../types';
+import { localDb } from '../db';
+import { syncNow } from '../sync';
 
 export function GroupsPage() {
-  const [groups, setGroups] = useState<GroupInfo[] | null>(null);
+  const groups = useLiveQuery(() => localDb.groups.toArray(), []);
+  const members = useLiveQuery(() => localDb.members.filter((m) => m.leftAt === null).toArray(), []);
   const [name, setName] = useState('');
   const [currency, setCurrency] = useState('EUR');
   const [error, setError] = useState<string | null>(null);
-
-  const load = () =>
-    api<{ groups: GroupInfo[] }>('/api/groups')
-      .then((r) => setGroups(r.groups))
-      .catch((err: Error) => setError(err.message));
-
-  useEffect(() => {
-    void load();
-  }, []);
 
   async function createGroup(e: FormEvent) {
     e.preventDefault();
@@ -28,17 +22,19 @@ export function GroupsPage() {
         body: { id: crypto.randomUUID(), name, defaultCurrency: currency },
       });
       setName('');
-      await load();
+      await syncNow();
     } catch (err) {
       setError((err as Error).message);
     }
   }
 
+  const memberCount = (groupId: string) => members?.filter((m) => m.groupId === groupId).length ?? 0;
+
   return (
     <div className="flex flex-col gap-6">
       <section>
         <h1 className="mb-3 text-xl font-semibold">Your groups</h1>
-        {groups === null && <p className="text-slate-500">Loading…</p>}
+        {groups === undefined && <p className="text-slate-500">Loading…</p>}
         {groups?.length === 0 && <p className="text-slate-500">No groups yet — create one below.</p>}
         <ul className="flex flex-col gap-2">
           {groups?.map((g) => (
@@ -49,7 +45,7 @@ export function GroupsPage() {
               >
                 <span className="font-medium">{g.name}</span>
                 <span className="ml-2 text-sm text-slate-500">
-                  {g.members.length} member{g.members.length === 1 ? '' : 's'} · {g.defaultCurrency}
+                  {memberCount(g.id)} member{memberCount(g.id) === 1 ? '' : 's'} · {g.defaultCurrency}
                 </span>
               </Link>
             </li>

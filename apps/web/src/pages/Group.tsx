@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { useParams } from 'react-router-dom';
+import { useLiveQuery } from 'dexie-react-hooks';
 import {
   CATEGORIES,
   computeBalances,
@@ -7,51 +8,69 @@ import {
   formatMinor,
   parseToMinor,
   simplifyDebts,
+  type ExpenseDto,
+  type GroupDto,
+  type MemberDto,
 } from '@spendapp/shared';
 import { api } from '../api';
 import { useAuth } from '../auth';
-import type { ExpenseDto, GroupInfo } from '../types';
+import { localDb } from '../db';
+import { deleteExpenseLocal, upsertExpenseLocal } from '../sync';
 
 type Tab = 'expenses' | 'balances';
 
 export function GroupPage() {
   const { groupId } = useParams<{ groupId: string }>();
   const { user } = useAuth();
-  const [group, setGroup] = useState<GroupInfo | null>(null);
-  const [expenses, setExpenses] = useState<ExpenseDto[] | null>(null);
   const [tab, setTab] = useState<Tab>('expenses');
-  const [error, setError] = useState<string | null>(null);
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  const [inviteError, setInviteError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    if (!groupId) return;
-    const [groupsRes, expensesRes] = await Promise.all([
-      api<{ groups: GroupInfo[] }>('/api/groups'),
-      api<{ expenses: ExpenseDto[] }>(`/api/groups/${groupId}/expenses`),
-    ]);
-    const g = groupsRes.groups.find((x) => x.id === groupId) ?? null;
-    setGroup(g);
-    setExpenses(expensesRes.expenses);
-    if (!g) setError('Group not found');
-  }, [groupId]);
+  // undefined = still querying, null = definitely not in the local mirror
+  const group = useLiveQuery(
+    async () => (groupId ? ((await localDb.groups.get(groupId)) ?? null) : null),
+    [groupId],
+  );
+  const allMembers = useLiveQuery(
+    () => (groupId ? localDb.members.where('groupId').equals(groupId).toArray() : []),
+    [groupId],
+  );
+  const expenses = useLiveQuery(
+    () =>
+      groupId
+        ? localDb.expenses
+            .where('groupId')
+            .equals(groupId)
+            .filter((e) => e.deletedAt === null)
+            .toArray()
+        : [],
+    [groupId],
+  );
 
-  useEffect(() => {
-    load().catch((err: Error) => setError(err.message));
-  }, [load]);
-
+  const sorted = useMemo(
+    () => (expenses ?? []).slice().sort((a, b) => (a.expenseDate < b.expenseDate ? 1 : -1)),
+    [expenses],
+  );
+  const activeMembers = useMemo(() => (allMembers ?? []).filter((m) => m.leftAt === null), [allMembers]);
   const nameOf = useMemo(() => {
-    const map = new Map(group?.members.map((m) => [m.userId, m.displayName]) ?? []);
+    const map = new Map((allMembers ?? []).map((m) => [m.userId, m.displayName]));
     return (id: string) => map.get(id) ?? '(former member)';
-  }, [group]);
+  }, [allMembers]);
 
   async function createInvite() {
     if (!groupId) return;
-    const res = await api<{ path: string }>(`/api/groups/${groupId}/invites`, { method: 'POST' });
-    setInviteUrl(`${location.origin}${res.path}`);
+    setInviteError(null);
+    try {
+      const res = await api<{ path: string }>(`/api/groups/${groupId}/invites`, { method: 'POST' });
+      setInviteUrl(`${location.origin}${res.path}`);
+    } catch (err) {
+      setInviteError((err as Error).message); // e.g. offline — invites need the server
+    }
   }
 
-  if (error) return <p className="text-red-600">{error}</p>;
-  if (!group || !expenses || !user) return <p className="text-slate-500">Loading…</p>;
+  if (!user) return null;
+  if (group === undefined || !expenses || !allMembers) return <p className="text-slate-500">Loading…</p>;
+  if (group === null) return <p className="text-red-600">Group not found (or not synced yet).</p>;
 
   return (
     <div className="flex flex-col gap-4">
@@ -66,6 +85,7 @@ export function GroupPage() {
           Share this link (valid 14 days): {inviteUrl}
         </p>
       )}
+      {inviteError && <p className="text-sm text-red-600">{inviteError}</p>}
       <nav className="flex gap-2 border-b border-slate-200">
         {(['expenses', 'balances'] as const).map((t) => (
           <button
@@ -82,22 +102,31 @@ export function GroupPage() {
 
       {tab === 'expenses' && (
         <>
-          <ExpenseForm group={group} meId={user.id} onSaved={() => void load()} />
+          <ExpenseForm group={group} members={activeMembers} meId={user.id} />
           <ul className="flex flex-col gap-2">
-            {expenses.length === 0 && <p className="text-slate-500">No expenses yet.</p>}
-            {expenses.map((e) => (
+            {sorted.length === 0 && <p className="text-slate-500">No expenses yet.</p>}
+            {sorted.map((e) => (
               <li key={e.id} className="rounded border border-slate-200 px-4 py-3">
-                <div className="flex justify-between">
+                <div className="flex justify-between gap-2">
                   <span className="font-medium">{e.description}</span>
-                  <span>{formatMinor(e.amountMinor, e.currency)}</span>
+                  <span className="whitespace-nowrap">{formatMinor(e.amountMinor, e.currency)}</span>
                 </div>
-                <div className="text-sm text-slate-500">
-                  {e.expenseDate} · {e.category} · paid by{' '}
-                  {e.splits
-                    .filter((s) => s.paidMinor > 0)
-                    .map((s) => nameOf(s.userId))
-                    .join(', ')}{' '}
-                  · split {e.splits.filter((s) => s.owedMinor > 0).length} ways
+                <div className="flex items-center justify-between text-sm text-slate-500">
+                  <span>
+                    {e.expenseDate} · {e.category} · paid by{' '}
+                    {e.splits
+                      .filter((s) => s.paidMinor > 0)
+                      .map((s) => nameOf(s.userId))
+                      .join(', ')}{' '}
+                    · split {e.splits.filter((s) => s.owedMinor > 0).length} ways
+                  </span>
+                  <button
+                    onClick={() => void deleteExpenseLocal(e)}
+                    className="text-red-500 underline"
+                    title="Delete expense"
+                  >
+                    delete
+                  </button>
                 </div>
                 {e.note && <div className="mt-1 text-sm text-slate-600">{e.note}</div>}
               </li>
@@ -111,7 +140,7 @@ export function GroupPage() {
   );
 }
 
-function ExpenseForm({ group, meId, onSaved }: { group: GroupInfo; meId: string; onSaved: () => void }) {
+function ExpenseForm({ group, members, meId }: { group: GroupDto; members: MemberDto[]; meId: string }) {
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState(group.defaultCurrency);
@@ -119,10 +148,9 @@ function ExpenseForm({ group, meId, onSaved }: { group: GroupInfo; meId: string;
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [payer, setPayer] = useState(meId);
   const [participants, setParticipants] = useState<Set<string>>(
-    () => new Set(group.members.map((m) => m.userId)),
+    () => new Set(members.map((m) => m.userId)),
   );
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
 
   function toggle(userId: string) {
     setParticipants((prev) => {
@@ -136,10 +164,9 @@ function ExpenseForm({ group, meId, onSaved }: { group: GroupInfo; meId: string;
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    setBusy(true);
     try {
       const amountMinor = parseToMinor(amount, currency);
-      const userIds = [...participants];
+      const userIds = members.map((m) => m.userId).filter((id) => participants.has(id));
       if (userIds.length === 0) throw new Error('pick at least one participant');
       const owed = computeOwed(amountMinor, { mode: 'equal', userIds });
       const splits = owed.map((o) => ({
@@ -150,11 +177,9 @@ function ExpenseForm({ group, meId, onSaved }: { group: GroupInfo; meId: string;
       if (!owed.some((o) => o.userId === payer)) {
         splits.push({ userId: payer, owedMinor: 0, paidMinor: amountMinor });
       }
-      const id = crypto.randomUUID();
-      await api(`/api/expenses/${id}`, {
-        method: 'PUT',
-        body: {
-          id,
+      await upsertExpenseLocal(
+        {
+          id: crypto.randomUUID(),
           groupId: group.id,
           description,
           category,
@@ -165,14 +190,12 @@ function ExpenseForm({ group, meId, onSaved }: { group: GroupInfo; meId: string;
           splitMeta: { mode: 'equal', userIds },
           splits,
         },
-      });
+        meId,
+      );
       setDescription('');
       setAmount('');
-      onSaved();
     } catch (err) {
       setError((err as Error).message);
-    } finally {
-      setBusy(false);
     }
   }
 
@@ -210,7 +233,7 @@ function ExpenseForm({ group, meId, onSaved }: { group: GroupInfo; meId: string;
         </select>
         <input className={input} type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
         <select className={input} value={payer} onChange={(e) => setPayer(e.target.value)}>
-          {group.members.map((m) => (
+          {members.map((m) => (
             <option key={m.userId} value={m.userId}>
               paid by {m.displayName}
             </option>
@@ -219,21 +242,15 @@ function ExpenseForm({ group, meId, onSaved }: { group: GroupInfo; meId: string;
       </div>
       <fieldset className="flex flex-wrap gap-3 text-sm">
         <legend className="text-slate-500">Split equally between:</legend>
-        {group.members.map((m) => (
+        {members.map((m) => (
           <label key={m.userId} className="flex items-center gap-1">
-            <input
-              type="checkbox"
-              checked={participants.has(m.userId)}
-              onChange={() => toggle(m.userId)}
-            />
+            <input type="checkbox" checked={participants.has(m.userId)} onChange={() => toggle(m.userId)} />
             {m.displayName}
           </label>
         ))}
       </fieldset>
       {error && <p className="text-sm text-red-600">{error}</p>}
-      <button disabled={busy} className="self-start rounded bg-teal-700 px-4 py-2 font-medium text-white disabled:opacity-50">
-        Add expense
-      </button>
+      <button className="self-start rounded bg-teal-700 px-4 py-2 font-medium text-white">Add expense</button>
     </form>
   );
 }
