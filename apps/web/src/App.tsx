@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from './auth';
 import { NamePrompt } from './components/NamePrompt';
+import { ExpenseDetailPage } from './pages/ExpenseDetail';
 import { GroupPage } from './pages/Group';
 import { GroupsPage } from './pages/Groups';
 import { InvitePage } from './pages/Invite';
@@ -67,6 +68,14 @@ export function App() {
             element={
               <RequireAuth>
                 <GroupPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/g/:groupId/e/:expenseId"
+            element={
+              <RequireAuth>
+                <ExpenseDetailPage />
               </RequireAuth>
             }
           />

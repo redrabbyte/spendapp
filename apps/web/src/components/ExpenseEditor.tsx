@@ -143,6 +143,32 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, amount, currency, equalSet, exact, percent, shares, members]);
 
+  // Multi-payer: the total is whatever the payers put in — keep the amount
+  // field in lockstep (it's read-only while multi-payer is on).
+  useEffect(() => {
+    if (!multiPayer) return;
+    let sum = 0;
+    let any = false;
+    for (const m of members) {
+      const v = paid[m.userId];
+      if (!v?.trim()) continue;
+      try {
+        sum += parseToMinor(v, currency);
+        any = true;
+      } catch {
+        return; // mid-typing a payer amount; hold the total until it parses
+      }
+    }
+    const next = any ? toInput(sum, currency) : '';
+    setAmount((prev) => (prev === next ? prev : next));
+  }, [multiPayer, paid, currency, members]);
+
+  const percentEntered = members.reduce((s, m) => {
+    const v = Number((percent[m.userId] ?? '').replace(',', '.'));
+    return s + (Number.isFinite(v) ? v : 0);
+  }, 0);
+  const percentRemaining = Math.round((100 - percentEntered) * 100) / 100;
+
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
@@ -211,11 +237,13 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
           maxLength={200}
         />
         <input
-          className={`${input} w-28`}
+          className={`${input} w-28 ${multiPayer ? 'bg-slate-100 text-slate-500' : ''}`}
           placeholder="0.00"
           inputMode="decimal"
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
+          readOnly={multiPayer}
+          title={multiPayer ? 'total = sum of payer amounts' : undefined}
           required
         />
         <select className={input} value={currency} onChange={(e) => setCurrency(e.target.value)}>
@@ -245,19 +273,22 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
           </button>
         </legend>
         {multiPayer ? (
-          <div className="flex flex-wrap gap-3">
-            {members.map((m) => (
-              <label key={m.userId} className="flex items-center gap-1">
-                {m.displayName}
-                <input
-                  className={smallInput}
-                  inputMode="decimal"
-                  placeholder="0.00"
-                  value={paid[m.userId] ?? ''}
-                  onChange={(e) => setPaid({ ...paid, [m.userId]: e.target.value })}
-                />
-              </label>
-            ))}
+          <div className="flex flex-col gap-1">
+            <div className="flex flex-wrap gap-3">
+              {members.map((m) => (
+                <label key={m.userId} className="flex items-center gap-1">
+                  {m.displayName}
+                  <input
+                    className={smallInput}
+                    inputMode="decimal"
+                    placeholder="0.00"
+                    value={paid[m.userId] ?? ''}
+                    onChange={(e) => setPaid({ ...paid, [m.userId]: e.target.value })}
+                  />
+                </label>
+              ))}
+            </div>
+            <span className="text-xs text-slate-400">Total is the sum of these — {amount || '0'} {currency}.</span>
           </div>
         ) : (
           <select className={input} value={payer} onChange={(e) => setPayer(e.target.value)}>
@@ -285,6 +316,19 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
               {label}
             </button>
           ))}
+          {mode === 'percent' && (
+            <span
+              className={`ml-2 ${
+                percentRemaining === 0
+                  ? 'text-emerald-700'
+                  : percentRemaining < 0
+                    ? 'text-red-600'
+                    : 'text-slate-500'
+              }`}
+            >
+              {percentRemaining >= 0 ? `${percentRemaining}% remaining` : `${-percentRemaining}% over`}
+            </span>
+          )}
         </legend>
         <div className="flex flex-wrap gap-3">
           {members.map((m) => (
