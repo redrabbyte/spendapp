@@ -32,9 +32,12 @@ export function App() {
     <div className="mx-auto min-h-dvh max-w-2xl">
       <header className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
         <span className="flex items-center gap-2">
-          <Link to="/" className="text-lg font-semibold text-teal-700">
-            SpendApp
-          </Link>
+          <span className="flex flex-col leading-tight">
+            <Link to="/" className="text-lg font-semibold text-teal-700">
+              SpendApp
+            </Link>
+            <span className="text-[10px] text-slate-400">build {__BUILD_DATE__}</span>
+          </span>
           {!online && (
             <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
               offline — changes will sync later
