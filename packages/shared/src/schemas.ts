@@ -55,6 +55,13 @@ export const upsertExpenseSchema = z.object({
   expenseDate: isoDate,
   currency: currencyCode,
   amountMinor: minorAmount.positive(),
+  // For a non-default-currency entry: rate frozen at creation, as default
+  // major units per 1 entry major unit. null for default-currency entries.
+  rateToDefault: z
+    .string()
+    .regex(/^\d{1,10}(\.\d{1,8})?$/, 'decimal rate')
+    .nullable()
+    .default(null),
   splitMeta: splitMetaSchema,
   splits: z.array(splitEntrySchema).min(1).max(100),
 });

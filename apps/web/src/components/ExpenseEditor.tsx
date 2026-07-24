@@ -1,11 +1,13 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   allocateByWeights,
   CATEGORIES,
   COMMON_CURRENCIES,
   computeOwed,
+  convertMinor,
   formatMinor,
   parseToMinor,
+  RATE_REGEX,
   type ExpenseDto,
   type GroupDto,
   type MemberDto,
@@ -13,6 +15,8 @@ import {
   type SplitMeta,
   type UpsertExpense,
 } from '@spendapp/shared';
+import type { FxCacheRow } from '../db';
+import { getRates, suggestRate } from '../fx';
 import { upsertExpenseLocal } from '../sync';
 
 /** decimal string for form inputs, without the currency suffix */
@@ -204,6 +208,96 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
   }, 0);
   const percentRemaining = Math.round((100 - percentEntered) * 100) / 100;
 
+  // Conversion rate to the group's default currency, frozen on the entry.
+  const def = group.defaultCurrency;
+  const [fx, setFx] = useState<FxCacheRow | null>(null);
+  const [rateStr, setRateStr] = useState(existing?.rateToDefault ?? '');
+  useEffect(() => {
+    getRates().then(setFx).catch(() => setFx(null));
+  }, []);
+  const currencyRef = useRef(currency);
+  useEffect(() => {
+    if (currency === def) {
+      if (rateStr) setRateStr('');
+      currencyRef.current = currency;
+      return;
+    }
+    if (currencyRef.current !== currency) {
+      currencyRef.current = currency; // currency changed → re-prefill from fx
+      setRateStr(suggestRate(fx, currency, def) ?? '');
+    } else if (!rateStr.trim()) {
+      const s = suggestRate(fx, currency, def); // fx arrived later; fill if empty
+      if (s) setRateStr(s);
+    }
+  }, [currency, fx, def, rateStr]);
+
+  // Live paid|owes preview from the current inputs (aligned columns below).
+  const previewSplits: { userId: string; paidMinor: number; owedMinor: number }[] | null = (() => {
+    try {
+      const amt = parseToMinor(amount, currency);
+      const owed = computeOwed(amt, buildMeta());
+      const paidMap = new Map<string, number>();
+      if (multiPayer) {
+        for (const m of members) {
+          const v = paid[m.userId];
+          if (v?.trim()) paidMap.set(m.userId, parseToMinor(v, currency));
+        }
+      } else {
+        paidMap.set(payer, amt);
+      }
+      const owedMap = new Map(owed.map((o) => [o.userId, o.owedMinor]));
+      const ids = [...new Set([...owedMap.keys(), ...paidMap.keys()])];
+      return ids.map((userId) => ({
+        userId,
+        paidMinor: paidMap.get(userId) ?? 0,
+        owedMinor: owedMap.get(userId) ?? 0,
+      }));
+    } catch {
+      return null;
+    }
+  })();
+
+  // Convert-amounts control (edit mode): re-denominate the whole entry.
+  const [convTo, setConvTo] = useState('');
+  const [convRate, setConvRate] = useState('');
+  function pickConvTarget(target: string): void {
+    setConvTo(target);
+    if (!target || target === currency) return setConvRate('');
+    // Prefill from live fx, EXCEPT entry→default which uses the saved rate.
+    const prefill =
+      target === def ? (existing?.rateToDefault ?? suggestRate(fx, currency, def)) : suggestRate(fx, currency, target);
+    setConvRate(prefill ?? '');
+  }
+  function doConvert(): void {
+    setError(null);
+    if (!convTo || convTo === currency) return;
+    if (!RATE_REGEX.test(convRate)) return setError('enter a valid conversion rate');
+    const conv = (rec: Record<string, string>): Record<string, string> =>
+      Object.fromEntries(
+        Object.entries(rec).map(([id, v]) => {
+          if (!v.trim()) return [id, v];
+          try {
+            return [id, toInput(convertMinor(parseToMinor(v, currency), currency, convTo, convRate), convTo)];
+          } catch {
+            return [id, v];
+          }
+        }),
+      );
+    if (amount.trim()) {
+      try {
+        setAmount(toInput(convertMinor(parseToMinor(amount, currency), currency, convTo, convRate), convTo));
+      } catch {
+        /* leave */
+      }
+    }
+    setExact(conv(exact));
+    setPaid(conv(paid));
+    setRateStr(convTo === def ? '' : (suggestRate(fx, convTo, def) ?? ''));
+    setCurrency(convTo);
+    setConvTo('');
+    setConvRate('');
+  }
+
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
@@ -234,6 +328,12 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
         paidMinor: paidMap.get(userId) ?? 0,
       }));
 
+      let rateToDefault: string | null = null;
+      if (currency !== def) {
+        if (!RATE_REGEX.test(rateStr.trim())) throw new Error(`enter a valid conversion rate to ${def}`);
+        rateToDefault = rateStr.trim();
+      }
+
       const input: UpsertExpense = {
         id: existing?.id ?? crypto.randomUUID(),
         groupId: group.id,
@@ -243,6 +343,7 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
         expenseDate: date,
         currency,
         amountMinor,
+        rateToDefault,
         splitMeta: builtMeta as SplitMeta,
         splits,
       };
@@ -251,6 +352,12 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
         setDescription('');
         setAmount('');
         setNote('');
+        setExact({});
+        setPercent({});
+        setShares({});
+        setPaid({});
+        setEqualSet(new Set(members.map((m) => m.userId)));
+        setAmountManual(false);
       }
       onDone?.();
     } catch (err) {
@@ -290,6 +397,50 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
           ))}
         </select>
       </div>
+
+      {currency !== def && (
+        <label className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+          <span>
+            1 {currency} =
+          </span>
+          <input
+            className={`${smallInput} w-28`}
+            inputMode="decimal"
+            placeholder="rate"
+            value={rateStr}
+            onChange={(e) => setRateStr(e.target.value)}
+          />
+          <span>{def} {fx?.day ? '(prefilled from today’s rate; editable)' : '(no fx suggestion offline; enter manually)'}</span>
+        </label>
+      )}
+
+      {existing && (
+        <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+          <span>Convert amounts to</span>
+          <select className={input} value={convTo} onChange={(e) => pickConvTarget(e.target.value)}>
+            <option value="">choose unit…</option>
+            {[...new Set([def, ...COMMON_CURRENCIES])].filter((c) => c !== currency).map((c) => (
+              <option key={c}>{c}</option>
+            ))}
+          </select>
+          {convTo && (
+            <>
+              <span>at 1 {currency} =</span>
+              <input
+                className={`${smallInput} w-28`}
+                inputMode="decimal"
+                value={convRate}
+                onChange={(e) => setConvRate(e.target.value)}
+              />
+              <span>{convTo}</span>
+              <button type="button" onClick={doConvert} className="rounded bg-slate-200 px-2 py-1 text-slate-700">
+                Convert
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-2 text-sm">
         <select className={input} value={category} onChange={(e) => setCategory(e.target.value)}>
           {CATEGORIES.map((c) => (
@@ -440,6 +591,27 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
           ))}
         </div>
       </fieldset>
+
+      {previewSplits && previewSplits.some((s) => s.paidMinor > 0 || s.owedMinor > 0) && (
+        <table className="text-sm">
+          <thead>
+            <tr className="text-slate-400">
+              <th className="text-left font-normal"></th>
+              <th className="w-24 text-right font-normal">paid</th>
+              <th className="w-24 text-right font-normal">owes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {previewSplits.map((s) => (
+              <tr key={s.userId}>
+                <td className="pr-3 text-slate-600">{members.find((m) => m.userId === s.userId)?.displayName}</td>
+                <td className="text-right tabular-nums text-slate-500">{toInput(s.paidMinor, currency)}</td>
+                <td className="text-right tabular-nums text-slate-700">{toInput(s.owedMinor, currency)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
 
       <textarea
         className={`${input} text-sm`}

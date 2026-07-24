@@ -179,6 +179,7 @@ async function collectGroupChanges(groupId: string, cursor: number): Promise<Gro
       expenseDate: e.expenseDate,
       currency: e.currency,
       amountMinor: e.amountMinor,
+      rateToDefault: e.rateToDefault,
       splitMeta: e.splitMeta as SplitMeta,
       splits: splitRows
         .filter((s) => s.expenseId === e.id)

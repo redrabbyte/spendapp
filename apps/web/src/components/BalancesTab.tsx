@@ -32,6 +32,7 @@ const toUpsertExpense = (e: ExpenseDto): UpsertExpense => ({
   expenseDate: e.expenseDate,
   currency: e.currency,
   amountMinor: e.amountMinor,
+  rateToDefault: e.rateToDefault,
   splitMeta: e.splitMeta,
   splits: e.splits,
 });
@@ -375,8 +376,11 @@ function ConvertSection({
     try {
       if (!from || from === to) throw new Error('pick two different currencies');
       if (!RATE_REGEX.test(rate)) throw new Error('invalid rate');
+      // The frozen rate after conversion: null if now the default currency,
+      // otherwise the fx suggestion for the new currency → default.
+      const newRate = to === group.defaultCurrency ? null : suggestRate(fx, to, group.defaultCurrency);
       for (const exp of affectedExpenses) {
-        await upsertExpenseLocal(convertExpense(toUpsertExpense(exp), to, rate), meId);
+        await upsertExpenseLocal({ ...convertExpense(toUpsertExpense(exp), to, rate), rateToDefault: newRate }, meId);
       }
       for (const p of affectedPayments) {
         await upsertPaymentLocal(convertPayment(toUpsertPayment(p), from, to, rate), meId);
