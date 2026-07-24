@@ -96,6 +96,7 @@ export interface ExpenseDto {
   splitMeta: SplitMeta;
   splits: { userId: string; paidMinor: number; owedMinor: number }[];
   createdBy: string;
+  createdAt: string;
   updatedBy: string;
   updatedAt: string;
   version: number;

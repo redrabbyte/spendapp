@@ -185,6 +185,7 @@ async function collectGroupChanges(groupId: string, cursor: number): Promise<Gro
         .filter((s) => s.expenseId === e.id)
         .map((s) => ({ userId: s.userId, paidMinor: s.paidMinor, owedMinor: s.owedMinor })),
       createdBy: e.createdBy,
+      createdAt: e.createdAt.toISOString(),
       updatedBy: e.updatedBy,
       updatedAt: e.updatedAt.toISOString(),
       version: e.version,
