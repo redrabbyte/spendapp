@@ -57,6 +57,30 @@ Optional integrations (see `apps/server/.env.example`):
   `$APP_ORIGIN/api/auth/google/callback` → `GOOGLE_CLIENT_*` vars.
 - **FX rates**: automatic (key-free ECB via frankfurter.dev), cached daily.
 
+## Schema changes
+
+Prefer versioned migrations over `db:push` once you have real data:
+
+```sh
+pnpm --filter server db:generate   # write a migration from the schema diff
+pnpm --filter server db:migrate    # apply it
+```
+
+`db:push --force` skips drizzle's data-loss confirmation and can drop and
+recreate a table for some column-type changes — **back up first**
+(`mysqldump spendapp > backup.sql`).
+
+If expenses are ever lost, they can be rebuilt from the activity log, which
+stores a full snapshot of every expense write:
+
+```sh
+pnpm --filter server recover:expenses          # report what is recoverable
+pnpm --filter server recover:expenses --apply  # restore it
+```
+
+It never overwrites rows that still exist and skips expenses that were
+deliberately deleted.
+
 ## Production
 
 Serve `apps/web/dist` as static files and reverse-proxy `/api` to the server

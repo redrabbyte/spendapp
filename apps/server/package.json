@@ -8,7 +8,9 @@
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
-    "db:push": "drizzle-kit push"
+    "db:push": "drizzle-kit push",
+    "db:migrate": "drizzle-kit migrate",
+    "recover:expenses": "tsx src/scripts/recover-expenses.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.1",
