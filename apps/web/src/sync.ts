@@ -166,6 +166,7 @@ export async function upsertExpenseLocal(input: UpsertExpense, meId: string): Pr
   const doc: ExpenseDto = {
     ...input,
     createdBy: existing?.createdBy ?? meId,
+    createdAt: existing?.createdAt ?? now,
     updatedBy: meId,
     updatedAt: now,
     version: existing?.version ?? 0,
@@ -210,6 +211,7 @@ export async function restoreExpenseLocal(snapshot: UpsertExpense, meId: string)
   const doc: ExpenseDto = {
     ...snapshot,
     createdBy: existing?.createdBy ?? meId,
+    createdAt: existing?.createdAt ?? now,
     updatedBy: meId,
     updatedAt: now,
     version: existing?.version ?? 0,

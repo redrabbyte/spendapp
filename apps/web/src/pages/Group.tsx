@@ -46,7 +46,11 @@ export function GroupPage() {
 
   const liveExpenses = useMemo(() => (expenses ?? []).filter((e) => e.deletedAt === null), [expenses]);
   const sorted = useMemo(
-    () => liveExpenses.slice().sort((a, b) => (a.expenseDate < b.expenseDate ? 1 : -1)),
+    () =>
+      liveExpenses
+        .slice()
+        // by expense date desc, then most-recently-added first within a day
+        .sort((a, b) => (a.expenseDate !== b.expenseDate ? (a.expenseDate < b.expenseDate ? 1 : -1) : a.createdAt < b.createdAt ? 1 : -1)),
     [liveExpenses],
   );
   const activeMembers = useMemo(() => (allMembers ?? []).filter((m) => m.leftAt === null), [allMembers]);

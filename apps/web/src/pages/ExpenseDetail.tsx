@@ -112,6 +112,9 @@ export function ExpenseDetailPage() {
           <p className="text-sm text-slate-500">
             {expense.expenseDate} · {expense.category}
           </p>
+          <p className="text-xs text-slate-400">
+            added {new Date(expense.createdAt).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
+          </p>
         </div>
         <span className="flex flex-col items-end whitespace-nowrap">
           <span className="text-lg font-medium">{formatMinor(expense.amountMinor, expense.currency)}</span>
