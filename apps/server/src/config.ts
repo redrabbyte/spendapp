@@ -5,6 +5,8 @@ export const config = {
   sessionTtlDays: 30,
   sessionAbsoluteCapDays: 365,
   inviteTtlDays: 14,
+  receiptsDir: process.env.RECEIPTS_DIR ?? './data/receipts',
+  maxUploadBytes: 5 * 1024 * 1024,
 };
 
 export const SESSION_COOKIE = config.cookieSecure ? '__Host-sid' : 'sid';

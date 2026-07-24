@@ -10,6 +10,7 @@ import {
   type SyncResponse,
 } from '@spendapp/shared';
 import { db, schema } from '../db/index.js';
+import { applyAttachmentDelete, applyAttachmentUpsert } from '../lib/attachments.js';
 import { applyExpenseDelete, applyExpenseUpsert } from '../lib/expenses.js';
 import { applyPaymentDelete, applyPaymentUpsert } from '../lib/payments.js';
 
@@ -86,6 +87,15 @@ async function applyMutation(userId: string, m: Mutation): Promise<MutationResul
         const r = await applyPaymentDelete(userId, m.data.paymentId, m.id);
         return r.ok ? { id: m.id, status: 'applied' } : { id: m.id, status: 'rejected', reason: r.reason };
       }
+      case 'attachment.upsert': {
+        if (m.data.groupId !== m.groupId) return { id: m.id, status: 'rejected', reason: 'group mismatch' };
+        const r = await applyAttachmentUpsert(userId, m.data, m.id);
+        return r.ok ? { id: m.id, status: 'applied' } : { id: m.id, status: 'rejected', reason: r.reason };
+      }
+      case 'attachment.delete': {
+        const r = await applyAttachmentDelete(userId, m.data.attachmentId, m.id);
+        return r.ok ? { id: m.id, status: 'applied' } : { id: m.id, status: 'rejected', reason: r.reason };
+      }
     }
   } catch (err) {
     // A rejected mutation must never wedge the client's queue.
@@ -129,6 +139,11 @@ async function collectGroupChanges(groupId: string, cursor: number): Promise<Gro
     .select()
     .from(schema.payments)
     .where(and(eq(schema.payments.groupId, groupId), gt(schema.payments.version, cursor)));
+
+  const attachmentRows = await db
+    .select()
+    .from(schema.attachments)
+    .where(and(eq(schema.attachments.groupId, groupId), gt(schema.attachments.version, cursor)));
 
   const activityRows = await db
     .select()
@@ -184,6 +199,15 @@ async function collectGroupChanges(groupId: string, cursor: number): Promise<Gro
       updatedAt: p.updatedAt.toISOString(),
       version: p.version,
       deletedAt: p.deletedAt?.toISOString() ?? null,
+    })),
+    attachments: attachmentRows.map((a) => ({
+      id: a.id,
+      expenseId: a.expenseId,
+      groupId: a.groupId,
+      createdBy: a.createdBy,
+      createdAt: a.createdAt.toISOString(),
+      version: a.version,
+      deletedAt: a.deletedAt?.toISOString() ?? null,
     })),
     activity: activityRows.map((a) => ({
       id: a.id,

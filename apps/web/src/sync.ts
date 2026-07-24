@@ -1,6 +1,7 @@
 import {
   MUTATION_SCHEMA_VERSION,
   SYNC_PROTOCOL,
+  type AttachmentDto,
   type ExpenseDto,
   type Mutation,
   type PaymentDto,
@@ -54,17 +55,28 @@ export async function syncNow(): Promise<void> {
     const remaining = await localDb.outbox.toArray();
     const pendingExpenseIds = new Set<string>();
     const pendingPaymentIds = new Set<string>();
+    const pendingAttachmentIds = new Set<string>();
     for (const o of remaining) {
       const m = o.mutation;
       if (m.type === 'expense.upsert' || m.type === 'expense.restore') pendingExpenseIds.add(m.data.id);
       else if (m.type === 'expense.delete') pendingExpenseIds.add(m.data.expenseId);
       else if (m.type === 'payment.upsert') pendingPaymentIds.add(m.data.id);
-      else pendingPaymentIds.add(m.data.paymentId);
+      else if (m.type === 'payment.delete') pendingPaymentIds.add(m.data.paymentId);
+      else if (m.type === 'attachment.upsert') pendingAttachmentIds.add(m.data.id);
+      else pendingAttachmentIds.add(m.data.attachmentId);
     }
 
     await localDb.transaction(
       'rw',
-      [localDb.groups, localDb.members, localDb.expenses, localDb.payments, localDb.activity, localDb.cursors],
+      [
+        localDb.groups,
+        localDb.members,
+        localDb.expenses,
+        localDb.payments,
+        localDb.attachments,
+        localDb.activity,
+        localDb.cursors,
+      ],
       async () => {
         const seenGroups = new Set(Object.keys(res.changes));
         for (const [groupId, ch] of Object.entries(res.changes)) {
@@ -76,6 +88,9 @@ export async function syncNow(): Promise<void> {
           for (const p of ch.payments) {
             if (!pendingPaymentIds.has(p.id)) await localDb.payments.put(p);
           }
+          for (const a of ch.attachments) {
+            if (!pendingAttachmentIds.has(a.id)) await localDb.attachments.put(a);
+          }
           for (const a of ch.activity) await localDb.activity.put(a);
           await localDb.cursors.put({ groupId, version: ch.nextCursor });
         }
@@ -86,11 +101,16 @@ export async function syncNow(): Promise<void> {
           await localDb.members.where('groupId').equals(g.id).delete();
           await localDb.expenses.where('groupId').equals(g.id).delete();
           await localDb.payments.where('groupId').equals(g.id).delete();
+          await localDb.attachments.where('groupId').equals(g.id).delete();
           await localDb.activity.where('groupId').equals(g.id).delete();
           await localDb.cursors.delete(g.id);
         }
       },
     );
+
+    // Image bytes go up only after their metadata row is acked (expense
+    // first, file second — never an orphan file, design §9).
+    await uploadPendingBlobs();
 
     if (remaining.length > 0) runAgain = true; // more than one batch queued
   } catch (err) {
@@ -214,6 +234,95 @@ export async function upsertPaymentLocal(input: UpsertPayment, meId: string): Pr
     await localDb.outbox.add({ mutation } as OutboxItem);
   });
   scheduleSync();
+}
+
+/** Compress on-device before anything leaves it; the canvas re-encode also strips EXIF/GPS. */
+async function compressImage(file: Blob): Promise<Blob> {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, 2048 / Math.max(bitmap.width, bitmap.height));
+  const w = Math.max(1, Math.round(bitmap.width * scale));
+  const h = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  canvas.getContext('2d')!.drawImage(bitmap, 0, 0, w, h);
+  bitmap.close();
+  return await new Promise<Blob>((resolve, reject) =>
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('image compression failed'))), 'image/jpeg', 0.8),
+  );
+}
+
+export async function addPhotoLocal(expense: ExpenseDto, file: Blob, meId: string): Promise<void> {
+  const blob = await compressImage(file);
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const dto: AttachmentDto = {
+    id,
+    expenseId: expense.id,
+    groupId: expense.groupId,
+    createdBy: meId,
+    createdAt: now,
+    version: 0,
+    deletedAt: null,
+  };
+  const mutation: Mutation = {
+    id: crypto.randomUUID(),
+    v: MUTATION_SCHEMA_VERSION,
+    type: 'attachment.upsert',
+    groupId: expense.groupId,
+    data: { id, expenseId: expense.id, groupId: expense.groupId },
+    clientTs: now,
+  };
+  await localDb.transaction('rw', [localDb.attachments, localDb.blobs, localDb.outbox], async () => {
+    await localDb.attachments.put(dto);
+    await localDb.blobs.put({ id, blob });
+    await localDb.outbox.add({ mutation } as OutboxItem);
+  });
+  scheduleSync();
+}
+
+export async function deleteAttachmentLocal(attachment: AttachmentDto): Promise<void> {
+  const now = new Date().toISOString();
+  const mutation: Mutation = {
+    id: crypto.randomUUID(),
+    v: MUTATION_SCHEMA_VERSION,
+    type: 'attachment.delete',
+    groupId: attachment.groupId,
+    data: { attachmentId: attachment.id },
+    clientTs: now,
+  };
+  await localDb.transaction('rw', [localDb.attachments, localDb.blobs, localDb.outbox], async () => {
+    await localDb.attachments.put({ ...attachment, deletedAt: now });
+    await localDb.blobs.delete(attachment.id);
+    await localDb.outbox.add({ mutation } as OutboxItem);
+  });
+  scheduleSync();
+}
+
+async function uploadPendingBlobs(): Promise<void> {
+  const rows = await localDb.blobs.toArray();
+  if (rows.length === 0) return;
+  const outbox = await localDb.outbox.toArray();
+  const notYetAcked = new Set(
+    outbox.filter((o) => o.mutation.type === 'attachment.upsert').map((o) => (o.mutation.data as { id: string }).id),
+  );
+  for (const row of rows) {
+    if (notYetAcked.has(row.id)) continue; // metadata row not on the server yet
+    try {
+      const res = await fetch(`/api/attachments/${row.id}`, {
+        method: 'PUT',
+        headers: {
+          'x-requested-with': 'spendapp',
+          'content-type': row.blob.type || 'application/octet-stream',
+        },
+        body: row.blob,
+      });
+      // 404 = attachment deleted meanwhile, 415 = somehow invalid: drop either way.
+      if (res.ok || res.status === 404 || res.status === 415) await localDb.blobs.delete(row.id);
+    } catch {
+      /* offline or flaky — the blob stays queued for the next sync */
+    }
+  }
 }
 
 export async function deletePaymentLocal(payment: PaymentDto): Promise<void> {

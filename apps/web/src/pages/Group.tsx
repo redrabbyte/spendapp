@@ -9,6 +9,7 @@ import { deleteExpenseLocal } from '../sync';
 import { ExpenseEditor } from '../components/ExpenseEditor';
 import { BalancesTab } from '../components/BalancesTab';
 import { ActivityTab, VersionLog } from '../components/ActivityTab';
+import { AttachmentRow } from '../components/Attachments';
 
 type Tab = 'expenses' | 'balances' | 'activity';
 
@@ -143,6 +144,7 @@ export function GroupPage() {
                   </span>
                 </div>
                 {e.note && <div className="mt-1 text-sm text-slate-600">{e.note}</div>}
+                <AttachmentRow expense={e} meId={user.id} />
                 {expanded?.id === e.id && expanded.view === 'edit' && (
                   <div className="mt-2">
                     <ExpenseEditor
