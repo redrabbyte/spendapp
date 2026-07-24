@@ -26,8 +26,9 @@ import type { FxCacheRow } from '../db';
 // slots for the top-5 categories, green for the "Other" fold. Low-contrast
 // slots are relieved by the always-visible totals list next to the donut.
 const SLOTS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4'] as const;
+// Validated 8-hue categorical set (palette.md light column) for per-person slices.
+const PEOPLE = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948'] as const;
 const OTHER_COLOR = '#008300';
-const INK = '#52514e';
 const MUTED = '#898781';
 const GRID = '#e1e0d9';
 
@@ -50,7 +51,7 @@ const toMajor = (minor: number, ccy: string): number => minor / 10 ** minorUnitE
 
 interface BucketData {
   currency: string;
-  perPerson: { name: string; share: number; paid: number }[];
+  perPerson: { userId: string; name: string; share: number; paid: number }[];
   categories: { name: string; value: number; minor: number; color: string }[];
   monthly: Record<string, number | string>[];
   categoryNames: string[];
@@ -144,6 +145,7 @@ export function ChartsTab({ expenses, nameOf, defaultCurrency }: Props) {
         perPerson: [...perUser.entries()]
           .sort((a, b) => b[1].share - a[1].share)
           .map(([userId, v]) => ({
+            userId,
             name: nameOf(userId),
             share: toMajor(v.share, currency),
             paid: toMajor(v.paid, currency),
@@ -210,20 +212,41 @@ export function ChartsTab({ expenses, nameOf, defaultCurrency }: Props) {
         <section key={b.currency} className="flex flex-col gap-4">
           {!convertTo && buckets.length > 1 && <h2 className="font-semibold">{b.currency}</h2>}
 
-          <div>
-            <h3 className="mb-1 text-sm font-medium text-slate-500">Spending per person ({b.currency})</h3>
-            <ResponsiveContainer width="100%" height={Math.max(120, 40 * b.perPerson.length + 60)}>
-              <BarChart data={b.perPerson} layout="vertical" margin={{ left: 8, right: 16 }}>
-                <CartesianGrid stroke={GRID} horizontal={false} />
-                <XAxis type="number" tick={{ fill: MUTED, fontSize: 12 }} stroke={GRID} />
-                <YAxis type="category" dataKey="name" width={90} tick={{ fill: INK, fontSize: 12 }} stroke={GRID} />
-                <Tooltip formatter={(v) => money(b.currency)(Number(v))} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="share" name="their share" fill={SLOTS[0]} radius={[0, 4, 4, 0]} barSize={12} />
-                <Bar dataKey="paid" name="paid out of pocket" fill={SLOTS[1]} radius={[0, 4, 4, 0]} barSize={12} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          {(() => {
+            const ids = [...b.perPerson.map((p) => p.userId)].sort();
+            const personColor = (userId: string) => PEOPLE[ids.indexOf(userId) % PEOPLE.length]!;
+            const pie = (title: string, key: 'paid' | 'share', hint: string) => (
+              <div>
+                <h3 className="mb-1 text-center text-sm font-medium text-slate-500">{title}</h3>
+                <p className="mb-1 text-center text-xs text-slate-400">{hint}</p>
+                <PieChart width={170} height={170}>
+                  <Pie data={b.perPerson} dataKey={key} nameKey="name" outerRadius={72} stroke="#ffffff" strokeWidth={2}>
+                    {b.perPerson.map((p) => (
+                      <Cell key={p.userId} fill={personColor(p.userId)} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(v) => money(b.currency)(Number(v))} />
+                </PieChart>
+              </div>
+            );
+            return (
+              <div>
+                <h3 className="mb-1 text-sm font-medium text-slate-500">Per person ({b.currency})</h3>
+                <div className="flex flex-wrap justify-center gap-6">
+                  {pie('Spending', 'paid', 'paid out of pocket')}
+                  {pie('Share', 'share', 'what they consumed')}
+                </div>
+                <ul className="mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs">
+                  {b.perPerson.map((p) => (
+                    <li key={p.userId} className="flex items-center gap-1">
+                      <span className="inline-block h-3 w-3 rounded-sm" style={{ background: personColor(p.userId) }} />
+                      {p.name}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })()}
 
           <div className="flex flex-wrap items-center gap-4">
             <div>

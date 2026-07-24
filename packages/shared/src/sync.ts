@@ -92,6 +92,7 @@ export interface ExpenseDto {
   expenseDate: string;
   currency: string;
   amountMinor: number;
+  rateToDefault: string | null;
   splitMeta: SplitMeta;
   splits: { userId: string; paidMinor: number; owedMinor: number }[];
   createdBy: string;

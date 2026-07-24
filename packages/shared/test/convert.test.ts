@@ -76,6 +76,7 @@ const expenseArb: fc.Arbitrary<UpsertExpense> = fc
       expenseDate: '2026-01-01',
       currency: 'EUR',
       amountMinor: amount,
+      rateToDefault: null,
       splitMeta: meta,
       splits,
     };

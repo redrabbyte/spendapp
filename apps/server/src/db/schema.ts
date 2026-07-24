@@ -80,6 +80,7 @@ export const expenses = mysqlTable(
     expenseDate: date('expense_date', { mode: 'string' }).notNull(),
     currency: char('currency', { length: 3 }).notNull(),
     amountMinor: money('amount_minor').notNull(),
+    rateToDefault: decimal('rate_to_default', { precision: 18, scale: 8 }),
     splitMeta: json('split_meta').notNull(),
     createdBy: id('created_by').notNull(),
     createdAt: ts('created_at').notNull(),

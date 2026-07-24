@@ -70,6 +70,7 @@ export async function applyExpenseUpsert(
       expenseDate: input.expenseDate,
       currency: input.currency,
       amountMinor: input.amountMinor,
+      rateToDefault: input.rateToDefault,
       splitMeta: input.splitMeta as object,
       updatedBy: userId,
       updatedAt: now,

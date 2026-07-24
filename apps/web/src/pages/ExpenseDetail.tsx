@@ -1,10 +1,11 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { formatMinor } from '@spendapp/shared';
+import { convertExpense, formatMinor, type UpsertExpense } from '@spendapp/shared';
 import { useAuth } from '../auth';
-import { localDb } from '../db';
-import { addCommentLocal, deleteExpenseLocal } from '../sync';
+import { localDb, type FxCacheRow } from '../db';
+import { getRates, suggestRate } from '../fx';
+import { addCommentLocal, deleteExpenseLocal, upsertExpenseLocal } from '../sync';
 import { AttachmentRow } from '../components/Attachments';
 import { VersionLog } from '../components/ActivityTab';
 import { ExpenseEditor } from '../components/ExpenseEditor';
@@ -41,6 +42,37 @@ export function ExpenseDetailPage() {
 
   const activeMembers = useMemo(() => (members ?? []).filter((m) => m.leftAt === null), [members]);
   const pending = usePendingExpenseIds();
+  const [fx, setFx] = useState<FxCacheRow | null>(null);
+  const [convError, setConvError] = useState<string | null>(null);
+  useEffect(() => {
+    getRates().then(setFx).catch(() => setFx(null));
+  }, []);
+
+  async function convertToDefault(): Promise<void> {
+    setConvError(null);
+    if (!expense || !group || !user) return;
+    const def = group.defaultCurrency;
+    const rate = expense.rateToDefault ?? suggestRate(fx, expense.currency, def);
+    if (!rate) return setConvError(`No saved or cached rate to convert ${expense.currency} → ${def}.`);
+    const toUpsert: UpsertExpense = {
+      id: expense.id,
+      groupId: expense.groupId,
+      description: expense.description,
+      category: expense.category,
+      note: expense.note,
+      expenseDate: expense.expenseDate,
+      currency: expense.currency,
+      amountMinor: expense.amountMinor,
+      rateToDefault: expense.rateToDefault,
+      splitMeta: expense.splitMeta,
+      splits: expense.splits,
+    };
+    try {
+      await upsertExpenseLocal({ ...convertExpense(toUpsert, def, rate), rateToDefault: null }, user.id);
+    } catch (err) {
+      setConvError((err as Error).message);
+    }
+  }
 
   const comments = useMemo(
     () =>
@@ -81,26 +113,44 @@ export function ExpenseDetailPage() {
             {expense.expenseDate} · {expense.category}
           </p>
         </div>
-        <span className="whitespace-nowrap text-lg font-medium">
-          {formatMinor(expense.amountMinor, expense.currency)}
+        <span className="flex flex-col items-end whitespace-nowrap">
+          <span className="text-lg font-medium">{formatMinor(expense.amountMinor, expense.currency)}</span>
+          {expense.currency !== group.defaultCurrency && (
+            <button onClick={() => void convertToDefault()} className="text-xs text-teal-700 underline">
+              convert to {group.defaultCurrency}
+              {expense.rateToDefault ? ` @ ${expense.rateToDefault}` : ''}
+            </button>
+          )}
         </span>
       </header>
 
+      {convError && <p className="text-sm text-red-600">{convError}</p>}
       {expense.note && <p className="rounded bg-slate-50 p-2 text-sm text-slate-700">{expense.note}</p>}
 
       <section>
         <h2 className="mb-1 text-sm font-medium text-slate-500">Split</h2>
-        <ul className="flex flex-col gap-1 text-sm">
-          {expense.splits.map((s) => (
-            <li key={s.userId} className="flex justify-between">
-              <span>{nameOf(s.userId)}</span>
-              <span className="tabular-nums text-slate-600">
-                owes {formatMinor(s.owedMinor, expense.currency)}
-                {s.paidMinor > 0 && ` · paid ${formatMinor(s.paidMinor, expense.currency)}`}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-slate-400">
+              <th className="text-left font-normal"></th>
+              <th className="w-28 text-right font-normal">paid</th>
+              <th className="w-28 text-right font-normal">owes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {expense.splits.map((s) => (
+              <tr key={s.userId}>
+                <td className="pr-3">{nameOf(s.userId)}</td>
+                <td className="text-right tabular-nums text-slate-500">
+                  {s.paidMinor > 0 ? formatMinor(s.paidMinor, expense.currency) : '—'}
+                </td>
+                <td className="text-right tabular-nums text-slate-700">
+                  {formatMinor(s.owedMinor, expense.currency)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </section>
 
       <section>
