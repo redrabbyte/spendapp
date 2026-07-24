@@ -11,7 +11,9 @@ import { LoginPage } from './pages/Login';
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { user, loading } = useAuth();
   const location = useLocation();
-  if (loading) return <p className="p-6 text-slate-500">Loading…</p>;
+  // A cached session renders immediately (offline cold start); only block
+  // when there is nothing cached and we're still checking.
+  if (!user && loading) return <p className="p-6 text-slate-500">Loading…</p>;
   if (!user) return <Navigate to={`/login?next=${encodeURIComponent(location.pathname)}`} replace />;
   return children;
 }
