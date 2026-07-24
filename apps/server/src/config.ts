@@ -1,3 +1,15 @@
+import { fileURLToPath } from 'node:url';
+
+// Load apps/server/.env into process.env before anything reads it. Node's
+// built-in loader (>= 20.12); real environment variables always win, and a
+// missing file is fine — production usually supplies vars directly.
+try {
+  const loadEnvFile = (process as unknown as { loadEnvFile?: (p: string) => void }).loadEnvFile;
+  loadEnvFile?.(fileURLToPath(new URL('../.env', import.meta.url)));
+} catch {
+  /* no .env file — use the ambient environment */
+}
+
 export const config = {
   databaseUrl: process.env.DATABASE_URL ?? 'mysql://spendapp:spendapp@127.0.0.1:3306/spendapp',
   port: Number(process.env.PORT ?? 3000),

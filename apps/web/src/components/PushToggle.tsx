@@ -18,7 +18,16 @@ export function PushToggle() {
     }
   }
 
-  if (state === 'loading' || state === 'unavailable') return null; // server has push disabled
+  if (state === 'loading') return null;
+  if (state === 'unavailable') {
+    // Say so rather than rendering an empty section — otherwise a missing
+    // server-side VAPID key looks like a broken settings screen.
+    return (
+      <p className="text-xs text-slate-400">
+        Push is not configured on this server (no VAPID keys).
+      </p>
+    );
+  }
   if (state === 'unsupported') {
     return (
       <p className="text-xs text-slate-400">
