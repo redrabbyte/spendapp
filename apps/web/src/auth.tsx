@@ -13,18 +13,39 @@ interface AuthState {
 
 const AuthContext = createContext<AuthState | null>(null);
 
+const CACHE_KEY = 'me';
+const readCache = (): Me | null => {
+  try {
+    const s = localStorage.getItem(CACHE_KEY);
+    return s ? (JSON.parse(s) as Me) : null;
+  } catch {
+    return null;
+  }
+};
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<Me | null>(null);
+  // Hydrate from the last known session so the app opens straight to its
+  // content offline instead of the login screen.
+  const [user, setUserState] = useState<Me | null>(readCache);
   const [loading, setLoading] = useState(true);
+
+  const setUser = useCallback((u: Me | null) => {
+    setUserState(u);
+    if (u) localStorage.setItem(CACHE_KEY, JSON.stringify(u));
+    else localStorage.removeItem(CACHE_KEY);
+  }, []);
 
   useEffect(() => {
     api<Me>('/api/me')
       .then(setUser)
       .catch((err: unknown) => {
-        if (!(err instanceof ApiError && err.status === 401)) console.error(err);
-        setUser(null);
+        // Only a real 401 means logged out. A network error (offline) keeps
+        // the cached session so offline use works after a cold start.
+        if (err instanceof ApiError && err.status === 401) setUser(null);
+        else if (!(err instanceof ApiError)) console.debug('me check deferred (offline?)');
       })
       .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -32,8 +53,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user]);
 
   const logout = useCallback(async () => {
-    await api('/api/auth/logout', { method: 'POST' });
-    // Shared-device hygiene: nothing survives locally after logout.
+    await api('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    localStorage.removeItem(CACHE_KEY);
     await wipeLocalDb();
     location.assign('/login');
   }, []);
