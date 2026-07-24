@@ -6,6 +6,7 @@ import { api } from '../api';
 import { useAuth } from '../auth';
 import { localDb } from '../db';
 import { usePendingExpenseIds } from '../pending';
+import { formatExpenseDate, useSettings } from '../settings';
 import { ExpenseEditor } from '../components/ExpenseEditor';
 import { BalancesTab } from '../components/BalancesTab';
 import { ChartsTab } from '../components/ChartsTab';
@@ -14,14 +15,6 @@ import { SyncPendingBadge } from '../components/SyncPendingBadge';
 
 type Tab = 'expenses' | 'balances' | 'charts' | 'activity';
 
-// Date-only rows (old entries) show just the date; date+time rows show both.
-export function fmtDateTime(iso: string): string {
-  const d = new Date(iso.length <= 10 ? `${iso}T00:00` : iso);
-  return iso.length <= 10
-    ? d.toLocaleDateString()
-    : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-}
-
 export function GroupPage() {
   const { groupId } = useParams<{ groupId: string }>();
   const { user } = useAuth();
@@ -29,6 +22,7 @@ export function GroupPage() {
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const pending = usePendingExpenseIds();
+  const { settings } = useSettings();
 
   // undefined = still querying, null = definitely not in the local mirror
   const group = useLiveQuery(
@@ -80,7 +74,7 @@ export function GroupPage() {
 
   if (!user) return null;
   if (group === undefined || !expenses || !allMembers || !payments || !activity) {
-    return <p className="text-slate-500">Loading…</p>;
+    return <p className="text-slate-500 dark:text-slate-400">Loading…</p>;
   }
   if (group === null) return <p className="text-red-600">Group not found (or not synced yet).</p>;
 
@@ -89,7 +83,7 @@ export function GroupPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">{group.name}</h1>
         <span className="flex gap-3 text-sm">
-          <a href={`/api/groups/${group.id}/export.csv`} download className="text-slate-500 underline">
+          <a href={`/api/groups/${group.id}/export.csv`} download className="text-slate-500 dark:text-slate-400 underline">
             CSV
           </a>
           <button onClick={() => void createInvite()} className="text-teal-700 underline">
@@ -98,18 +92,18 @@ export function GroupPage() {
         </span>
       </div>
       {inviteUrl && (
-        <p className="break-all rounded bg-teal-50 p-2 text-sm text-teal-900">
+        <p className="break-all rounded bg-teal-50 dark:bg-teal-950 p-2 text-sm text-teal-900 dark:text-teal-100">
           Share this link (valid 14 days): {inviteUrl}
         </p>
       )}
       {inviteError && <p className="text-sm text-red-600">{inviteError}</p>}
-      <nav className="flex gap-2 border-b border-slate-200">
+      <nav className="flex gap-2 border-b border-slate-200 dark:border-slate-700">
         {(['expenses', 'balances', 'charts', 'activity'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
             className={`px-3 py-2 text-sm font-medium capitalize ${
-              tab === t ? 'border-b-2 border-teal-700 text-teal-700' : 'text-slate-500'
+              tab === t ? 'border-b-2 border-teal-700 text-teal-700' : 'text-slate-500 dark:text-slate-400'
             }`}
           >
             {t}
@@ -121,12 +115,12 @@ export function GroupPage() {
         <>
           <ExpenseEditor group={group} members={activeMembers} meId={user.id} />
           <ul className="flex flex-col gap-2">
-            {sorted.length === 0 && <p className="text-slate-500">No expenses yet.</p>}
+            {sorted.length === 0 && <p className="text-slate-500 dark:text-slate-400">No expenses yet.</p>}
             {sorted.map((e) => (
               <li key={e.id}>
                 <Link
                   to={`/g/${group.id}/e/${e.id}`}
-                  className="block rounded border border-slate-200 px-4 py-3 hover:border-teal-600"
+                  className="block rounded border border-slate-200 dark:border-slate-700 px-4 py-3 hover:border-teal-600"
                 >
                   <div className="flex justify-between gap-2">
                     <span className="flex items-center gap-1.5 font-medium">
@@ -135,8 +129,8 @@ export function GroupPage() {
                     </span>
                     <span className="whitespace-nowrap">{formatMinor(e.amountMinor, e.currency)}</span>
                   </div>
-                  <div className="text-sm text-slate-500">
-                    {fmtDateTime(e.expenseDate)} · {e.category} · paid by{' '}
+                  <div className="text-sm text-slate-500 dark:text-slate-400">
+                    {formatExpenseDate(e.expenseDate, settings.displayTz)} · {e.category} · paid by{' '}
                     {e.splits
                       .filter((s) => s.paidMinor > 0)
                       .map((s) => nameOf(s.userId))

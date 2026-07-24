@@ -53,7 +53,7 @@ export function ActivityTab({ activity, expenses, meId, nameOf }: Props) {
   );
   const expenseById = useMemo(() => new Map(expenses.map((e) => [e.id, e])), [expenses]);
 
-  if (sorted.length === 0) return <p className="text-slate-500">Nothing has happened yet.</p>;
+  if (sorted.length === 0) return <p className="text-slate-500 dark:text-slate-400">Nothing has happened yet.</p>;
 
   return (
     <ul className="flex flex-col gap-2 text-sm">
@@ -67,7 +67,7 @@ export function ActivityTab({ activity, expenses, meId, nameOf }: Props) {
           <li key={a.id} className="flex items-center justify-between gap-2 border-b border-slate-100 pb-1">
             <span>
               <span className="font-medium">{nameOf(a.actorId)}</span> {describe(a)}
-              {restorable && <span className="text-slate-500"> — “{restorable.description}”</span>}
+              {restorable && <span className="text-slate-500 dark:text-slate-400"> — “{restorable.description}”</span>}
             </span>
             <span className="flex items-center gap-2 whitespace-nowrap text-slate-400">
               {restorable && (
@@ -106,7 +106,7 @@ export function VersionLog({
         .sort((a, b) => b.version - a.version),
     [activity, expense.id],
   );
-  if (versions.length === 0) return <p className="text-sm text-slate-500">No history synced yet.</p>;
+  if (versions.length === 0) return <p className="text-sm text-slate-500 dark:text-slate-400">No history synced yet.</p>;
 
   return (
     <ul className="flex flex-col gap-1 text-sm">

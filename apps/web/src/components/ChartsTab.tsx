@@ -181,14 +181,14 @@ export function ChartsTab({ expenses, nameOf, defaultCurrency }: Props) {
           <button
             key={key}
             onClick={() => setRange(key)}
-            className={`rounded px-2 py-0.5 ${range === key ? 'bg-teal-700 text-white' : 'bg-slate-100 text-slate-600'}`}
+            className={`rounded px-2 py-0.5 ${range === key ? 'bg-teal-700 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'}`}
           >
             {label}
           </button>
         ))}
-        <span className="ml-2 text-slate-500">view:</span>
+        <span className="ml-2 text-slate-500 dark:text-slate-400">view:</span>
         <select
-          className="rounded border border-slate-300 px-2 py-1"
+          className="rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-2 py-1"
           value={convertTo}
           onChange={(e) => setConvertTo(e.target.value)}
         >
@@ -206,7 +206,7 @@ export function ChartsTab({ expenses, nameOf, defaultCurrency }: Props) {
           display-only; stored data is untouched.
         </p>
       )}
-      {buckets.length === 0 && <p className="text-slate-500">No expenses in this range.</p>}
+      {buckets.length === 0 && <p className="text-slate-500 dark:text-slate-400">No expenses in this range.</p>}
 
       {buckets.map((b) => (
         <section key={b.currency} className="flex flex-col gap-4">
@@ -219,7 +219,7 @@ export function ChartsTab({ expenses, nameOf, defaultCurrency }: Props) {
               const rows = [...b.perPerson].sort((x, y) => y[key] - x[key]);
               return (
                 <div>
-                  <h3 className="mb-1 text-center text-sm font-medium text-slate-500">{title}</h3>
+                  <h3 className="mb-1 text-center text-sm font-medium text-slate-500 dark:text-slate-400">{title}</h3>
                   <p className="mb-1 text-center text-xs text-slate-400">{hint}</p>
                   <PieChart width={170} height={170}>
                     <Pie data={b.perPerson} dataKey={key} nameKey="name" outerRadius={72} stroke="#ffffff" strokeWidth={2}>
@@ -233,8 +233,8 @@ export function ChartsTab({ expenses, nameOf, defaultCurrency }: Props) {
                     {rows.map((p) => (
                       <li key={p.userId} className="flex items-center gap-2">
                         <span className="inline-block h-3 w-3 rounded-sm" style={{ background: personColor(p.userId) }} />
-                        <span className="text-slate-700">{p.name}</span>
-                        <span className="ml-auto pl-4 tabular-nums text-slate-500">{money(b.currency)(p[key])}</span>
+                        <span className="text-slate-700 dark:text-slate-200">{p.name}</span>
+                        <span className="ml-auto pl-4 tabular-nums text-slate-500 dark:text-slate-400">{money(b.currency)(p[key])}</span>
                       </li>
                     ))}
                   </ul>
@@ -243,7 +243,7 @@ export function ChartsTab({ expenses, nameOf, defaultCurrency }: Props) {
             };
             return (
               <div>
-                <h3 className="mb-1 text-sm font-medium text-slate-500">Per person ({b.currency})</h3>
+                <h3 className="mb-1 text-sm font-medium text-slate-500 dark:text-slate-400">Per person ({b.currency})</h3>
                 <div className="flex flex-wrap justify-center gap-8">
                   {pie('Spending', 'paid', 'paid out of pocket')}
                   {pie('Share', 'share', 'what they consumed')}
@@ -254,7 +254,7 @@ export function ChartsTab({ expenses, nameOf, defaultCurrency }: Props) {
 
           <div className="flex flex-wrap items-center gap-4">
             <div>
-              <h3 className="mb-1 text-sm font-medium text-slate-500">By category</h3>
+              <h3 className="mb-1 text-sm font-medium text-slate-500 dark:text-slate-400">By category</h3>
               <PieChart width={180} height={180}>
                 <Pie
                   data={b.categories}
@@ -276,8 +276,8 @@ export function ChartsTab({ expenses, nameOf, defaultCurrency }: Props) {
               {b.categories.map((c) => (
                 <li key={c.name} className="flex items-center gap-2">
                   <span className="inline-block h-3 w-3 rounded-sm" style={{ background: c.color }} />
-                  <span className="text-slate-700">{c.name}</span>
-                  <span className="ml-auto pl-4 tabular-nums text-slate-500">
+                  <span className="text-slate-700 dark:text-slate-200">{c.name}</span>
+                  <span className="ml-auto pl-4 tabular-nums text-slate-500 dark:text-slate-400">
                     {formatMinor(c.minor, b.currency)}
                   </span>
                 </li>
@@ -287,7 +287,7 @@ export function ChartsTab({ expenses, nameOf, defaultCurrency }: Props) {
 
           {b.monthly.length > 1 && (
             <div>
-              <h3 className="mb-1 text-sm font-medium text-slate-500">Per month ({b.currency})</h3>
+              <h3 className="mb-1 text-sm font-medium text-slate-500 dark:text-slate-400">Per month ({b.currency})</h3>
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart data={b.monthly} margin={{ right: 16 }}>
                   <CartesianGrid stroke={GRID} vertical={false} />

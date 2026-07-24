@@ -25,12 +25,11 @@ const toInput = (minor: number, ccy: string): string => formatMinor(minor, ccy).
 
 const trimNum = (n: number): string => String(Math.round(n * 100) / 100);
 
-// Value for a datetime-local input: current local time, or an existing
-// entry's stored value (date-only rows get midnight, kept as local).
+// datetime-local shows device-local wall time. Convert a stored UTC instant
+// (or legacy date-only, or nothing → now) into that local input value.
 function localDateTimeInput(iso?: string): string {
   const p = (n: number) => String(n).padStart(2, '0');
-  if (iso) return iso.length <= 10 ? `${iso}T00:00` : iso.slice(0, 16);
-  const d = new Date();
+  const d = iso ? new Date(iso.length <= 10 ? `${iso}T00:00` : iso) : new Date();
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
@@ -350,7 +349,7 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
         description,
         category,
         note,
-        expenseDate: date,
+        expenseDate: new Date(date).toISOString(), // device-local input → UTC instant
         currency,
         amountMinor,
         rateToDefault,
@@ -375,10 +374,10 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
     }
   }
 
-  const input = 'rounded border border-slate-300 px-3 py-2';
-  const smallInput = 'w-24 rounded border border-slate-300 px-2 py-1 text-right';
+  const input = 'rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-3 py-2';
+  const smallInput = 'w-24 rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-2 py-1 text-right';
   return (
-    <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-2 rounded border border-slate-200 p-3">
+    <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-2 rounded border border-slate-200 dark:border-slate-700 p-3">
       <div className="flex flex-wrap gap-2">
         <input
           className={`${input} grow`}
@@ -389,7 +388,7 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
           maxLength={200}
         />
         <input
-          className={`${input} w-28 ${multiPayer ? 'bg-slate-100 text-slate-500' : ''}`}
+          className={`${input} w-28 ${multiPayer ? 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400' : ''}`}
           placeholder="0.00"
           inputMode="decimal"
           value={amount}
@@ -409,7 +408,7 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
       </div>
 
       {currency !== def && (
-        <label className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+        <label className="flex flex-wrap items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
           <span>
             1 {currency} =
           </span>
@@ -425,7 +424,7 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
       )}
 
       {existing && (
-        <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+        <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
           <span>Convert amounts to</span>
           <select className={input} value={convTo} onChange={(e) => pickConvTarget(e.target.value)}>
             <option value="">choose unit…</option>
@@ -443,7 +442,7 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
                 onChange={(e) => setConvRate(e.target.value)}
               />
               <span>{convTo}</span>
-              <button type="button" onClick={doConvert} className="rounded bg-slate-200 px-2 py-1 text-slate-700">
+              <button type="button" onClick={doConvert} className="rounded bg-slate-200 px-2 py-1 text-slate-700 dark:text-slate-200">
                 Convert
               </button>
             </>
@@ -461,7 +460,7 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
       </div>
 
       <fieldset className="flex flex-col gap-1 text-sm">
-        <legend className="mb-1 text-slate-500">
+        <legend className="mb-1 text-slate-500 dark:text-slate-400">
           Paid by{' '}
           <button
             type="button"
@@ -501,7 +500,7 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
       </fieldset>
 
       <fieldset className="flex flex-col gap-2 text-sm">
-        <legend className="mb-1 text-slate-500">
+        <legend className="mb-1 text-slate-500 dark:text-slate-400">
           Split{' '}
           {MODES.map(({ key, label }) => (
             <button
@@ -509,7 +508,7 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
               type="button"
               onClick={() => setMode(key)}
               className={`mr-1 rounded px-2 py-0.5 ${
-                mode === key ? 'bg-teal-700 text-white' : 'bg-slate-100 text-slate-600'
+                mode === key ? 'bg-teal-700 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
               }`}
             >
               {label}
@@ -522,7 +521,7 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
                   ? 'text-emerald-700'
                   : percentRemaining < 0
                     ? 'text-red-600'
-                    : 'text-slate-500'
+                    : 'text-slate-500 dark:text-slate-400'
               }`}
             >
               {percentRemaining >= 0 ? `${percentRemaining}% remaining` : `${-percentRemaining}% over`}
@@ -536,7 +535,7 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
                     ? 'text-emerald-700'
                     : exactRemaining < 0
                       ? 'text-red-600'
-                      : 'text-slate-500'
+                      : 'text-slate-500 dark:text-slate-400'
                 }`}
               >
                 {exactRemaining === 0
@@ -614,9 +613,9 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
           <tbody>
             {previewSplits.map((s) => (
               <tr key={s.userId}>
-                <td className="pr-3 text-slate-600">{members.find((m) => m.userId === s.userId)?.displayName}</td>
-                <td className="text-right tabular-nums text-slate-500">{toInput(s.paidMinor, currency)}</td>
-                <td className="text-right tabular-nums text-slate-700">{toInput(s.owedMinor, currency)}</td>
+                <td className="pr-3 text-slate-600 dark:text-slate-300">{members.find((m) => m.userId === s.userId)?.displayName}</td>
+                <td className="text-right tabular-nums text-slate-500 dark:text-slate-400">{toInput(s.paidMinor, currency)}</td>
+                <td className="text-right tabular-nums text-slate-700 dark:text-slate-200">{toInput(s.owedMinor, currency)}</td>
               </tr>
             ))}
           </tbody>
@@ -637,7 +636,7 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
           {existing ? 'Save changes' : 'Add expense'}
         </button>
         {onDone && (
-          <button type="button" onClick={onDone} className="px-2 text-sm text-slate-500 underline">
+          <button type="button" onClick={onDone} className="px-2 text-sm text-slate-500 dark:text-slate-400 underline">
             cancel
           </button>
         )}

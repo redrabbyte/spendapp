@@ -82,7 +82,7 @@ export function BalancesTab({ group, members, expenses, payments, meId, nameOf }
 
   return (
     <div className="flex flex-col gap-5">
-      {balances.size === 0 && <p className="text-slate-500">All settled up.</p>}
+      {balances.size === 0 && <p className="text-slate-500 dark:text-slate-400">All settled up.</p>}
       {[...balances.entries()].map(([ccy, perUser]) => (
         <section key={ccy}>
           <h2 className="mb-2 font-semibold">{ccy}</h2>
@@ -96,7 +96,7 @@ export function BalancesTab({ group, members, expenses, payments, meId, nameOf }
                 </li>
               ))}
           </ul>
-          <h3 className="text-sm font-medium text-slate-500">Suggested settlements</h3>
+          <h3 className="text-sm font-medium text-slate-500 dark:text-slate-400">Suggested settlements</h3>
           <ul className="flex flex-col gap-1 text-sm">
             {simplifyDebts(perUser).map((t, i) => (
               <li key={i} className="flex items-center gap-2">
@@ -137,7 +137,7 @@ export function BalancesTab({ group, members, expenses, payments, meId, nameOf }
 
       {livePayments.length > 0 && (
         <section>
-          <h3 className="mb-1 text-sm font-medium text-slate-500">Payments</h3>
+          <h3 className="mb-1 text-sm font-medium text-slate-500 dark:text-slate-400">Payments</h3>
           <ul className="flex flex-col gap-1 text-sm">
             {livePayments
               .slice()
@@ -148,12 +148,12 @@ export function BalancesTab({ group, members, expenses, payments, meId, nameOf }
                     {p.paidOn}: {nameOf(p.fromUser)} paid {nameOf(p.toUser)}{' '}
                     {formatMinor(p.amountMinor, p.currency)}
                     {p.settlesCurrency && p.settledMinor != null && (
-                      <span className="text-slate-500">
+                      <span className="text-slate-500 dark:text-slate-400">
                         {' '}
                         (settles {formatMinor(p.settledMinor, p.settlesCurrency)} @ {p.rate})
                       </span>
                     )}
-                    {p.note && <span className="text-slate-500"> · {p.note}</span>}
+                    {p.note && <span className="text-slate-500 dark:text-slate-400"> · {p.note}</span>}
                   </span>
                   <button onClick={() => void deletePaymentLocal(p)} className="text-red-500 underline">
                     delete
@@ -257,7 +257,7 @@ function PaymentForm({
     }
   }
 
-  const input = 'rounded border border-slate-300 px-2 py-1';
+  const input = 'rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-2 py-1';
   const select = (value: string, set: (v: string) => void) => (
     <select className={input} value={value} onChange={(e) => set(e.target.value)}>
       {members.map((m) => (
@@ -268,7 +268,7 @@ function PaymentForm({
     </select>
   );
   return (
-    <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-2 rounded border border-slate-200 p-3 text-sm">
+    <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-2 rounded border border-slate-200 dark:border-slate-700 p-3 text-sm">
       <div className="flex flex-wrap items-center gap-2">
         {select(fromUser, setFromUser)}
         <span>paid</span>
@@ -323,7 +323,7 @@ function PaymentForm({
         <button className="self-start rounded bg-teal-700 px-3 py-1.5 font-medium text-white">
           Record payment
         </button>
-        <button type="button" onClick={onDone} className="text-slate-500 underline">
+        <button type="button" onClick={onDone} className="text-slate-500 dark:text-slate-400 underline">
           cancel
         </button>
       </div>
@@ -417,10 +417,10 @@ function ConvertSection({
     }
   }
 
-  const input = 'rounded border border-slate-300 px-2 py-1';
+  const input = 'rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-2 py-1';
   return (
-    <section className="rounded border border-slate-200 p-3 text-sm">
-      <h3 className="mb-2 font-medium text-slate-500">Convert old entries</h3>
+    <section className="rounded border border-slate-200 dark:border-slate-700 p-3 text-sm">
+      <h3 className="mb-2 font-medium text-slate-500 dark:text-slate-400">Convert old entries</h3>
       <form onSubmit={(e) => void convert(e)} className="flex flex-wrap items-center gap-2">
         <select className={input} value={from} onChange={(e) => setFrom(e.target.value)}>
           <option value="">from…</option>

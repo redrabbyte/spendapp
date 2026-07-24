@@ -23,13 +23,13 @@ export function NamePrompt() {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <form onSubmit={(e) => void submit(e)} className="flex w-full max-w-sm flex-col gap-3 rounded bg-white p-5">
+      <form onSubmit={(e) => void submit(e)} className="flex w-full max-w-sm flex-col gap-3 rounded bg-white p-5 dark:bg-slate-900">
         <h2 className="text-lg font-semibold">What should we call you?</h2>
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-slate-500 dark:text-slate-400">
           Google shared only an anonymous id with us — pick the name your groups will see.
         </p>
         <input
-          className="rounded border border-slate-300 px-3 py-2"
+          className="rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-3 py-2"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Your name"

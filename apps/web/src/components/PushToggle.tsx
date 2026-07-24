@@ -27,7 +27,7 @@ export function PushToggle() {
     );
   }
   return (
-    <div className="flex items-center gap-2 text-sm text-slate-600">
+    <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
       <span>Notifications:</span>
       {state === 'denied' ? (
         <span className="text-slate-400">blocked in browser settings</span>

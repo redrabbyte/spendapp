@@ -7,7 +7,10 @@ export const currencyCode = z.string().regex(/^[A-Z]{3}$/, 'ISO 4217 code');
 const minorAmount = z.number().int().safe();
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD');
 // Expense date carries an optional time (date-only kept for old rows).
-const isoDateTime = z.string().regex(/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?)?$/, 'YYYY-MM-DDTHH:MM');
+// Date-only (legacy) or a full ISO instant (UTC 'Z' or an offset).
+const isoDateTime = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d{3})?)?(Z|[+-]\d{2}:\d{2})?)?$/, 'ISO date or datetime');
 
 export const registerSchema = z.object({
   email: z.string().email().max(254),

@@ -67,7 +67,7 @@ export function AttachmentRow({ expense, meId }: { expense: ExpenseDto; meId: st
         />
       ))}
       {/* Camera: capture hints the OS to open the camera directly. */}
-      <label className="flex h-16 w-16 cursor-pointer flex-col items-center justify-center rounded border border-dashed border-slate-300 text-[11px] text-slate-400 hover:border-teal-600 hover:text-teal-600">
+      <label className="flex h-16 w-16 cursor-pointer flex-col items-center justify-center rounded border border-dashed border-slate-300 dark:border-slate-600 dark:bg-slate-800 text-[11px] text-slate-400 hover:border-teal-600 hover:text-teal-600">
         <span className="text-xl leading-none">📷</span>
         camera
         <input
@@ -79,7 +79,7 @@ export function AttachmentRow({ expense, meId }: { expense: ExpenseDto; meId: st
         />
       </label>
       {/* Files: no capture → gallery / file picker, multi-select. */}
-      <label className="flex h-16 w-16 cursor-pointer flex-col items-center justify-center rounded border border-dashed border-slate-300 text-[11px] text-slate-400 hover:border-teal-600 hover:text-teal-600">
+      <label className="flex h-16 w-16 cursor-pointer flex-col items-center justify-center rounded border border-dashed border-slate-300 dark:border-slate-600 dark:bg-slate-800 text-[11px] text-slate-400 hover:border-teal-600 hover:text-teal-600">
         <span className="text-xl leading-none">＋</span>
         upload
         <input

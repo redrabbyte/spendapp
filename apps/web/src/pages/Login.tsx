@@ -33,7 +33,7 @@ export function LoginPage() {
     }
   }
 
-  const input = 'w-full rounded border border-slate-300 px-3 py-2';
+  const input = 'w-full rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-3 py-2';
   return (
     <form onSubmit={(e) => void submit(e)} className="mx-auto mt-8 flex max-w-sm flex-col gap-3">
       <h1 className="text-xl font-semibold">{mode === 'login' ? 'Log in' : 'Create account'}</h1>
@@ -72,7 +72,7 @@ export function LoginPage() {
       </button>
       <button
         type="button"
-        className="text-sm text-slate-500 underline"
+        className="text-sm text-slate-500 dark:text-slate-400 underline"
         onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
       >
         {mode === 'login' ? 'New here? Create an account' : 'Have an account? Log in'}
@@ -84,7 +84,7 @@ export function LoginPage() {
       </div>
       <a
         href="/api/auth/google"
-        className="rounded border border-slate-300 px-3 py-2 text-center font-medium text-slate-700 hover:border-teal-600"
+        className="rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-3 py-2 text-center font-medium text-slate-700 dark:text-slate-200 hover:border-teal-600"
       >
         Continue with Google
       </a>
