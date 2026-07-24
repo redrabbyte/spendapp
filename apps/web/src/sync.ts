@@ -136,6 +136,10 @@ export function startSyncLoop(): void {
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) scheduleSync(0);
   });
+  // The SW nudges us when a push arrives or a notification is clicked.
+  navigator.serviceWorker?.addEventListener('message', (e) => {
+    if ((e.data as { type?: string } | undefined)?.type === 'sync') scheduleSync(0);
+  });
   window.setInterval(() => scheduleSync(0), 180_000);
   scheduleSync(0);
 }

@@ -77,6 +77,23 @@ export function LoginPage() {
       >
         {mode === 'login' ? 'New here? Create an account' : 'Have an account? Log in'}
       </button>
+      <div className="my-1 flex items-center gap-2 text-xs text-slate-400">
+        <span className="h-px grow bg-slate-200" />
+        or
+        <span className="h-px grow bg-slate-200" />
+      </div>
+      <a
+        href="/api/auth/google"
+        className="rounded border border-slate-300 px-3 py-2 text-center font-medium text-slate-700 hover:border-teal-600"
+      >
+        Continue with Google
+      </a>
+      <p className="text-center text-xs text-slate-400">
+        Google shares only an anonymous id with us — no email, no profile.
+      </p>
+      {params.get('error') === 'google-unavailable' && (
+        <p className="text-center text-sm text-red-600">Google sign-in is not configured on this server.</p>
+      )}
     </form>
   );
 }

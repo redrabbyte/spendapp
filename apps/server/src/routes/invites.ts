@@ -4,6 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import { config } from '../config.js';
 import { db, schema } from '../db/index.js';
 import { bumpGroupVersion, isMember, logActivity } from '../lib/groups.js';
+import { notifyGroup } from '../lib/notify.js';
 
 export async function inviteRoutes(app: FastifyInstance): Promise<void> {
   app.post('/api/groups/:groupId/invites', { preHandler: app.requireUser }, async (req, reply) => {
@@ -55,6 +56,7 @@ export async function inviteRoutes(app: FastifyInstance): Promise<void> {
         payload: { via: 'invite' },
       });
     });
+    notifyGroup(invite.groupId, userId, 'joined the group');
     return { groupId: invite.groupId };
   });
 

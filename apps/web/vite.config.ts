@@ -8,6 +8,9 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       registerType: 'prompt',
       manifest: {
         name: 'SpendApp',
@@ -19,25 +22,7 @@ export default defineConfig({
         start_url: '/',
         icons: [{ src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }],
       },
-      workbox: {
-        navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api\//],
-        // API JSON is never SW-cached: freshness belongs to the data layer
-        // (Dexie), and cached JSON is how balances go stale. Receipt images
-        // are the one exception — uuid-addressed and immutable, so a small
-        // CacheFirst store lets recently viewed receipts open offline.
-        runtimeCaching: [
-          {
-            urlPattern: /\/api\/attachments\//,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'receipts',
-              expiration: { maxEntries: 50 },
-              cacheableResponse: { statuses: [200] },
-            },
-          },
-        ],
-      },
+      // Caching/navigation/push behavior lives in src/sw.ts (injectManifest).
     }),
   ],
   server: {

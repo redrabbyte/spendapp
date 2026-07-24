@@ -5,6 +5,7 @@ import { COMMON_CURRENCIES } from '@spendapp/shared';
 import { api } from '../api';
 import { localDb } from '../db';
 import { syncNow } from '../sync';
+import { PushToggle } from '../components/PushToggle';
 
 export function GroupsPage() {
   const groups = useLiveQuery(() => localDb.groups.toArray(), []);
@@ -79,6 +80,7 @@ export function GroupsPage() {
         <button className="rounded bg-teal-700 px-4 py-2 font-medium text-white">Create</button>
         {error && <p className="w-full text-sm text-red-600">{error}</p>}
       </form>
+      <PushToggle />
     </div>
   );
 }

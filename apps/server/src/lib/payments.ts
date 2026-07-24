@@ -1,8 +1,9 @@
 import { eq } from 'drizzle-orm';
-import type { UpsertPayment } from '@spendapp/shared';
+import { formatMinor, type UpsertPayment } from '@spendapp/shared';
 import { db, schema } from '../db/index.js';
 import type { ApplyResult } from './expenses.js';
 import { bumpGroupVersion, isMember, logActivity } from './groups.js';
+import { notifyGroup } from './notify.js';
 
 export async function applyPaymentUpsert(
   userId: string,
@@ -67,6 +68,9 @@ export async function applyPaymentUpsert(
       await tx.insert(schema.processedMutations).values({ mutationId, userId, createdAt: now });
     }
   });
+  if (!failure) {
+    notifyGroup(input.groupId, userId, `recorded a payment (${formatMinor(input.amountMinor, input.currency)})`);
+  }
   return failure ?? { ok: true };
 }
 

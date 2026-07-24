@@ -1,6 +1,7 @@
 import argon2 from 'argon2';
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import { loginSchema, registerSchema } from '@spendapp/shared';
 import { db, schema } from '../db/index.js';
 import { createSession, destroySession } from '../lib/sessions.js';
@@ -64,6 +65,17 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.get('/api/me', { preHandler: app.requireUser }, async (req) => req.user);
+
+  // Set/change the display name — Google-only accounts start with none.
+  app.patch('/api/me', { preHandler: app.requireUser }, async (req, reply) => {
+    const parsed = z.object({ displayName: z.string().trim().min(1).max(80) }).safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid display name' });
+    await db
+      .update(schema.users)
+      .set({ displayName: parsed.data.displayName })
+      .where(eq(schema.users.id, req.user!.id));
+    return { ...req.user!, displayName: parsed.data.displayName };
+  });
 }
 
 function isDuplicate(err: unknown): boolean {

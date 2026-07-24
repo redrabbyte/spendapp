@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from './auth';
+import { NamePrompt } from './components/NamePrompt';
 import { GroupPage } from './pages/Group';
 import { GroupsPage } from './pages/Groups';
 import { InvitePage } from './pages/Invite';
@@ -48,6 +49,7 @@ export function App() {
           </div>
         )}
       </header>
+      <NamePrompt />
       <main className="p-4">
         <Routes>
           <Route path="/login" element={<LoginPage />} />
