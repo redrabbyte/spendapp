@@ -11,6 +11,7 @@ import {
 } from '@spendapp/shared';
 import { db, schema } from '../db/index.js';
 import { applyExpenseDelete, applyExpenseUpsert } from '../lib/expenses.js';
+import { applyPaymentDelete, applyPaymentUpsert } from '../lib/payments.js';
 
 export async function syncRoutes(app: FastifyInstance): Promise<void> {
   app.post('/api/sync', { preHandler: app.requireUser }, async (req, reply) => {
@@ -71,6 +72,20 @@ async function applyMutation(userId: string, m: Mutation): Promise<MutationResul
         const r = await applyExpenseDelete(userId, m.data.expenseId, m.id);
         return r.ok ? { id: m.id, status: 'applied' } : { id: m.id, status: 'rejected', reason: r.reason };
       }
+      case 'expense.restore': {
+        if (m.data.groupId !== m.groupId) return { id: m.id, status: 'rejected', reason: 'group mismatch' };
+        const r = await applyExpenseUpsert(userId, m.data, m.id, { revive: true });
+        return r.ok ? { id: m.id, status: 'applied' } : { id: m.id, status: 'rejected', reason: r.reason };
+      }
+      case 'payment.upsert': {
+        if (m.data.groupId !== m.groupId) return { id: m.id, status: 'rejected', reason: 'group mismatch' };
+        const r = await applyPaymentUpsert(userId, m.data, m.id);
+        return r.ok ? { id: m.id, status: 'applied' } : { id: m.id, status: 'rejected', reason: r.reason };
+      }
+      case 'payment.delete': {
+        const r = await applyPaymentDelete(userId, m.data.paymentId, m.id);
+        return r.ok ? { id: m.id, status: 'applied' } : { id: m.id, status: 'rejected', reason: r.reason };
+      }
     }
   } catch (err) {
     // A rejected mutation must never wedge the client's queue.
@@ -110,6 +125,11 @@ async function collectGroupChanges(groupId: string, cursor: number): Promise<Gro
         .where(inArray(schema.expenseSplits.expenseId, expenseRows.map((e) => e.id)))
     : [];
 
+  const paymentRows = await db
+    .select()
+    .from(schema.payments)
+    .where(and(eq(schema.payments.groupId, groupId), gt(schema.payments.version, cursor)));
+
   const activityRows = await db
     .select()
     .from(schema.activity)
@@ -147,6 +167,23 @@ async function collectGroupChanges(groupId: string, cursor: number): Promise<Gro
       updatedAt: e.updatedAt.toISOString(),
       version: e.version,
       deletedAt: e.deletedAt?.toISOString() ?? null,
+    })),
+    payments: paymentRows.map((p) => ({
+      id: p.id,
+      groupId: p.groupId,
+      fromUser: p.fromUser,
+      toUser: p.toUser,
+      currency: p.currency,
+      amountMinor: p.amountMinor,
+      settlesCurrency: p.settlesCurrency,
+      rate: p.rate,
+      settledMinor: p.settledMinor,
+      paidOn: p.paidOn,
+      note: p.note,
+      createdBy: p.createdBy,
+      updatedAt: p.updatedAt.toISOString(),
+      version: p.version,
+      deletedAt: p.deletedAt?.toISOString() ?? null,
     })),
     activity: activityRows.map((a) => ({
       id: a.id,

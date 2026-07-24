@@ -59,6 +59,33 @@ export const upsertExpenseSchema = z.object({
   splits: z.array(splitEntrySchema).min(1).max(100),
 });
 
+export const upsertPaymentSchema = z
+  .object({
+    id: uuid,
+    groupId: uuid,
+    fromUser: uuid,
+    toUser: uuid,
+    currency: currencyCode,
+    amountMinor: minorAmount.positive(),
+    // Cross-currency settlement (design §5); dormant until the M4 UI.
+    settlesCurrency: currencyCode.nullable().default(null),
+    rate: z
+      .string()
+      .regex(/^\d{1,10}(\.\d{1,8})?$/, 'decimal rate')
+      .nullable()
+      .default(null),
+    settledMinor: minorAmount.positive().nullable().default(null),
+    paidOn: isoDate,
+    note: z.string().max(2000).default(''),
+  })
+  .refine((p) => p.fromUser !== p.toUser, { message: 'payer and receiver must differ' })
+  .refine(
+    (p) =>
+      (p.settlesCurrency === null) === (p.settledMinor === null) &&
+      (p.settlesCurrency === null) === (p.rate === null),
+    { message: 'cross-currency fields must be set together' },
+  );
+
 export const CATEGORIES = [
   'food', 'groceries', 'transport', 'housing', 'utilities',
   'entertainment', 'travel', 'health', 'shopping', 'other',
@@ -68,4 +95,5 @@ export type Register = z.infer<typeof registerSchema>;
 export type Login = z.infer<typeof loginSchema>;
 export type CreateGroup = z.infer<typeof createGroupSchema>;
 export type UpsertExpense = z.infer<typeof upsertExpenseSchema>;
+export type UpsertPayment = z.infer<typeof upsertPaymentSchema>;
 export type SplitMeta = z.infer<typeof splitMetaSchema>;
