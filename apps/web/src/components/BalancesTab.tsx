@@ -1,23 +1,59 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import {
+  COMMON_CURRENCIES,
   computeBalances,
+  convertExpense,
+  convertPayment,
   formatMinor,
+  minorUnitExponent,
   parseToMinor,
+  RATE_REGEX,
   simplifyDebts,
   type ExpenseDto,
   type GroupDto,
   type MemberDto,
   type PaymentDto,
+  type UpsertExpense,
   type UpsertPayment,
 } from '@spendapp/shared';
-import { deletePaymentLocal, upsertPaymentLocal } from '../sync';
+import { getRates, suggestRate } from '../fx';
+import type { FxCacheRow } from '../db';
+import { deletePaymentLocal, upsertExpenseLocal, upsertPaymentLocal } from '../sync';
 
 const toInput = (minor: number, ccy: string): string => formatMinor(minor, ccy).split(' ')[0]!;
+const trimRate = (r: number): string => r.toFixed(8).replace(/0+$/, '').replace(/\.$/, '');
+
+const toUpsertExpense = (e: ExpenseDto): UpsertExpense => ({
+  id: e.id,
+  groupId: e.groupId,
+  description: e.description,
+  category: e.category,
+  note: e.note,
+  expenseDate: e.expenseDate,
+  currency: e.currency,
+  amountMinor: e.amountMinor,
+  splitMeta: e.splitMeta,
+  splits: e.splits,
+});
+
+const toUpsertPayment = (p: PaymentDto): UpsertPayment => ({
+  id: p.id,
+  groupId: p.groupId,
+  fromUser: p.fromUser,
+  toUser: p.toUser,
+  currency: p.currency,
+  amountMinor: p.amountMinor,
+  settlesCurrency: p.settlesCurrency,
+  rate: p.rate,
+  settledMinor: p.settledMinor,
+  paidOn: p.paidOn,
+  note: p.note,
+});
 
 interface PaymentDraft {
   fromUser: string;
   toUser: string;
-  currency: string;
+  currency: string; // the debt currency being settled
   amount: string;
 }
 
@@ -34,6 +70,11 @@ export function BalancesTab({ group, members, expenses, payments, meId, nameOf }
   const livePayments = useMemo(() => payments.filter((p) => !p.deletedAt), [payments]);
   const balances = useMemo(() => computeBalances(expenses, livePayments), [expenses, livePayments]);
   const [draft, setDraft] = useState<PaymentDraft | null>(null);
+  const [fx, setFx] = useState<FxCacheRow | null>(null);
+
+  useEffect(() => {
+    getRates().then(setFx).catch(() => setFx(null));
+  }, []);
 
   const otherMember = members.find((m) => m.userId !== meId)?.userId ?? meId;
 
@@ -80,7 +121,7 @@ export function BalancesTab({ group, members, expenses, payments, meId, nameOf }
       ))}
 
       {draft ? (
-        <PaymentForm group={group} members={members} meId={meId} draft={draft} onDone={() => setDraft(null)} />
+        <PaymentForm group={group} members={members} meId={meId} draft={draft} fx={fx} onDone={() => setDraft(null)} />
       ) : (
         <button
           className="self-start text-sm text-teal-700 underline"
@@ -104,6 +145,12 @@ export function BalancesTab({ group, members, expenses, payments, meId, nameOf }
                   <span>
                     {p.paidOn}: {nameOf(p.fromUser)} paid {nameOf(p.toUser)}{' '}
                     {formatMinor(p.amountMinor, p.currency)}
+                    {p.settlesCurrency && p.settledMinor != null && (
+                      <span className="text-slate-500">
+                        {' '}
+                        (settles {formatMinor(p.settledMinor, p.settlesCurrency)} @ {p.rate})
+                      </span>
+                    )}
                     {p.note && <span className="text-slate-500"> · {p.note}</span>}
                   </span>
                   <button onClick={() => void deletePaymentLocal(p)} className="text-red-500 underline">
@@ -114,6 +161,8 @@ export function BalancesTab({ group, members, expenses, payments, meId, nameOf }
           </ul>
         </section>
       )}
+
+      <ConvertSection group={group} expenses={expenses} payments={livePayments} meId={meId} fx={fx} />
     </div>
   );
 }
@@ -123,36 +172,79 @@ function PaymentForm({
   members,
   meId,
   draft,
+  fx,
   onDone,
 }: {
   group: GroupDto;
   members: MemberDto[];
   meId: string;
   draft: PaymentDraft;
+  fx: FxCacheRow | null;
   onDone: () => void;
 }) {
   const [fromUser, setFromUser] = useState(draft.fromUser);
   const [toUser, setToUser] = useState(draft.toUser);
-  const [amount, setAmount] = useState(draft.amount);
+  const [amount, setAmount] = useState(draft.amount); // in payCcy
+  const [cross, setCross] = useState(false);
+  const [payCcy, setPayCcy] = useState(draft.currency);
+  const [settledAmount, setSettledAmount] = useState(draft.amount); // in draft.currency
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  function toggleCross() {
+    const next = !cross;
+    setCross(next);
+    if (next) {
+      setSettledAmount(amount || draft.amount);
+      // suggest what to pay in the other currency, from the cached fx table
+      const otherCcy = payCcy === draft.currency ? group.defaultCurrency : payCcy;
+      setPayCcy(otherCcy);
+      const rate = suggestRate(fx, draft.currency, otherCcy);
+      const settled = amount || draft.amount;
+      if (rate && settled) {
+        try {
+          const settledMinor = parseToMinor(settled, draft.currency);
+          const majors = (settledMinor / 10 ** minorUnitExponent(draft.currency)) * Number(rate);
+          setAmount(majors.toFixed(minorUnitExponent(otherCcy)));
+        } catch {
+          /* leave amount as typed */
+        }
+      }
+    } else {
+      setPayCcy(draft.currency);
+      setAmount(settledAmount);
+    }
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     try {
       if (fromUser === toUser) throw new Error('payer and receiver must differ');
+      const amountMinor = parseToMinor(amount, payCcy);
+      let settlesCurrency: string | null = null;
+      let settledMinor: number | null = null;
+      let rate: string | null = null;
+      if (cross && payCcy !== draft.currency) {
+        settlesCurrency = draft.currency;
+        settledMinor = parseToMinor(settledAmount, draft.currency);
+        // stored rate: settled (debt) major units per 1 paid major unit
+        const paidMajor = amountMinor / 10 ** minorUnitExponent(payCcy);
+        const settledMajor = settledMinor / 10 ** minorUnitExponent(draft.currency);
+        rate = trimRate(settledMajor / paidMajor);
+        if (!RATE_REGEX.test(rate) || Number(rate) <= 0) throw new Error('amounts give an invalid rate');
+      }
       const input: UpsertPayment = {
         id: crypto.randomUUID(),
         groupId: group.id,
         fromUser,
         toUser,
-        currency: draft.currency,
-        amountMinor: parseToMinor(amount, draft.currency),
-        settlesCurrency: null,
-        rate: null,
-        settledMinor: null,
+        currency: payCcy,
+        amountMinor,
+        settlesCurrency,
+        rate,
+        settledMinor,
         paidOn: date,
         note,
       };
@@ -187,9 +279,36 @@ function PaymentForm({
           onChange={(e) => setAmount(e.target.value)}
           required
         />
-        <span>{draft.currency}</span>
+        {cross ? (
+          <select className={input} value={payCcy} onChange={(e) => setPayCcy(e.target.value)}>
+            {COMMON_CURRENCIES.map((c) => (
+              <option key={c}>{c}</option>
+            ))}
+          </select>
+        ) : (
+          <span>{draft.currency}</span>
+        )}
         <input className={input} type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
       </div>
+      <label className="flex items-center gap-2">
+        <input type="checkbox" checked={cross} onChange={toggleCross} />
+        paid in a different currency than the debt
+      </label>
+      {cross && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span>settles</span>
+          <input
+            className={`${input} w-24 text-right`}
+            inputMode="decimal"
+            value={settledAmount}
+            onChange={(e) => setSettledAmount(e.target.value)}
+            required
+          />
+          <span>
+            {draft.currency} of debt{fx?.day ? '' : ' (no fx suggestion available offline)'}
+          </span>
+        </div>
+      )}
       <input
         className={input}
         placeholder="Note (optional, e.g. 'sent via PayPal')"
@@ -207,5 +326,105 @@ function PaymentForm({
         </button>
       </div>
     </form>
+  );
+}
+
+function ConvertSection({
+  group,
+  expenses,
+  payments,
+  meId,
+  fx,
+}: {
+  group: GroupDto;
+  expenses: ExpenseDto[];
+  payments: PaymentDto[];
+  meId: string;
+  fx: FxCacheRow | null;
+}) {
+  const currenciesInUse = useMemo(
+    () =>
+      [
+        ...new Set([
+          ...expenses.map((e) => e.currency),
+          ...payments.flatMap((p) => [p.currency, ...(p.settlesCurrency ? [p.settlesCurrency] : [])]),
+        ]),
+      ].sort(),
+    [expenses, payments],
+  );
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState(group.defaultCurrency);
+  const [rate, setRate] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (from && to) setRate(suggestRate(fx, from, to) ?? '');
+  }, [from, to, fx]);
+
+  if (currenciesInUse.length < 1) return null;
+
+  const affectedExpenses = expenses.filter((e) => e.currency === from);
+  const affectedPayments = payments.filter((p) => p.currency === from || p.settlesCurrency === from);
+  const count = affectedExpenses.length + affectedPayments.length;
+
+  async function convert(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setDone(null);
+    try {
+      if (!from || from === to) throw new Error('pick two different currencies');
+      if (!RATE_REGEX.test(rate)) throw new Error('invalid rate');
+      for (const exp of affectedExpenses) {
+        await upsertExpenseLocal(convertExpense(toUpsertExpense(exp), to, rate), meId);
+      }
+      for (const p of affectedPayments) {
+        await upsertPaymentLocal(convertPayment(toUpsertPayment(p), from, to, rate), meId);
+      }
+      setDone(`Converted ${count} entr${count === 1 ? 'y' : 'ies'} from ${from} to ${to} — each is revertable in its history.`);
+      setFrom('');
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  const input = 'rounded border border-slate-300 px-2 py-1';
+  return (
+    <section className="rounded border border-slate-200 p-3 text-sm">
+      <h3 className="mb-2 font-medium text-slate-500">Convert old entries</h3>
+      <form onSubmit={(e) => void convert(e)} className="flex flex-wrap items-center gap-2">
+        <select className={input} value={from} onChange={(e) => setFrom(e.target.value)}>
+          <option value="">from…</option>
+          {currenciesInUse.map((c) => (
+            <option key={c}>{c}</option>
+          ))}
+        </select>
+        <span>→</span>
+        <select className={input} value={to} onChange={(e) => setTo(e.target.value)}>
+          {COMMON_CURRENCIES.map((c) => (
+            <option key={c}>{c}</option>
+          ))}
+        </select>
+        <label className="flex items-center gap-1">
+          at rate
+          <input
+            className={`${input} w-28 text-right`}
+            inputMode="decimal"
+            value={rate}
+            onChange={(e) => setRate(e.target.value)}
+            placeholder="1.00000000"
+            required
+          />
+        </label>
+        <button
+          disabled={!from || count === 0}
+          className="rounded bg-teal-700 px-3 py-1.5 font-medium text-white disabled:opacity-50"
+        >
+          Convert {from ? `${count} entr${count === 1 ? 'y' : 'ies'}` : ''}
+        </button>
+      </form>
+      {error && <p className="mt-1 text-red-600">{error}</p>}
+      {done && <p className="mt-1 text-emerald-700">{done}</p>}
+    </section>
   );
 }

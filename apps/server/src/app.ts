@@ -4,6 +4,7 @@ import { authRoutes } from './routes/auth.js';
 import { expenseRoutes } from './routes/expenses.js';
 import { groupRoutes } from './routes/groups.js';
 import { inviteRoutes } from './routes/invites.js';
+import { fxRoutes } from './routes/fx.js';
 import { syncRoutes } from './routes/sync.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
@@ -14,6 +15,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(inviteRoutes);
   await app.register(expenseRoutes);
   await app.register(syncRoutes);
+  await app.register(fxRoutes);
   app.get('/api/health', async () => ({ ok: true }));
   return app;
 }

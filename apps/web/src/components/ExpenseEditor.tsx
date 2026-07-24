@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import {
   CATEGORIES,
+  COMMON_CURRENCIES,
   computeOwed,
   formatMinor,
   parseToMinor,
@@ -184,7 +185,7 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
           required
         />
         <select className={input} value={currency} onChange={(e) => setCurrency(e.target.value)}>
-          {[...new Set([group.defaultCurrency, 'EUR', 'USD', 'GBP', 'CHF', 'JPY'])].map((c) => (
+          {[...new Set([currency, group.defaultCurrency, ...COMMON_CURRENCIES])].map((c) => (
             <option key={c}>{c}</option>
           ))}
         </select>
