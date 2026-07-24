@@ -1,5 +1,6 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import { securityPlugin } from './plugins/security.js';
+import { attachmentRoutes } from './routes/attachments.js';
 import { authRoutes } from './routes/auth.js';
 import { expenseRoutes } from './routes/expenses.js';
 import { groupRoutes } from './routes/groups.js';
@@ -16,6 +17,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(expenseRoutes);
   await app.register(syncRoutes);
   await app.register(fxRoutes);
+  await app.register(attachmentRoutes);
   app.get('/api/health', async () => ({ ok: true }));
   return app;
 }

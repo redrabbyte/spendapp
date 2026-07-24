@@ -1,5 +1,13 @@
 import Dexie, { type Table } from 'dexie';
-import type { ActivityDto, ExpenseDto, GroupDto, MemberDto, Mutation, PaymentDto } from '@spendapp/shared';
+import type {
+  ActivityDto,
+  AttachmentDto,
+  ExpenseDto,
+  GroupDto,
+  MemberDto,
+  Mutation,
+  PaymentDto,
+} from '@spendapp/shared';
 
 export interface OutboxItem {
   seq?: number;
@@ -18,6 +26,12 @@ export interface FxCacheRow {
   rates: Record<string, string>;
 }
 
+/** compressed image waiting to be uploaded (offline queue, design §9) */
+export interface BlobRow {
+  id: string; // attachment id
+  blob: Blob;
+}
+
 /**
  * The local source of truth. UI components read and write ONLY this
  * database; the sync engine replicates it against the server. Bump the
@@ -33,6 +47,8 @@ class LocalDb extends Dexie {
   outbox!: Table<OutboxItem, number>;
   cursors!: Table<CursorRow, string>;
   kv!: Table<FxCacheRow, string>;
+  attachments!: Table<AttachmentDto, string>;
+  blobs!: Table<BlobRow, string>;
 
   constructor() {
     super('spendapp');
@@ -50,6 +66,10 @@ class LocalDb extends Dexie {
     this.version(3).stores({
       kv: 'key',
     });
+    this.version(4).stores({
+      attachments: 'id, groupId, expenseId',
+      blobs: 'id',
+    });
   }
 }
 
@@ -58,4 +78,7 @@ export const localDb = new LocalDb();
 /** Called on logout: local data must not survive on a shared device. */
 export async function wipeLocalDb(): Promise<void> {
   await localDb.delete();
+  // The SW's receipt image cache too — Clear-Site-Data covers it server-side,
+  // but wipe explicitly so nothing depends on header support.
+  if ('caches' in window) await caches.delete('receipts').catch(() => {});
 }

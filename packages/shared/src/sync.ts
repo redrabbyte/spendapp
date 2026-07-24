@@ -34,6 +34,19 @@ export const mutationSchema = z.discriminatedUnion('type', [
     groupId: uuid,
     data: z.object({ paymentId: uuid }),
   }),
+  // Attachment metadata; the image bytes travel separately via PUT /api/attachments/:id.
+  z.object({
+    ...envelope,
+    type: z.literal('attachment.upsert'),
+    groupId: uuid,
+    data: z.object({ id: uuid, expenseId: uuid, groupId: uuid }),
+  }),
+  z.object({
+    ...envelope,
+    type: z.literal('attachment.delete'),
+    groupId: uuid,
+    data: z.object({ attachmentId: uuid }),
+  }),
 ]);
 export type Mutation = z.infer<typeof mutationSchema>;
 
@@ -99,6 +112,16 @@ export interface PaymentDto {
   deletedAt: string | null;
 }
 
+export interface AttachmentDto {
+  id: string;
+  expenseId: string;
+  groupId: string;
+  createdBy: string;
+  createdAt: string;
+  version: number;
+  deletedAt: string | null;
+}
+
 export interface ActivityDto {
   id: string;
   groupId: string;
@@ -116,6 +139,7 @@ export interface GroupChanges {
   members: MemberDto[];
   expenses: ExpenseDto[];
   payments: PaymentDto[];
+  attachments: AttachmentDto[];
   activity: ActivityDto[];
   nextCursor: number;
 }
