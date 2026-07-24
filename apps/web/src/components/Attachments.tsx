@@ -66,8 +66,22 @@ export function AttachmentRow({ expense, meId }: { expense: ExpenseDto; meId: st
           onClick={() => setViewing(a)}
         />
       ))}
-      <label className="flex h-16 w-16 cursor-pointer items-center justify-center rounded border border-dashed border-slate-300 text-2xl text-slate-400 hover:border-teal-600 hover:text-teal-600">
-        +
+      {/* Camera: capture hints the OS to open the camera directly. */}
+      <label className="flex h-16 w-16 cursor-pointer flex-col items-center justify-center rounded border border-dashed border-slate-300 text-[11px] text-slate-400 hover:border-teal-600 hover:text-teal-600">
+        <span className="text-xl leading-none">📷</span>
+        camera
+        <input
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={(e) => void onFiles(e.target.files)}
+        />
+      </label>
+      {/* Files: no capture → gallery / file picker, multi-select. */}
+      <label className="flex h-16 w-16 cursor-pointer flex-col items-center justify-center rounded border border-dashed border-slate-300 text-[11px] text-slate-400 hover:border-teal-600 hover:text-teal-600">
+        <span className="text-xl leading-none">＋</span>
+        upload
         <input
           ref={fileInput}
           type="file"
