@@ -1,5 +1,6 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import {
+  allocateByWeights,
   CATEGORIES,
   COMMON_CURRENCIES,
   computeOwed,
@@ -16,6 +17,14 @@ import { upsertExpenseLocal } from '../sync';
 
 /** decimal string for form inputs, without the currency suffix */
 const toInput = (minor: number, ccy: string): string => formatMinor(minor, ccy).split(' ')[0]!;
+
+const trimNum = (n: number): string => String(Math.round(n * 100) / 100);
+
+function sameRecord(a: Record<string, string>, b: Record<string, string>): boolean {
+  const ak = Object.keys(a);
+  if (ak.length !== Object.keys(b).length) return false;
+  return ak.every((k) => a[k] === b[k]);
+}
 
 type Mode = 'equal' | 'exact' | 'percent' | 'shares';
 const MODES: { key: Mode; label: string }[] = [
@@ -108,6 +117,31 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
         };
     }
   }
+
+  // Cross-fill: once the active mode resolves to a valid split, prefill the
+  // equivalent representations for the other modes so switching tabs shows
+  // matching numbers. exact<->percent are mutual; shares seeds both exact and
+  // percent (and equal does too) — but shares is never auto-derived, since
+  // there is no clean inverse from arbitrary amounts back to whole shares.
+  useEffect(() => {
+    let owed: { userId: string; owedMinor: number }[];
+    try {
+      owed = computeOwed(parseToMinor(amount, currency), buildMeta());
+    } catch {
+      return; // mid-typing or not-yet-valid (e.g. percentages not summing to 100)
+    }
+    const nextExact = Object.fromEntries(owed.map((o) => [o.userId, toInput(o.owedMinor, currency)]));
+    let bp: number[];
+    try {
+      bp = allocateByWeights(10_000, owed.map((o) => ({ userId: o.userId, weight: o.owedMinor })));
+    } catch {
+      return; // total is zero — nothing to apportion
+    }
+    const nextPercent = Object.fromEntries(owed.map((o, i) => [o.userId, trimNum(bp[i]! / 100)]));
+    if (mode !== 'exact') setExact((prev) => (sameRecord(prev, nextExact) ? prev : nextExact));
+    if (mode !== 'percent') setPercent((prev) => (sameRecord(prev, nextPercent) ? prev : nextPercent));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, amount, currency, equalSet, exact, percent, shares, members]);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
