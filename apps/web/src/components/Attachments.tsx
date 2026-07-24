@@ -72,7 +72,6 @@ export function AttachmentRow({ expense, meId }: { expense: ExpenseDto; meId: st
           ref={fileInput}
           type="file"
           accept="image/*"
-          capture="environment"
           multiple
           className="hidden"
           onChange={(e) => void onFiles(e.target.files)}

@@ -18,6 +18,7 @@ import {
 import type { FxCacheRow } from '../db';
 import { getRates, suggestRate } from '../fx';
 import { upsertExpenseLocal } from '../sync';
+import { uuid } from '../uuid';
 
 /** decimal string for form inputs, without the currency suffix */
 const toInput = (minor: number, ccy: string): string => formatMinor(minor, ccy).split(' ')[0]!;
@@ -335,7 +336,7 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
       }
 
       const input: UpsertExpense = {
-        id: existing?.id ?? crypto.randomUUID(),
+        id: existing?.id ?? uuid(),
         groupId: group.id,
         description,
         category,

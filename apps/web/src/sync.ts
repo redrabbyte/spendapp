@@ -12,6 +12,7 @@ import {
 } from '@spendapp/shared';
 import { api, ApiError } from './api';
 import { localDb, type OutboxItem } from './db';
+import { uuid } from './uuid';
 
 const BATCH = 200;
 
@@ -171,7 +172,7 @@ export async function upsertExpenseLocal(input: UpsertExpense, meId: string): Pr
     deletedAt: null,
   };
   const mutation: Mutation = {
-    id: crypto.randomUUID(),
+    id: uuid(),
     v: MUTATION_SCHEMA_VERSION,
     type: 'expense.upsert',
     groupId: input.groupId,
@@ -188,7 +189,7 @@ export async function upsertExpenseLocal(input: UpsertExpense, meId: string): Pr
 export async function deleteExpenseLocal(expense: ExpenseDto): Promise<void> {
   const now = new Date().toISOString();
   const mutation: Mutation = {
-    id: crypto.randomUUID(),
+    id: uuid(),
     v: MUTATION_SCHEMA_VERSION,
     type: 'expense.delete',
     groupId: expense.groupId,
@@ -215,7 +216,7 @@ export async function restoreExpenseLocal(snapshot: UpsertExpense, meId: string)
     deletedAt: null,
   };
   const mutation: Mutation = {
-    id: crypto.randomUUID(),
+    id: uuid(),
     v: MUTATION_SCHEMA_VERSION,
     type: 'expense.restore',
     groupId: snapshot.groupId,
@@ -240,7 +241,7 @@ export async function upsertPaymentLocal(input: UpsertPayment, meId: string): Pr
     deletedAt: null,
   };
   const mutation: Mutation = {
-    id: crypto.randomUUID(),
+    id: uuid(),
     v: MUTATION_SCHEMA_VERSION,
     type: 'payment.upsert',
     groupId: input.groupId,
@@ -272,7 +273,7 @@ async function compressImage(file: Blob): Promise<Blob> {
 
 export async function addPhotoLocal(expense: ExpenseDto, file: Blob, meId: string): Promise<void> {
   const blob = await compressImage(file);
-  const id = crypto.randomUUID();
+  const id = uuid();
   const now = new Date().toISOString();
   const dto: AttachmentDto = {
     id,
@@ -284,7 +285,7 @@ export async function addPhotoLocal(expense: ExpenseDto, file: Blob, meId: strin
     deletedAt: null,
   };
   const mutation: Mutation = {
-    id: crypto.randomUUID(),
+    id: uuid(),
     v: MUTATION_SCHEMA_VERSION,
     type: 'attachment.upsert',
     groupId: expense.groupId,
@@ -302,7 +303,7 @@ export async function addPhotoLocal(expense: ExpenseDto, file: Blob, meId: strin
 export async function deleteAttachmentLocal(attachment: AttachmentDto): Promise<void> {
   const now = new Date().toISOString();
   const mutation: Mutation = {
-    id: crypto.randomUUID(),
+    id: uuid(),
     v: MUTATION_SCHEMA_VERSION,
     type: 'attachment.delete',
     groupId: attachment.groupId,
@@ -346,7 +347,7 @@ async function uploadPendingBlobs(): Promise<void> {
 /** A comment is an activity row of type 'comment'; written optimistically. */
 export async function addCommentLocal(expense: ExpenseDto, text: string, meId: string): Promise<void> {
   const now = new Date().toISOString();
-  const id = crypto.randomUUID();
+  const id = uuid();
   const act: ActivityDto = {
     id,
     groupId: expense.groupId,
@@ -359,7 +360,7 @@ export async function addCommentLocal(expense: ExpenseDto, text: string, meId: s
     createdAt: now,
   };
   const mutation: Mutation = {
-    id: crypto.randomUUID(),
+    id: uuid(),
     v: MUTATION_SCHEMA_VERSION,
     type: 'comment.create',
     groupId: expense.groupId,
@@ -376,7 +377,7 @@ export async function addCommentLocal(expense: ExpenseDto, text: string, meId: s
 export async function deletePaymentLocal(payment: PaymentDto): Promise<void> {
   const now = new Date().toISOString();
   const mutation: Mutation = {
-    id: crypto.randomUUID(),
+    id: uuid(),
     v: MUTATION_SCHEMA_VERSION,
     type: 'payment.delete',
     groupId: payment.groupId,
