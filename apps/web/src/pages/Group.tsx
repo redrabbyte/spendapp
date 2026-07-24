@@ -1,16 +1,14 @@
 import { useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { formatMinor } from '@spendapp/shared';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import { localDb } from '../db';
-import { deleteExpenseLocal } from '../sync';
 import { ExpenseEditor } from '../components/ExpenseEditor';
 import { BalancesTab } from '../components/BalancesTab';
 import { ChartsTab } from '../components/ChartsTab';
-import { ActivityTab, VersionLog } from '../components/ActivityTab';
-import { AttachmentRow } from '../components/Attachments';
+import { ActivityTab } from '../components/ActivityTab';
 
 type Tab = 'expenses' | 'balances' | 'charts' | 'activity';
 
@@ -20,7 +18,6 @@ export function GroupPage() {
   const [tab, setTab] = useState<Tab>('expenses');
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [inviteError, setInviteError] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<{ id: string; view: 'edit' | 'history' } | null>(null);
 
   // undefined = still querying, null = definitely not in the local mirror
   const group = useLiveQuery(
@@ -111,62 +108,23 @@ export function GroupPage() {
           <ul className="flex flex-col gap-2">
             {sorted.length === 0 && <p className="text-slate-500">No expenses yet.</p>}
             {sorted.map((e) => (
-              <li key={e.id} className="rounded border border-slate-200 px-4 py-3">
-                <div className="flex justify-between gap-2">
-                  <span className="font-medium">{e.description}</span>
-                  <span className="whitespace-nowrap">{formatMinor(e.amountMinor, e.currency)}</span>
-                </div>
-                <div className="flex flex-wrap items-center justify-between gap-1 text-sm text-slate-500">
-                  <span>
+              <li key={e.id}>
+                <Link
+                  to={`/g/${group.id}/e/${e.id}`}
+                  className="block rounded border border-slate-200 px-4 py-3 hover:border-teal-600"
+                >
+                  <div className="flex justify-between gap-2">
+                    <span className="font-medium">{e.description}</span>
+                    <span className="whitespace-nowrap">{formatMinor(e.amountMinor, e.currency)}</span>
+                  </div>
+                  <div className="text-sm text-slate-500">
                     {e.expenseDate} · {e.category} · paid by{' '}
                     {e.splits
                       .filter((s) => s.paidMinor > 0)
                       .map((s) => nameOf(s.userId))
-                      .join(' + ')}{' '}
-                    · split {e.splits.filter((s) => s.owedMinor > 0).length} ways ({e.splitMeta.mode})
-                  </span>
-                  <span className="flex gap-2">
-                    <button
-                      onClick={() =>
-                        setExpanded(expanded?.id === e.id && expanded.view === 'edit' ? null : { id: e.id, view: 'edit' })
-                      }
-                      className="text-teal-700 underline"
-                    >
-                      edit
-                    </button>
-                    <button
-                      onClick={() =>
-                        setExpanded(
-                          expanded?.id === e.id && expanded.view === 'history' ? null : { id: e.id, view: 'history' },
-                        )
-                      }
-                      className="text-slate-500 underline"
-                    >
-                      history
-                    </button>
-                    <button onClick={() => void deleteExpenseLocal(e)} className="text-red-500 underline">
-                      delete
-                    </button>
-                  </span>
-                </div>
-                {e.note && <div className="mt-1 text-sm text-slate-600">{e.note}</div>}
-                <AttachmentRow expense={e} meId={user.id} />
-                {expanded?.id === e.id && expanded.view === 'edit' && (
-                  <div className="mt-2">
-                    <ExpenseEditor
-                      group={group}
-                      members={activeMembers}
-                      meId={user.id}
-                      existing={e}
-                      onDone={() => setExpanded(null)}
-                    />
+                      .join(' + ')}
                   </div>
-                )}
-                {expanded?.id === e.id && expanded.view === 'history' && (
-                  <div className="mt-2 rounded bg-slate-50 p-2">
-                    <VersionLog activity={activity} expense={e} meId={user.id} nameOf={nameOf} />
-                  </div>
-                )}
+                </Link>
               </li>
             ))}
           </ul>

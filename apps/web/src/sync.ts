@@ -1,6 +1,7 @@
 import {
   MUTATION_SCHEMA_VERSION,
   SYNC_PROTOCOL,
+  type ActivityDto,
   type AttachmentDto,
   type ExpenseDto,
   type Mutation,
@@ -63,7 +64,8 @@ export async function syncNow(): Promise<void> {
       else if (m.type === 'payment.upsert') pendingPaymentIds.add(m.data.id);
       else if (m.type === 'payment.delete') pendingPaymentIds.add(m.data.paymentId);
       else if (m.type === 'attachment.upsert') pendingAttachmentIds.add(m.data.id);
-      else pendingAttachmentIds.add(m.data.attachmentId);
+      else if (m.type === 'attachment.delete') pendingAttachmentIds.add(m.data.attachmentId);
+      // comment.create writes an activity row, which is applied unconditionally
     }
 
     await localDb.transaction(
@@ -128,19 +130,31 @@ export async function syncNow(): Promise<void> {
 
 let loopStarted = false;
 
-/** Sync triggers per design §6: start, online, foreground, interval. */
+let foreground: number | undefined;
+
+// Poll fast while the tab is visible so other people's changes (deletes,
+// edits, photos) land within seconds; stop when hidden — regaining focus
+// triggers an immediate sync anyway.
+function applyPollCadence(): void {
+  window.clearInterval(foreground);
+  if (document.hidden) return;
+  foreground = window.setInterval(() => scheduleSync(0), 6_000);
+}
+
+/** Sync triggers per design §6: start, online, foreground, push, poll. */
 export function startSyncLoop(): void {
   if (loopStarted) return;
   loopStarted = true;
   window.addEventListener('online', () => scheduleSync(0));
   document.addEventListener('visibilitychange', () => {
+    applyPollCadence();
     if (!document.hidden) scheduleSync(0);
   });
   // The SW nudges us when a push arrives or a notification is clicked.
   navigator.serviceWorker?.addEventListener('message', (e) => {
     if ((e.data as { type?: string } | undefined)?.type === 'sync') scheduleSync(0);
   });
-  window.setInterval(() => scheduleSync(0), 180_000);
+  applyPollCadence();
   scheduleSync(0);
 }
 
@@ -327,6 +341,36 @@ async function uploadPendingBlobs(): Promise<void> {
       /* offline or flaky — the blob stays queued for the next sync */
     }
   }
+}
+
+/** A comment is an activity row of type 'comment'; written optimistically. */
+export async function addCommentLocal(expense: ExpenseDto, text: string, meId: string): Promise<void> {
+  const now = new Date().toISOString();
+  const id = crypto.randomUUID();
+  const act: ActivityDto = {
+    id,
+    groupId: expense.groupId,
+    version: 0, // server assigns the authoritative version on sync
+    actorId: meId,
+    type: 'comment',
+    entityType: 'expense',
+    entityId: expense.id,
+    payload: { text },
+    createdAt: now,
+  };
+  const mutation: Mutation = {
+    id: crypto.randomUUID(),
+    v: MUTATION_SCHEMA_VERSION,
+    type: 'comment.create',
+    groupId: expense.groupId,
+    data: { id, expenseId: expense.id, groupId: expense.groupId, text },
+    clientTs: now,
+  };
+  await localDb.transaction('rw', [localDb.activity, localDb.outbox], async () => {
+    await localDb.activity.put(act);
+    await localDb.outbox.add({ mutation } as OutboxItem);
+  });
+  scheduleSync();
 }
 
 export async function deletePaymentLocal(payment: PaymentDto): Promise<void> {
