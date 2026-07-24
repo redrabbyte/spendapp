@@ -19,6 +19,7 @@ import {
 import { getRates, suggestRate } from '../fx';
 import type { FxCacheRow } from '../db';
 import { deletePaymentLocal, upsertExpenseLocal, upsertPaymentLocal } from '../sync';
+import { uuid } from '../uuid';
 
 const toInput = (minor: number, ccy: string): string => formatMinor(minor, ccy).split(' ')[0]!;
 const trimRate = (r: number): string => r.toFixed(8).replace(/0+$/, '').replace(/\.$/, '');
@@ -237,7 +238,7 @@ function PaymentForm({
         if (!RATE_REGEX.test(rate) || Number(rate) <= 0) throw new Error('amounts give an invalid rate');
       }
       const input: UpsertPayment = {
-        id: crypto.randomUUID(),
+        id: uuid(),
         groupId: group.id,
         fromUser,
         toUser,
@@ -356,6 +357,7 @@ function ConvertSection({
   const [from, setFrom] = useState('');
   const [to, setTo] = useState(group.defaultCurrency);
   const [rate, setRate] = useState('');
+  const [useGlobalRate, setUseGlobalRate] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
 
@@ -375,17 +377,40 @@ function ConvertSection({
     setDone(null);
     try {
       if (!from || from === to) throw new Error('pick two different currencies');
-      if (!RATE_REGEX.test(rate)) throw new Error('invalid rate');
+      if (useGlobalRate && !RATE_REGEX.test(rate)) throw new Error('invalid rate');
+      const def = group.defaultCurrency;
       // The frozen rate after conversion: null if now the default currency,
       // otherwise the fx suggestion for the new currency → default.
-      const newRate = to === group.defaultCurrency ? null : suggestRate(fx, to, group.defaultCurrency);
+      const newRate = to === def ? null : suggestRate(fx, to, def);
+      const fallback = suggestRate(fx, from, to);
+      let converted = 0;
+      let skipped = 0;
+
       for (const exp of affectedExpenses) {
-        await upsertExpenseLocal({ ...convertExpense(toUpsertExpense(exp), to, rate), rateToDefault: newRate }, meId);
+        // Per-entry mode uses each entry's saved rate (only meaningful when
+        // converting to the default currency); otherwise the fx suggestion.
+        const r = useGlobalRate ? rate : to === def ? (exp.rateToDefault ?? fallback) : fallback;
+        if (!r || !RATE_REGEX.test(r)) {
+          skipped += 1;
+          continue;
+        }
+        await upsertExpenseLocal({ ...convertExpense(toUpsertExpense(exp), to, r), rateToDefault: newRate }, meId);
+        converted += 1;
       }
       for (const p of affectedPayments) {
-        await upsertPaymentLocal(convertPayment(toUpsertPayment(p), from, to, rate), meId);
+        const r = useGlobalRate ? rate : fallback; // payments carry no entry→default rate
+        if (!r || !RATE_REGEX.test(r)) {
+          skipped += 1;
+          continue;
+        }
+        await upsertPaymentLocal(convertPayment(toUpsertPayment(p), from, to, r), meId);
+        converted += 1;
       }
-      setDone(`Converted ${count} entr${count === 1 ? 'y' : 'ies'} from ${from} to ${to} — each is revertable in its history.`);
+      setDone(
+        `Converted ${converted} entr${converted === 1 ? 'y' : 'ies'} ${from}→${to}` +
+          (skipped ? `, skipped ${skipped} (no rate available)` : '') +
+          ' — revertable in history.',
+      );
       setFrom('');
     } catch (err) {
       setError((err as Error).message);
@@ -410,16 +435,22 @@ function ConvertSection({
           ))}
         </select>
         <label className="flex items-center gap-1">
-          at rate
-          <input
-            className={`${input} w-28 text-right`}
-            inputMode="decimal"
-            value={rate}
-            onChange={(e) => setRate(e.target.value)}
-            placeholder="1.00000000"
-            required
-          />
+          <input type="checkbox" checked={useGlobalRate} onChange={(e) => setUseGlobalRate(e.target.checked)} />
+          one rate for all
         </label>
+        {useGlobalRate && (
+          <label className="flex items-center gap-1">
+            at rate
+            <input
+              className={`${input} w-28 text-right`}
+              inputMode="decimal"
+              value={rate}
+              onChange={(e) => setRate(e.target.value)}
+              placeholder="1.00000000"
+              required
+            />
+          </label>
+        )}
         <button
           disabled={!from || count === 0}
           className="rounded bg-teal-700 px-3 py-1.5 font-medium text-white disabled:opacity-50"
@@ -427,6 +458,11 @@ function ConvertSection({
           Convert {from ? `${count} entr${count === 1 ? 'y' : 'ies'}` : ''}
         </button>
       </form>
+      {!useGlobalRate && (
+        <p className="mt-1 text-xs text-slate-400">
+          Uses each entry's saved rate when converting to {group.defaultCurrency}; otherwise today's cached rate.
+        </p>
+      )}
       {error && <p className="mt-1 text-red-600">{error}</p>}
       {done && <p className="mt-1 text-emerald-700">{done}</p>}
     </section>

@@ -215,35 +215,39 @@ export function ChartsTab({ expenses, nameOf, defaultCurrency }: Props) {
           {(() => {
             const ids = [...b.perPerson.map((p) => p.userId)].sort();
             const personColor = (userId: string) => PEOPLE[ids.indexOf(userId) % PEOPLE.length]!;
-            const pie = (title: string, key: 'paid' | 'share', hint: string) => (
-              <div>
-                <h3 className="mb-1 text-center text-sm font-medium text-slate-500">{title}</h3>
-                <p className="mb-1 text-center text-xs text-slate-400">{hint}</p>
-                <PieChart width={170} height={170}>
-                  <Pie data={b.perPerson} dataKey={key} nameKey="name" outerRadius={72} stroke="#ffffff" strokeWidth={2}>
-                    {b.perPerson.map((p) => (
-                      <Cell key={p.userId} fill={personColor(p.userId)} />
+            const pie = (title: string, key: 'paid' | 'share', hint: string) => {
+              const rows = [...b.perPerson].sort((x, y) => y[key] - x[key]);
+              return (
+                <div>
+                  <h3 className="mb-1 text-center text-sm font-medium text-slate-500">{title}</h3>
+                  <p className="mb-1 text-center text-xs text-slate-400">{hint}</p>
+                  <PieChart width={170} height={170}>
+                    <Pie data={b.perPerson} dataKey={key} nameKey="name" outerRadius={72} stroke="#ffffff" strokeWidth={2}>
+                      {b.perPerson.map((p) => (
+                        <Cell key={p.userId} fill={personColor(p.userId)} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(v) => money(b.currency)(Number(v))} />
+                  </PieChart>
+                  <ul className="mt-1 flex flex-col gap-1 text-sm">
+                    {rows.map((p) => (
+                      <li key={p.userId} className="flex items-center gap-2">
+                        <span className="inline-block h-3 w-3 rounded-sm" style={{ background: personColor(p.userId) }} />
+                        <span className="text-slate-700">{p.name}</span>
+                        <span className="ml-auto pl-4 tabular-nums text-slate-500">{money(b.currency)(p[key])}</span>
+                      </li>
                     ))}
-                  </Pie>
-                  <Tooltip formatter={(v) => money(b.currency)(Number(v))} />
-                </PieChart>
-              </div>
-            );
+                  </ul>
+                </div>
+              );
+            };
             return (
               <div>
                 <h3 className="mb-1 text-sm font-medium text-slate-500">Per person ({b.currency})</h3>
-                <div className="flex flex-wrap justify-center gap-6">
+                <div className="flex flex-wrap justify-center gap-8">
                   {pie('Spending', 'paid', 'paid out of pocket')}
                   {pie('Share', 'share', 'what they consumed')}
                 </div>
-                <ul className="mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs">
-                  {b.perPerson.map((p) => (
-                    <li key={p.userId} className="flex items-center gap-1">
-                      <span className="inline-block h-3 w-3 rounded-sm" style={{ background: personColor(p.userId) }} />
-                      {p.name}
-                    </li>
-                  ))}
-                </ul>
               </div>
             );
           })()}

@@ -36,7 +36,7 @@ export function App() {
             <Link to="/" className="text-lg font-semibold text-teal-700">
               SpendApp
             </Link>
-            <span className="text-[10px] text-slate-400">build {__BUILD_DATE__}</span>
+            <span className="text-[10px] text-slate-400">build {__BUILD_DATE__} UTC</span>
           </span>
           {!online && (
             <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">

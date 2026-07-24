@@ -5,6 +5,7 @@ import { COMMON_CURRENCIES } from '@spendapp/shared';
 import { api } from '../api';
 import { localDb } from '../db';
 import { syncNow } from '../sync';
+import { uuid } from '../uuid';
 import { PushToggle } from '../components/PushToggle';
 
 export function GroupsPage() {
@@ -20,7 +21,7 @@ export function GroupsPage() {
     try {
       await api('/api/groups', {
         method: 'POST',
-        body: { id: crypto.randomUUID(), name, defaultCurrency: currency },
+        body: { id: uuid(), name, defaultCurrency: currency },
       });
       setName('');
       await syncNow();
