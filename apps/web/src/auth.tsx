@@ -1,5 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { api, ApiError } from './api';
+import { wipeLocalDb } from './db';
+import { startSyncLoop } from './sync';
 import type { Me } from './types';
 
 interface AuthState {
@@ -25,9 +27,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    if (user) startSyncLoop();
+  }, [user]);
+
   const logout = useCallback(async () => {
     await api('/api/auth/logout', { method: 'POST' });
-    setUser(null);
+    // Shared-device hygiene: nothing survives locally after logout.
+    await wipeLocalDb();
+    location.assign('/login');
   }, []);
 
   return <AuthContext.Provider value={{ user, loading, setUser, logout }}>{children}</AuthContext.Provider>;

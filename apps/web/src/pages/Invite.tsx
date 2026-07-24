@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../auth';
+import { syncNow } from '../sync';
 
 export function InvitePage() {
   const { token } = useParams<{ token: string }>();
@@ -19,6 +20,7 @@ export function InvitePage() {
 
   async function join() {
     const res = await api<{ groupId: string }>(`/api/invites/${token}/join`, { method: 'POST' });
+    await syncNow();
     navigate(`/g/${res.groupId}`, { replace: true });
   }
 
