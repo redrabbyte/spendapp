@@ -11,7 +11,7 @@ import { VersionLog } from '../components/ActivityTab';
 import { ExpenseEditor } from '../components/ExpenseEditor';
 import { SyncPendingBadge } from '../components/SyncPendingBadge';
 import { usePendingExpenseIds } from '../pending';
-import { fmtDateTime } from './Group';
+import { formatExpenseDate, useSettings } from '../settings';
 
 export function ExpenseDetailPage() {
   const { groupId, expenseId } = useParams<{ groupId: string; expenseId: string }>();
@@ -43,6 +43,7 @@ export function ExpenseDetailPage() {
 
   const activeMembers = useMemo(() => (members ?? []).filter((m) => m.leftAt === null), [members]);
   const pending = usePendingExpenseIds();
+  const { settings: { displayTz } } = useSettings();
   const [fx, setFx] = useState<FxCacheRow | null>(null);
   const [convError, setConvError] = useState<string | null>(null);
   useEffect(() => {
@@ -85,12 +86,12 @@ export function ExpenseDetailPage() {
 
   if (!user) return null;
   if (group === undefined || expense === undefined || !members || !activity) {
-    return <p className="text-slate-500">Loading…</p>;
+    return <p className="text-slate-500 dark:text-slate-400">Loading…</p>;
   }
   if (!group || !expense || expense.deletedAt) {
     return (
       <div className="flex flex-col gap-3">
-        <p className="text-slate-500">This expense is no longer here.</p>
+        <p className="text-slate-500 dark:text-slate-400">This expense is no longer here.</p>
         <Link to={groupId ? `/g/${groupId}` : '/'} className="text-teal-700 underline">
           ← back to group
         </Link>
@@ -110,8 +111,8 @@ export function ExpenseDetailPage() {
             {expense.description}
             {pending.has(expense.id) && <SyncPendingBadge />}
           </h1>
-          <p className="text-sm text-slate-500">
-            {fmtDateTime(expense.expenseDate)} · {expense.category}
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            {formatExpenseDate(expense.expenseDate, displayTz)} · {expense.category}
           </p>
         </div>
         <span className="flex flex-col items-end whitespace-nowrap">
@@ -126,10 +127,10 @@ export function ExpenseDetailPage() {
       </header>
 
       {convError && <p className="text-sm text-red-600">{convError}</p>}
-      {expense.note && <p className="rounded bg-slate-50 p-2 text-sm text-slate-700">{expense.note}</p>}
+      {expense.note && <p className="rounded bg-slate-50 dark:bg-slate-800/60 p-2 text-sm text-slate-700 dark:text-slate-200">{expense.note}</p>}
 
       <section>
-        <h2 className="mb-1 text-sm font-medium text-slate-500">Split</h2>
+        <h2 className="mb-1 text-sm font-medium text-slate-500 dark:text-slate-400">Split</h2>
         <table className="w-full text-sm">
           <thead>
             <tr className="text-slate-400">
@@ -142,10 +143,10 @@ export function ExpenseDetailPage() {
             {expense.splits.map((s) => (
               <tr key={s.userId}>
                 <td className="pr-3">{nameOf(s.userId)}</td>
-                <td className="text-right tabular-nums text-slate-500">
+                <td className="text-right tabular-nums text-slate-500 dark:text-slate-400">
                   {s.paidMinor > 0 ? formatMinor(s.paidMinor, expense.currency) : '—'}
                 </td>
-                <td className="text-right tabular-nums text-slate-700">
+                <td className="text-right tabular-nums text-slate-700 dark:text-slate-200">
                   {formatMinor(s.owedMinor, expense.currency)}
                 </td>
               </tr>
@@ -155,7 +156,7 @@ export function ExpenseDetailPage() {
       </section>
 
       <section>
-        <h2 className="mb-1 text-sm font-medium text-slate-500">Photos</h2>
+        <h2 className="mb-1 text-sm font-medium text-slate-500 dark:text-slate-400">Photos</h2>
         <AttachmentRow expense={expense} meId={user.id} />
       </section>
 
@@ -188,13 +189,13 @@ export function ExpenseDetailPage() {
       </section>
 
       <section>
-        <h2 className="mb-1 text-sm font-medium text-slate-500">Comments</h2>
+        <h2 className="mb-1 text-sm font-medium text-slate-500 dark:text-slate-400">Comments</h2>
         <CommentList comments={comments} nameOf={nameOf} />
         <CommentForm expenseId={expense.id} meId={user.id} />
       </section>
 
       <section>
-        <h2 className="mb-1 text-sm font-medium text-slate-500">History</h2>
+        <h2 className="mb-1 text-sm font-medium text-slate-500 dark:text-slate-400">History</h2>
         <VersionLog activity={activity} expense={expense} meId={user.id} nameOf={nameOf} />
       </section>
     </div>
@@ -217,7 +218,7 @@ function CommentList({
           <span className="text-slate-400">
             {new Date(c.createdAt).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
           </span>
-          <p className="text-slate-700">{(c.payload as { text?: string })?.text}</p>
+          <p className="text-slate-700 dark:text-slate-200">{(c.payload as { text?: string })?.text}</p>
         </li>
       ))}
     </ul>
@@ -246,7 +247,7 @@ function CommentForm({ expenseId, meId }: { expenseId: string; meId: string }) {
   return (
     <form onSubmit={(e) => void submit(e)} className="flex gap-2">
       <input
-        className="grow rounded border border-slate-300 px-3 py-1.5 text-sm"
+        className="grow rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-3 py-1.5 text-sm"
         placeholder="Add a comment…"
         value={text}
         onChange={(e) => setText(e.target.value)}

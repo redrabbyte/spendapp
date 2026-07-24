@@ -25,7 +25,7 @@ export function InvitePage() {
   }
 
   if (error) return <p className="mt-8 text-center text-red-600">{error}</p>;
-  if (!info || loading) return <p className="mt-8 text-center text-slate-500">Loading…</p>;
+  if (!info || loading) return <p className="mt-8 text-center text-slate-500 dark:text-slate-400">Loading…</p>;
 
   return (
     <div className="mx-auto mt-10 flex max-w-sm flex-col items-center gap-4 text-center">

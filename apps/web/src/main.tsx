@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { registerSW } from 'virtual:pwa-register';
 import { App } from './App';
 import { AuthProvider } from './auth';
+import { SettingsProvider } from './settings';
 import './styles.css';
 
 const updateSW = registerSW({
@@ -16,9 +17,11 @@ const updateSW = registerSW({
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
-      <AuthProvider>
-        <App />
-      </AuthProvider>
+      <SettingsProvider>
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+      </SettingsProvider>
     </BrowserRouter>
   </StrictMode>,
 );
