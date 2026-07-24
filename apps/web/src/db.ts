@@ -11,6 +11,13 @@ export interface CursorRow {
   version: number;
 }
 
+export interface FxCacheRow {
+  key: 'fx';
+  day: string | null;
+  base: string;
+  rates: Record<string, string>;
+}
+
 /**
  * The local source of truth. UI components read and write ONLY this
  * database; the sync engine replicates it against the server. Bump the
@@ -25,6 +32,7 @@ class LocalDb extends Dexie {
   activity!: Table<ActivityDto, string>;
   outbox!: Table<OutboxItem, number>;
   cursors!: Table<CursorRow, string>;
+  kv!: Table<FxCacheRow, string>;
 
   constructor() {
     super('spendapp');
@@ -38,6 +46,9 @@ class LocalDb extends Dexie {
     });
     this.version(2).stores({
       payments: 'id, groupId',
+    });
+    this.version(3).stores({
+      kv: 'key',
     });
   }
 }
