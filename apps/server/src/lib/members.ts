@@ -16,7 +16,13 @@ export async function addPlaceholderMember(
   const now = new Date();
   await db.transaction(async (tx) => {
     const version = await bumpGroupVersion(tx, groupId);
-    await tx.insert(schema.users).values({ id: userId, displayName, createdAt: now, isPlaceholder: true });
+    await tx.insert(schema.users).values({
+      id: userId,
+      displayName,
+      createdAt: now,
+      isPlaceholder: true,
+      placeholderGroupId: groupId,
+    });
     await tx.insert(schema.groupMembers).values({ groupId, userId, joinedAt: now, version });
     await logActivity(tx, {
       groupId,
@@ -76,7 +82,11 @@ function remapSplitMeta(meta: SplitMeta, from: string, to: string): SplitMeta {
 export async function claimPlaceholder(userId: string, groupId: string, placeholderId: string): Promise<void> {
   await db.transaction(async (tx) => {
     const ghostRows = await tx
-      .select({ id: schema.users.id, displayName: schema.users.displayName })
+      .select({
+        id: schema.users.id,
+        displayName: schema.users.displayName,
+        placeholderGroupId: schema.users.placeholderGroupId,
+      })
       .from(schema.groupMembers)
       .innerJoin(schema.users, eq(schema.users.id, schema.groupMembers.userId))
       .where(
@@ -90,6 +100,22 @@ export async function claimPlaceholder(userId: string, groupId: string, placehol
       .for('update');
     const ghost = ghostRows[0];
     if (!ghost) throw Object.assign(new Error('member is not claimable'), { statusCode: 409 });
+
+    // A placeholder belongs to exactly one group. Both checks below should be
+    // impossible — nothing creates a placeholder outside a group or adds one
+    // to a second — so if either trips, refuse rather than rewrite half of a
+    // group and leave the other half pointing at a member that no longer is.
+    // (placeholderGroupId is null only for rows predating this column.)
+    if (ghost.placeholderGroupId !== null && ghost.placeholderGroupId !== groupId) {
+      throw Object.assign(new Error('member belongs to a different group'), { statusCode: 409 });
+    }
+    const memberships = await tx
+      .select({ groupId: schema.groupMembers.groupId })
+      .from(schema.groupMembers)
+      .where(and(eq(schema.groupMembers.userId, placeholderId), isNull(schema.groupMembers.leftAt)));
+    if (memberships.length !== 1 || memberships[0]!.groupId !== groupId) {
+      throw Object.assign(new Error('member is in more than one group'), { statusCode: 409 });
+    }
 
     const version = await bumpGroupVersion(tx, groupId);
     const touched = new Set<string>();

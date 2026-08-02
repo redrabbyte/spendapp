@@ -32,6 +32,10 @@ export const users = mysqlTable('users', {
   // Keeping them in `users` means splits, payments and activity all address
   // one id namespace — nothing else in the schema has to know the difference.
   isPlaceholder: boolean('is_placeholder').notNull().default(false),
+  // The one group a placeholder belongs to. Placeholders are group-scoped by
+  // construction; recording it makes that checkable rather than assumed, so a
+  // claim can refuse anything that has drifted into a second group.
+  placeholderGroupId: id('placeholder_group_id'),
 });
 
 export const sessions = mysqlTable('sessions', {
