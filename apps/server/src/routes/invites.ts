@@ -31,12 +31,15 @@ export async function inviteRoutes(app: FastifyInstance): Promise<void> {
     async (req, reply) => {
       const invite = await findValidInvite((req.params as { token: string }).token);
       if (!invite) return reply.code(404).send({ error: 'invite not found or expired' });
-      // Placeholder members the joiner can take over instead of arriving as
-      // a brand-new person. Names only — this endpoint is unauthenticated.
+      // The claimable list names every placeholder in the group and carries
+      // their ids, so it is withheld until the caller has signed in. A link
+      // forwarded to a stranger reveals nothing but the group and inviter,
+      // which is what a landing page needs; claiming requires a session
+      // anyway, so gating it costs the real joiner nothing.
       return {
         groupName: invite.groupName,
         inviterName: invite.inviterName,
-        claimable: await claimableMembers(invite.groupId),
+        claimable: req.user ? await claimableMembers(invite.groupId) : [],
       };
     },
   );
