@@ -4,6 +4,9 @@ import { BrowserRouter } from 'react-router-dom';
 import { registerSW } from 'virtual:pwa-register';
 import { App } from './App';
 import { AuthProvider } from './auth';
+// Side-effect import: registers the beforeinstallprompt listener at load,
+// since the event fires once and is lost if nothing is listening.
+import './install';
 import { SettingsProvider } from './settings';
 import './styles.css';
 
