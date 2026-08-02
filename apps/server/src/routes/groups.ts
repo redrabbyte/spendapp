@@ -1,8 +1,12 @@
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import { createGroupSchema } from '@spendapp/shared';
 import { db, schema } from '../db/index.js';
 import { bumpGroupVersion, isMember, logActivity } from '../lib/groups.js';
+import { addPlaceholderMember } from '../lib/members.js';
+
+const addMemberSchema = z.object({ displayName: z.string().trim().min(1).max(80) });
 
 export async function groupRoutes(app: FastifyInstance): Promise<void> {
   app.post('/api/groups', { preHandler: app.requireUser }, async (req, reply) => {
@@ -80,6 +84,17 @@ export async function groupRoutes(app: FastifyInstance): Promise<void> {
           .map((m) => ({ userId: m.userId, displayName: m.displayName })),
       })),
     };
+  });
+
+  // Add someone who has no account yet. They become a full member id, so
+  // expenses can be split with them straight away, and a real user can take
+  // the identity over later through an invite link.
+  app.post('/api/groups/:groupId/members', { preHandler: app.requireUser }, async (req, reply) => {
+    const { groupId } = req.params as { groupId: string };
+    if (!(await isMember(req.user!.id, groupId))) return reply.code(404).send({ error: 'not found' });
+    const parsed = addMemberSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'invalid' });
+    return addPlaceholderMember(req.user!.id, groupId, parsed.data.displayName);
   });
 
   app.get('/api/groups/:groupId/expenses', { preHandler: app.requireUser }, async (req, reply) => {

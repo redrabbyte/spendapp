@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `is_placeholder` boolean DEFAULT false NOT NULL;

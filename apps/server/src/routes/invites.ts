@@ -4,6 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import { config } from '../config.js';
 import { db, schema } from '../db/index.js';
 import { bumpGroupVersion, isMember, logActivity } from '../lib/groups.js';
+import { claimPlaceholder, claimableMembers } from '../lib/members.js';
 import { notifyGroup } from '../lib/notify.js';
 
 export async function inviteRoutes(app: FastifyInstance): Promise<void> {
@@ -30,7 +31,13 @@ export async function inviteRoutes(app: FastifyInstance): Promise<void> {
     async (req, reply) => {
       const invite = await findValidInvite((req.params as { token: string }).token);
       if (!invite) return reply.code(404).send({ error: 'invite not found or expired' });
-      return { groupName: invite.groupName, inviterName: invite.inviterName };
+      // Placeholder members the joiner can take over instead of arriving as
+      // a brand-new person. Names only — this endpoint is unauthenticated.
+      return {
+        groupName: invite.groupName,
+        inviterName: invite.inviterName,
+        claimable: await claimableMembers(invite.groupId),
+      };
     },
   );
 
@@ -39,6 +46,15 @@ export async function inviteRoutes(app: FastifyInstance): Promise<void> {
     if (!invite) return reply.code(404).send({ error: 'invite not found or expired' });
     const userId = req.user!.id;
     const now = new Date();
+
+    // Taking over an existing member rewrites the group instead of adding a
+    // new one, so it replaces the plain join entirely.
+    const claimMemberId = (req.body as { claimMemberId?: unknown } | null)?.claimMemberId;
+    if (typeof claimMemberId === 'string') {
+      await claimPlaceholder(userId, invite.groupId, claimMemberId);
+      notifyGroup(invite.groupId, userId, 'joined the group');
+      return { groupId: invite.groupId };
+    }
 
     await db.transaction(async (tx) => {
       const version = await bumpGroupVersion(tx, invite.groupId);

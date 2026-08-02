@@ -12,9 +12,10 @@ import { BalancesTab } from '../components/BalancesTab';
 import { ChartsTab } from '../components/ChartsTab';
 import { ActivityTab } from '../components/ActivityTab';
 import { InviteLink } from '../components/InviteLink';
+import { MembersTab } from '../components/MembersTab';
 import { SyncPendingBadge } from '../components/SyncPendingBadge';
 
-type Tab = 'expenses' | 'balances' | 'charts' | 'activity';
+type Tab = 'expenses' | 'balances' | 'charts' | 'activity' | 'members';
 
 export function GroupPage() {
   const { groupId } = useParams<{ groupId: string }>();
@@ -94,12 +95,13 @@ export function GroupPage() {
       </div>
       {inviteUrl && <InviteLink url={inviteUrl} />}
       {inviteError && <p className="text-sm text-red-600">{inviteError}</p>}
-      <nav className="flex gap-2 border-b border-slate-200 dark:border-slate-700">
-        {(['expenses', 'balances', 'charts', 'activity'] as const).map((t) => (
+      {/* Scrolls rather than wrapping: five tabs do not fit a phone width. */}
+      <nav className="flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-700">
+        {(['expenses', 'balances', 'charts', 'activity', 'members'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`px-3 py-2 text-sm font-medium capitalize ${
+            className={`shrink-0 whitespace-nowrap px-2.5 py-2 text-sm font-medium capitalize ${
               tab === t ? 'border-b-2 border-teal-700 text-teal-700' : 'text-slate-500 dark:text-slate-400'
             }`}
           >
@@ -155,6 +157,7 @@ export function GroupPage() {
         <ChartsTab expenses={liveExpenses} nameOf={nameOf} defaultCurrency={group.defaultCurrency} />
       )}
 
+      {tab === 'members' && <MembersTab members={allMembers} groupId={group.id} meId={user.id} />}
       {tab === 'activity' && (
         <ActivityTab activity={activity} expenses={expenses} meId={user.id} nameOf={nameOf} />
       )}

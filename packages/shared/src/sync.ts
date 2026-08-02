@@ -80,6 +80,8 @@ export interface MemberDto {
   userId: string;
   displayName: string;
   leftAt: string | null;
+  /** A member with no account yet, claimable by whoever follows an invite. */
+  isPlaceholder: boolean;
   version: number;
 }
 
