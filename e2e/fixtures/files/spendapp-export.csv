@@ -1,0 +1,4 @@
+type,date,description,category,currency,amount,member,counterparty,paid,owed,note,recorded_by
+expense,2026-07-30T18:20:00.000Z,Dinner,food,EUR,40.00,Lukas,,40.00,20.00,Birthday,Lukas
+expense,2026-07-30T18:20:00.000Z,Dinner,food,EUR,40.00,Annie,,0.00,20.00,Birthday,Lukas
+payment,2026-07-31,payment,,EUR,20.00,Annie,Lukas,20.00,,,Annie
