@@ -1,0 +1,31 @@
+[Unit]
+Description=SpendApp API
+After=network-online.target mysql.service mariadb.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=spendapp
+Group=spendapp
+WorkingDirectory=__APP_DIR__/current/apps/server
+ExecStart=__APP_DIR__/current/apps/server/node_modules/.bin/tsx src/index.ts
+Environment=NODE_ENV=production
+Restart=always
+RestartSec=2
+
+# The app listens on 127.0.0.1 and only ever writes to the shared state dir.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+ReadWritePaths=__APP_DIR__/shared
+
+[Install]
+WantedBy=multi-user.target
