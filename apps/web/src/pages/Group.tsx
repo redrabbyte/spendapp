@@ -12,6 +12,7 @@ import { BalancesTab } from '../components/BalancesTab';
 import { ChartsTab } from '../components/ChartsTab';
 import { ActivityTab } from '../components/ActivityTab';
 import { InviteLink } from '../components/InviteLink';
+import { ImportDialog } from '../components/ImportDialog';
 import { MembersTab } from '../components/MembersTab';
 import { SyncPendingBadge } from '../components/SyncPendingBadge';
 
@@ -23,6 +24,7 @@ export function GroupPage() {
   const [tab, setTab] = useState<Tab>('expenses');
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [inviteError, setInviteError] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
   const pending = usePendingExpenseIds();
   const { settings } = useSettings();
 
@@ -88,11 +90,23 @@ export function GroupPage() {
           <a href={`/api/groups/${group.id}/export.csv`} download className="text-slate-500 dark:text-slate-400 underline">
             CSV
           </a>
+          <button onClick={() => setImportOpen(true)} className="text-slate-500 underline dark:text-slate-400">
+            Import
+          </button>
           <button onClick={() => void createInvite()} className="text-teal-700 underline">
             Invite link
           </button>
         </span>
       </div>
+      {importOpen && (
+        <ImportDialog
+          mode={{ kind: 'existing', groupId: group.id, members: allMembers }}
+          meId={user.id}
+          meName={user.displayName}
+          onClose={() => setImportOpen(false)}
+          onDone={() => setImportOpen(false)}
+        />
+      )}
       {inviteUrl && <InviteLink url={inviteUrl} />}
       {inviteError && <p className="text-sm text-red-600">{inviteError}</p>}
       {/* Scrolls rather than wrapping: five tabs do not fit a phone width. */}
@@ -159,7 +173,13 @@ export function GroupPage() {
 
       {tab === 'members' && <MembersTab members={allMembers} groupId={group.id} meId={user.id} />}
       {tab === 'activity' && (
-        <ActivityTab activity={activity} expenses={expenses} meId={user.id} nameOf={nameOf} />
+        <ActivityTab
+          activity={activity}
+          expenses={expenses}
+          meId={user.id}
+          groupId={group.id}
+          nameOf={nameOf}
+        />
       )}
     </div>
   );

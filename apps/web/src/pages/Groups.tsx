@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { COMMON_CURRENCIES } from '@spendapp/shared';
 import { api } from '../api';
@@ -7,6 +7,8 @@ import { localDb } from '../db';
 import { syncNow } from '../sync';
 import { uuid } from '../uuid';
 import { useSettings } from '../settings';
+import { useAuth } from '../auth';
+import { ImportDialog } from '../components/ImportDialog';
 
 export function GroupsPage() {
   const groups = useLiveQuery(() => localDb.groups.toArray(), []);
@@ -15,6 +17,9 @@ export function GroupsPage() {
   const [name, setName] = useState('');
   const [currency, setCurrency] = useState(settings.defaultCurrency);
   const [error, setError] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const { user } = useAuth();
+  const navigate = useNavigate();
 
   async function createGroup(e: FormEvent) {
     e.preventDefault();
@@ -82,6 +87,24 @@ export function GroupsPage() {
         <button className="rounded bg-teal-700 px-4 py-2 font-medium text-white">Create</button>
         {error && <p className="w-full text-sm text-red-600">{error}</p>}
       </form>
+      <button
+        onClick={() => setImportOpen(true)}
+        className="self-start text-sm text-teal-700 underline dark:text-teal-500"
+      >
+        Import from CSV
+      </button>
+      {importOpen && user && (
+        <ImportDialog
+          mode={{ kind: 'new', defaultCurrency: settings.defaultCurrency }}
+          meId={user.id}
+          meName={user.displayName}
+          onClose={() => setImportOpen(false)}
+          onDone={(groupId) => {
+            setImportOpen(false);
+            navigate(`/g/${groupId}`);
+          }}
+        />
+      )}
     </div>
   );
 }
