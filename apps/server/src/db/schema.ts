@@ -1,5 +1,6 @@
 import {
   bigint,
+  boolean,
   char,
   date,
   datetime,
@@ -26,6 +27,11 @@ export const users = mysqlTable('users', {
   googleSub: varchar('google_sub', { length: 64 }).unique(),
   displayName: varchar('display_name', { length: 80 }).notNull(),
   createdAt: ts('created_at').notNull(),
+  // A member who has no account yet: created inside a group so expenses can
+  // reference them, and claimed later by a real user following an invite.
+  // Keeping them in `users` means splits, payments and activity all address
+  // one id namespace — nothing else in the schema has to know the difference.
+  isPlaceholder: boolean('is_placeholder').notNull().default(false),
 });
 
 export const sessions = mysqlTable('sessions', {

@@ -125,6 +125,7 @@ async function collectGroupChanges(groupId: string, cursor: number): Promise<Gro
       leftAt: schema.groupMembers.leftAt,
       version: schema.groupMembers.version,
       displayName: schema.users.displayName,
+      isPlaceholder: schema.users.isPlaceholder,
     })
     .from(schema.groupMembers)
     .innerJoin(schema.users, eq(schema.users.id, schema.groupMembers.userId))
@@ -168,6 +169,7 @@ async function collectGroupChanges(groupId: string, cursor: number): Promise<Gro
       userId: m.userId,
       displayName: m.displayName,
       leftAt: m.leftAt?.toISOString() ?? null,
+      isPlaceholder: m.isPlaceholder,
       version: m.version,
     })),
     expenses: expenseRows.map((e) => ({
