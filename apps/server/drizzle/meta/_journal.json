@@ -8,6 +8,13 @@
       "when": 1784907542476,
       "tag": "0000_dusty_night_thrasher",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1785688462890,
+      "tag": "0001_right_ironclad",
+      "breakpoints": true
     }
   ]
 }

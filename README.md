@@ -83,8 +83,20 @@ deliberately deleted.
 
 ## Production
 
-Serve `apps/web/dist` as static files and reverse-proxy `/api` to the server
-process behind HTTPS (e.g. Caddy). Set `COOKIE_SECURE=1` (enables the
-`__Host-` session cookie) and `APP_ORIGIN` to the public origin. Back up the
-MySQL database and the `RECEIPTS_DIR` directory. HTTPS is required for the
-service worker, installability, and push.
+Deployment is scripted — see [`deploy/README.md`](deploy/README.md). Run both
+on the server, from a checkout:
+
+```sh
+./deploy/setup.sh https://spend.example.com   # once: provision the host
+./deploy/deploy.sh                            # each release
+```
+
+`deploy.sh` exports the current commit into a timestamped release directory,
+builds it, backs up and migrates the database, then flips a `current` symlink
+and restarts the systemd unit — rolling back if the health check fails.
+
+Serving the result is left to whatever web server the host already runs:
+point it at `/opt/spendapp/current/apps/web/dist` with an SPA fallback to
+`index.html`, and proxy `/api` to `127.0.0.1:3000`. HTTPS is required for the
+service worker, installability, and push. Back up the MySQL database and the
+`RECEIPTS_DIR` directory.
