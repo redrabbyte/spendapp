@@ -11,6 +11,7 @@ import { ExpenseEditor } from '../components/ExpenseEditor';
 import { BalancesTab } from '../components/BalancesTab';
 import { ChartsTab } from '../components/ChartsTab';
 import { ActivityTab } from '../components/ActivityTab';
+import { InviteLink } from '../components/InviteLink';
 import { SyncPendingBadge } from '../components/SyncPendingBadge';
 
 type Tab = 'expenses' | 'balances' | 'charts' | 'activity';
@@ -91,11 +92,7 @@ export function GroupPage() {
           </button>
         </span>
       </div>
-      {inviteUrl && (
-        <p className="break-all rounded bg-teal-50 dark:bg-teal-950 p-2 text-sm text-teal-900 dark:text-teal-100">
-          Share this link (valid 14 days): {inviteUrl}
-        </p>
-      )}
+      {inviteUrl && <InviteLink url={inviteUrl} />}
       {inviteError && <p className="text-sm text-red-600">{inviteError}</p>}
       <nav className="flex gap-2 border-b border-slate-200 dark:border-slate-700">
         {(['expenses', 'balances', 'charts', 'activity'] as const).map((t) => (
