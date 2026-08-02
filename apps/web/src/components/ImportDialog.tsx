@@ -3,6 +3,19 @@ import { formatMinor, parseImport, type MemberDto, type ParsedImport } from '@sp
 import { api } from '../api';
 import { applyImport, suggestAssignment, type Assignment } from '../import';
 import { syncNow } from '../sync';
+import { uuid } from '../uuid';
+
+/**
+ * Say which step failed. A bare server message ("Required") tells the user
+ * nothing about what to do, and an import is several requests deep.
+ */
+async function step<T>(what: string, run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (err) {
+    throw new Error(`Could not ${what}: ${(err as Error).message}`);
+  }
+}
 
 /**
  * CSV import.
@@ -70,11 +83,13 @@ export function ImportDialog({
         map = assignment;
       } else {
         const currency = parsed.entries[0]?.currency ?? mode.defaultCurrency;
-        const group = await api<{ id: string }>('/api/groups', {
-          method: 'POST',
-          body: { name: groupName.trim() || 'Imported group', defaultCurrency: currency },
-        });
-        groupId = group.id;
+        groupId = uuid(); // group ids are client-generated, like every other id
+        await step('create the group', () =>
+          api('/api/groups', {
+            method: 'POST',
+            body: { id: groupId, name: groupName.trim() || 'Imported group', defaultCurrency: currency },
+          }),
+        );
         map = {};
         // Everyone in the file becomes a member: the chosen one is me, the
         // rest are placeholders they can claim through an invite later.
@@ -83,10 +98,12 @@ export function ImportDialog({
             map[name] = meId;
             continue;
           }
-          const created = await api<{ userId: string }>(`/api/groups/${groupId}/members`, {
-            method: 'POST',
-            body: { displayName: name },
-          });
+          const created = await step(`add “${name}”`, () =>
+            api<{ userId: string }>(`/api/groups/${groupId}/members`, {
+              method: 'POST',
+              body: { displayName: name },
+            }),
+          );
           map[name] = created.userId;
         }
         await syncNow(); // members must exist locally before entries reference them
