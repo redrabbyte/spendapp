@@ -1,6 +1,14 @@
 import { useMemo } from 'react';
 import { formatMinor, type ActivityDto, type ExpenseDto, type UpsertExpense } from '@spendapp/shared';
 import { restoreExpenseLocal } from '../sync';
+import { revertImport } from '../import';
+
+interface ImportPayload {
+  source?: string;
+  expenseIds?: string[];
+  paymentIds?: string[];
+  count?: number;
+}
 
 type Snapshot = { snapshot?: UpsertExpense };
 
@@ -34,6 +42,16 @@ function describe(a: ActivityDto): string {
       return 'edited a payment';
     case 'payment.deleted':
       return 'deleted a payment';
+    case 'member.added':
+      return `added ${(a.payload as { displayName?: string })?.displayName ?? 'a member'}`;
+    case 'member.claimed':
+      return `took over ${(a.payload as { displayName?: string })?.displayName ?? 'a member'}`;
+    case 'import.created': {
+      const p = a.payload as ImportPayload;
+      return `imported ${p.count ?? 0} entries from ${p.source === 'splitwise' ? 'Splitwise' : 'a CSV'}`;
+    }
+    case 'import.reverted':
+      return 'reverted an import';
     default:
       return a.type;
   }
@@ -43,10 +61,16 @@ interface Props {
   activity: ActivityDto[];
   expenses: ExpenseDto[];
   meId: string;
+  groupId: string;
   nameOf: (id: string) => string;
 }
 
-export function ActivityTab({ activity, expenses, meId, nameOf }: Props) {
+export function ActivityTab({ activity, expenses, meId, groupId, nameOf }: Props) {
+  // An import already undone must not offer the button again.
+  const revertedImports = useMemo(
+    () => new Set(activity.filter((a) => a.type === 'import.reverted').map((a) => a.entityId)),
+    [activity],
+  );
   const sorted = useMemo(
     () => activity.slice().sort((a, b) => b.version - a.version).slice(0, 100),
     [activity],
@@ -63,6 +87,10 @@ export function ActivityTab({ activity, expenses, meId, nameOf }: Props) {
           a.type === 'expense.deleted' && expenseById.get(a.entityId)?.deletedAt
             ? latestSnapshot(activity, a.entityId)
             : undefined;
+        const importPayload =
+          a.type === 'import.created' && !revertedImports.has(a.entityId)
+            ? (a.payload as ImportPayload)
+            : undefined;
         return (
           <li key={a.id} className="flex items-center justify-between gap-2 border-b border-slate-100 pb-1">
             <span>
@@ -76,6 +104,22 @@ export function ActivityTab({ activity, expenses, meId, nameOf }: Props) {
                   onClick={() => void restoreExpenseLocal(restorable, meId)}
                 >
                   restore
+                </button>
+              )}
+              {importPayload && (
+                <button
+                  className="text-teal-700 underline"
+                  onClick={() => {
+                    if (!confirm(`Delete the ${importPayload.count ?? 0} entries this import created?`)) return;
+                    void revertImport(
+                      groupId,
+                      a.entityId,
+                      importPayload.expenseIds ?? [],
+                      importPayload.paymentIds ?? [],
+                    );
+                  }}
+                >
+                  revert import
                 </button>
               )}
               {new Date(a.createdAt).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}

@@ -47,6 +47,27 @@ export const mutationSchema = z.discriminatedUnion('type', [
     groupId: uuid,
     data: z.object({ attachmentId: uuid }),
   }),
+  // Bookkeeping for a CSV import: the entries themselves arrive as ordinary
+  // expense/payment upserts, and this records which ones belonged to the
+  // import so the whole batch can be undone as a unit.
+  z.object({
+    ...envelope,
+    type: z.literal('import.record'),
+    groupId: uuid,
+    data: z.object({
+      id: uuid,
+      groupId: uuid,
+      source: z.enum(['spendapp', 'splitwise']),
+      expenseIds: z.array(uuid).max(2000),
+      paymentIds: z.array(uuid).max(2000),
+    }),
+  }),
+  z.object({
+    ...envelope,
+    type: z.literal('import.revert'),
+    groupId: uuid,
+    data: z.object({ importId: uuid, groupId: uuid }),
+  }),
   // A comment on an expense — stored as an activity row of type 'comment'.
   z.object({
     ...envelope,

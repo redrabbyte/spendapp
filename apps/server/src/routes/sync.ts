@@ -12,6 +12,7 @@ import {
 import { db, schema } from '../db/index.js';
 import { applyAttachmentDelete, applyAttachmentUpsert } from '../lib/attachments.js';
 import { applyCommentCreate } from '../lib/comments.js';
+import { applyImportRecord, applyImportRevert } from '../lib/imports.js';
 import { applyExpenseDelete, applyExpenseUpsert } from '../lib/expenses.js';
 import { applyPaymentDelete, applyPaymentUpsert } from '../lib/payments.js';
 
@@ -96,6 +97,16 @@ async function applyMutation(userId: string, m: Mutation): Promise<MutationResul
       case 'attachment.delete': {
         const r = await applyAttachmentDelete(userId, m.data.attachmentId, m.id);
         return r.ok ? { id: m.id, status: 'applied' } : { id: m.id, status: 'rejected', reason: r.reason };
+      }
+      case 'import.record': {
+        if (m.data.groupId !== m.groupId) return { id: m.id, status: 'rejected', reason: 'group mismatch' };
+        const r = await applyImportRecord(userId, m.data);
+        return r.ok ? { id: m.id, status: 'applied' } : { id: m.id, status: 'rejected', reason: r.reason! };
+      }
+      case 'import.revert': {
+        if (m.data.groupId !== m.groupId) return { id: m.id, status: 'rejected', reason: 'group mismatch' };
+        const r = await applyImportRevert(userId, m.data);
+        return r.ok ? { id: m.id, status: 'applied' } : { id: m.id, status: 'rejected', reason: r.reason! };
       }
       case 'comment.create': {
         if (m.data.groupId !== m.groupId) return { id: m.id, status: 'rejected', reason: 'group mismatch' };
