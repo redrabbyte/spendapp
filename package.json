@@ -10,6 +10,7 @@
     "typecheck": "pnpm -r --if-present typecheck",
     "build": "pnpm -r --if-present build",
     "dev:server": "pnpm --filter server dev",
-    "dev:web": "pnpm --filter web dev"
+    "dev:web": "pnpm --filter web dev",
+    "test:e2e": "pnpm --filter e2e test:e2e"
   }
 }

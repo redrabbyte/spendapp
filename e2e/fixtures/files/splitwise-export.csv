@@ -1,0 +1,16 @@
+Datum,Beschreibung,Kategorie,Kosten,Währung,Ada,Ben,Cleo,Dan
+
+2026-07-02,Flug,Flugzeug,400.00,EUR,0.00,-400.00,0.00,400.00
+2026-07-02,Hotel,Hotel,403.90,EUR,-100.98,-100.97,302.92,-100.97
+2026-07-04,"14,30",Allgemein,12.79,EUR,-3.20,-3.20,9.60,-3.20
+2026-07-05,Taxi,Taxi,25.00,USD,-6.25,-6.25,18.75,-6.25
+2026-07-15,Essen,Restaurant,90.00,USD,7.50,-22.50,17.50,-2.50
+2026-07-16,Bus,Bus/Zug,20.00,USD,-5.00,15.00,-5.00,-5.00
+2026-07-20,Kaffee,Allgemein,12.00,EUR,9.00,-3.00,-3.00,-3.00
+2026-07-21,Tickets,Unterhaltung - Sonstiges,60.00,EUR,-15.00,-15.00,-15.00,45.00
+2026-07-22,Snacks,Lebensmittel,8.00,USD,-2.00,-2.00,6.00,-2.00
+2026-07-28,Ada zahlte Dan,Zahlung,94.53,USD,94.53,0.00,0.00,-94.53
+2026-07-28,Ben zahlte Cleo,Zahlung,20.00,EUR,0.00,20.00,-20.00,0.00
+
+2026-08-02,Gesamtbilanz, , ,EUR,-110.18,-102.17,274.52,-62.17
+2026-08-02,Gesamtbilanz, , ,USD,88.78,-15.75,37.25,-110.28
