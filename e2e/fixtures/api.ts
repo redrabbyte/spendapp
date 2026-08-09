@@ -3,6 +3,7 @@ import { test as base, type BrowserContext, type Route } from '@playwright/test'
 import {
   createGroupSchema,
   syncRequestSchema,
+  type ExpenseDto,
   type GroupChanges,
   type MemberDto,
   type Mutation,
@@ -30,6 +31,7 @@ export interface ApiState {
   signedIn: boolean;
   groups: Map<string, { id: string; name: string; defaultCurrency: string; version: number }>;
   members: Map<string, MemberDto[]>;
+  expenses: Map<string, ExpenseDto[]>;
   activity: GroupChanges['activity'];
   /** Every mutation the client pushed, in order. */
   mutations: Mutation[];
@@ -42,6 +44,7 @@ export function createState(overrides: Partial<ApiState> = {}): ApiState {
     signedIn: true,
     groups: new Map(),
     members: new Map(),
+    expenses: new Map(),
     activity: [],
     mutations: [],
     rejected: [],
@@ -62,13 +65,45 @@ export function seedGroup(
   );
 }
 
+/** One expense paid entirely by `payer`, owed entirely by them too. */
+export function seedExpense(
+  state: ApiState,
+  groupId: string,
+  description: string,
+  payer: string,
+  amountMinor = 1000,
+): void {
+  const now = '2026-07-01T12:00:00.000Z';
+  const list = state.expenses.get(groupId) ?? [];
+  list.push({
+    id: randomUUID(),
+    groupId,
+    description,
+    category: 'general',
+    note: '',
+    expenseDate: `2026-07-${String(list.length + 1).padStart(2, '0')}`,
+    currency: 'EUR',
+    amountMinor,
+    rateToDefault: null,
+    splitMeta: { mode: 'exact', entries: [{ userId: payer, amountMinor }] },
+    splits: [{ userId: payer, paidMinor: amountMinor, owedMinor: amountMinor }],
+    createdBy: payer,
+    createdAt: now,
+    updatedBy: payer,
+    updatedAt: now,
+    version: list.length + 1,
+    deletedAt: null,
+  });
+  state.expenses.set(groupId, list);
+}
+
 function changesFor(state: ApiState): Record<string, GroupChanges> {
   const changes: Record<string, GroupChanges> = {};
   for (const [id, group] of state.groups) {
     changes[id] = {
       group,
       members: state.members.get(id) ?? [],
-      expenses: [],
+      expenses: state.expenses.get(id) ?? [],
       payments: [],
       attachments: [],
       activity: state.activity.filter((a) => a.groupId === id),
