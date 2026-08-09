@@ -45,6 +45,31 @@ test('the pending queue is invisible to members who are not admins', async ({ pa
   await expect(page.getByRole('button', { name: 'Make admin' })).toHaveCount(0);
 });
 
+test('an admin removes another member, after confirming who', async ({ page, api }) => {
+  seedGroup(api, GROUP, 'Trip', [
+    { userId: ME.id, displayName: ME.displayName, isPlaceholder: false, role: 'admin' },
+    { userId: OTHER, displayName: 'Sam', isPlaceholder: false },
+  ]);
+
+  await openMembers(page);
+  await page.getByRole('button', { name: 'Remove Sam' }).click();
+  // The confirmation names them, so a mis-tap in a list of short rows is visible.
+  await page.getByRole('button', { name: 'Remove Sam?' }).click();
+  await expect(page.getByText('Sam')).toHaveCount(0);
+});
+
+test('nobody can remove themselves from the member list', async ({ page, api }) => {
+  seedGroup(api, GROUP, 'Trip', [
+    { userId: ME.id, displayName: ME.displayName, isPlaceholder: false, role: 'admin' },
+    { userId: OTHER, displayName: 'Sam', isPlaceholder: false },
+  ]);
+
+  await openMembers(page);
+  // Leaving is its own thing, with succession and deletion to handle.
+  await expect(page.getByRole('button', { name: `Remove ${ME.displayName}` })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Leave group' })).toBeVisible();
+});
+
 test('leaving a shared group says the others keep it, and drops it from this device', async ({ page, api }) => {
   seedGroup(api, GROUP, 'Trip', [
     { userId: ME.id, displayName: ME.displayName, isPlaceholder: false, role: 'admin' },

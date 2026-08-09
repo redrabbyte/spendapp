@@ -221,6 +221,17 @@ export async function installApi(context: BrowserContext, state: ApiState): Prom
       return json(route, { status: decision === 'approve' ? 'approved' : 'rejected' });
     }
 
+    const removeMatch = /^\/api\/groups\/([^/]+)\/members\/([^/]+)$/.exec(path);
+    if (removeMatch && method === 'DELETE') {
+      const [, groupId, userId] = removeMatch as unknown as [string, string, string];
+      const list = state.members.get(groupId) ?? [];
+      state.members.set(
+        groupId,
+        list.map((m) => (m.userId === userId ? { ...m, leftAt: '2026-08-09T00:00:00.000Z' } : m)),
+      );
+      return json(route, { status: 'removed' });
+    }
+
     const leaveMatch = /^\/api\/groups\/([^/]+)\/leave$/.exec(path);
     if (leaveMatch && method === 'POST') {
       const groupId = leaveMatch[1]!;
