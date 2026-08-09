@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { formatMinor } from '@spendapp/shared';
 import { api } from '../api';
@@ -16,12 +16,23 @@ import { ImportDialog } from '../components/ImportDialog';
 import { MembersTab } from '../components/MembersTab';
 import { SyncPendingBadge } from '../components/SyncPendingBadge';
 
-type Tab = 'expenses' | 'balances' | 'charts' | 'activity' | 'members';
+const TABS = ['expenses', 'balances', 'charts', 'activity', 'members'] as const;
+type Tab = (typeof TABS)[number];
 
 export function GroupPage() {
   const { groupId } = useParams<{ groupId: string }>();
   const { user } = useAuth();
-  const [tab, setTab] = useState<Tab>('expenses');
+  // The tab lives in the URL so a notification can open the screen it is
+  // actually about — a join request is useless if it lands on Expenses.
+  const [params, setParams] = useSearchParams();
+  const fromUrl = params.get('tab');
+  const tab: Tab = (TABS as readonly string[]).includes(fromUrl ?? '') ? (fromUrl as Tab) : 'expenses';
+  const setTab = (t: Tab) => {
+    const next = new URLSearchParams(params);
+    if (t === 'expenses') next.delete('tab');
+    else next.set('tab', t);
+    setParams(next, { replace: true }); // tab switches should not stack history
+  };
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
@@ -117,7 +128,7 @@ export function GroupPage() {
       {inviteError && <p className="text-sm text-red-600">{inviteError}</p>}
       {/* Scrolls rather than wrapping: five tabs do not fit a phone width. */}
       <nav className="flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-700">
-        {(['expenses', 'balances', 'charts', 'activity', 'members'] as const).map((t) => (
+        {TABS.map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}

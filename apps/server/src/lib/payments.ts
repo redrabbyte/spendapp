@@ -69,7 +69,12 @@ export async function applyPaymentUpsert(
     }
   });
   if (!failure) {
-    notifyGroup(input.groupId, userId, `recorded a payment (${formatMinor(input.amountMinor, input.currency)})`);
+    notifyGroup(
+      input.groupId,
+      userId,
+      `recorded a payment (${formatMinor(input.amountMinor, input.currency)})`,
+      `/g/${input.groupId}?tab=balances`,
+    );
   }
   return failure ?? { ok: true };
 }

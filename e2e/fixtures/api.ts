@@ -22,7 +22,7 @@ import { z } from 'zod';
  * that a handler behaves correctly, only that the request was well formed.
  */
 
-export const ME = { id: '11111111-1111-4111-8111-111111111111', email: 'me@example.com', displayName: 'Lukas' };
+export const ME = { id: '11111111-1111-4111-8111-111111111111', username: 'lukas', displayName: 'Lukas' };
 
 // Mirrors the server's own body schema for adding a placeholder member.
 const addMemberSchema = z.object({ displayName: z.string().trim().min(1).max(80) });
@@ -56,12 +56,13 @@ export function seedGroup(
   state: ApiState,
   id: string,
   name: string,
-  members: Pick<MemberDto, 'userId' | 'displayName' | 'isPlaceholder'>[],
+  members: (Pick<MemberDto, 'userId' | 'displayName' | 'isPlaceholder'> & { role?: MemberDto['role'] })[],
 ): void {
   state.groups.set(id, { id, name, defaultCurrency: 'EUR', version: 1 });
   state.members.set(
     id,
-    members.map((m) => ({ groupId: id, leftAt: null, version: 1, ...m })),
+    // Spread last so a caller-supplied role wins over the default.
+    members.map((m) => ({ groupId: id, leftAt: null, role: 'member' as const, version: 1, ...m })),
   );
 }
 
@@ -174,7 +175,15 @@ export async function installApi(context: BrowserContext, state: ApiState): Prom
       // A real uuid: split rows reference this id and the sync schema
       // requires uuids, so a made-up shape would be rejected downstream.
       const userId = randomUUID();
-      list.push({ groupId, userId, displayName: data.displayName, leftAt: null, isPlaceholder: true, version: 1 });
+      list.push({
+        groupId,
+        userId,
+        displayName: data.displayName,
+        leftAt: null,
+        isPlaceholder: true,
+        role: 'member',
+        version: 1,
+      });
       state.members.set(groupId, list);
       return json(route, { userId });
     }

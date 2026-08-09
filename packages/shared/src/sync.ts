@@ -96,6 +96,9 @@ export interface GroupDto {
   version: number;
 }
 
+/** Extensible on purpose — more roles should not need a schema migration. */
+export type MemberRole = 'admin' | 'member';
+
 export interface MemberDto {
   groupId: string;
   userId: string;
@@ -103,6 +106,8 @@ export interface MemberDto {
   leftAt: string | null;
   /** A member with no account yet, claimable by whoever follows an invite. */
   isPlaceholder: boolean;
+  /** Admins approve join requests and change other members' roles. */
+  role: MemberRole;
   version: number;
 }
 

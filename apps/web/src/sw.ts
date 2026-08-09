@@ -58,18 +58,40 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = (event.notification.data as { url?: string } | undefined)?.url ?? '/';
+  const path = (event.notification.data as { url?: string } | undefined)?.url ?? '/';
+  // Absolute, so string comparison against client.url is meaningful.
+  const target = new URL(path, self.registration.scope).href;
   event.waitUntil(
     (async () => {
-      const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-      for (const c of clients) {
-        if ('focus' in c) {
-          c.postMessage({ type: 'sync' });
-          await c.navigate?.(url);
-          return c.focus();
-        }
+      const all = (await self.clients.matchAll({
+        type: 'window',
+        includeUncontrolled: true,
+      })) as WindowClient[];
+      const ours = all.filter((c) => new URL(c.url).origin === self.location.origin);
+
+      // Already on the target screen — focusing is the whole job.
+      const exact = ours.find((c) => c.url === target);
+      if (exact) {
+        exact.postMessage({ type: 'sync' });
+        return exact.focus();
       }
-      return self.clients.openWindow(url);
+
+      const client = ours[0];
+      if (client) {
+        // Ask the app to route itself first. navigate() rejects outright on a
+        // client this worker does not control — a tab opened before the SW
+        // activated — and an unhandled rejection here would abort waitUntil,
+        // so the tap would neither navigate nor focus.
+        client.postMessage({ type: 'navigate', url: path });
+        try {
+          await client.navigate(target);
+        } catch {
+          /* the postMessage above already handled it */
+        }
+        return client.focus();
+      }
+      // Nothing open: in-scope URLs launch the installed app, not a browser tab.
+      return self.clients.openWindow(target);
     })(),
   );
 });

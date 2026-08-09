@@ -6,7 +6,7 @@ import type { Me } from '../types';
 
 export function LoginPage() {
   const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -22,7 +22,7 @@ export function LoginPage() {
     try {
       const me = await api<Me>(`/api/auth/${mode}`, {
         method: 'POST',
-        body: mode === 'login' ? { email, password } : { email, password, displayName },
+        body: mode === 'login' ? { username, password } : { username, password, displayName },
       });
       setUser(me);
       navigate(params.get('next') ?? '/', { replace: true });
@@ -49,12 +49,19 @@ export function LoginPage() {
       )}
       <input
         className={input}
-        type="email"
-        placeholder="Email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
+        type="text"
+        placeholder="Username"
+        value={username}
+        onChange={(e) => setUsername(e.target.value)}
         required
-        autoComplete="email"
+        minLength={3}
+        maxLength={32}
+        autoComplete="username"
+        // Mobile keyboards capitalise and autocorrect free text by default,
+        // which silently mangles a handle the server then rejects.
+        autoCapitalize="none"
+        autoCorrect="off"
+        spellCheck={false}
       />
       <input
         className={input}

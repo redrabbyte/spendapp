@@ -30,7 +30,11 @@ export async function groupRoutes(app: FastifyInstance): Promise<void> {
         const v1 = await bumpGroupVersion(tx, id);
         await tx.update(schema.groups).set({ version: v1 }).where(eq(schema.groups.id, id));
         const v2 = await bumpGroupVersion(tx, id);
-        await tx.insert(schema.groupMembers).values({ groupId: id, userId, joinedAt: now, version: v2 });
+        // The creator is the group's first admin; without one nobody could
+        // ever approve a join request.
+        await tx
+          .insert(schema.groupMembers)
+          .values({ groupId: id, userId, joinedAt: now, role: 'admin', version: v2 });
         await logActivity(tx, {
           groupId: id,
           version: v2,

@@ -106,7 +106,12 @@ export async function applyExpenseUpsert(
   });
   if (!failure) {
     const verb = opts.revive ? 'restored' : 'saved';
-    notifyGroup(input.groupId, userId, `${verb} “${input.description}” (${formatMinor(input.amountMinor, input.currency)})`);
+    notifyGroup(
+      input.groupId,
+      userId,
+      `${verb} “${input.description}” (${formatMinor(input.amountMinor, input.currency)})`,
+      `/g/${input.groupId}/e/${input.id}`,
+    );
   }
   return failure ?? { ok: true };
 }

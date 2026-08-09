@@ -1,5 +1,5 @@
 export interface Me {
   id: string;
-  email: string | null;
+  username: string | null;
   displayName: string;
 }

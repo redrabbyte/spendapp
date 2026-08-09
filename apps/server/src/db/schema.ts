@@ -22,7 +22,9 @@ const money = (name: string) => bigint(name, { mode: 'number' });
 
 export const users = mysqlTable('users', {
   id: id('id').primaryKey(),
-  email: varchar('email', { length: 254 }).unique(),
+  // Login handle. Nullable because Google accounts never set one — the same
+  // shape `email` had, for the same reason.
+  username: varchar('username', { length: 32 }).unique(),
   passwordHash: varchar('password_hash', { length: 255 }),
   googleSub: varchar('google_sub', { length: 64 }).unique(),
   displayName: varchar('display_name', { length: 80 }).notNull(),
@@ -65,9 +67,35 @@ export const groupMembers = mysqlTable(
     userId: id('user_id').notNull(),
     joinedAt: ts('joined_at').notNull(),
     leftAt: ts('left_at'),
+    // 'admin' | 'member'. Deliberately a string rather than an enum so more
+    // roles can appear without a schema migration.
+    role: varchar('role', { length: 16 }).notNull().default('member'),
     version: version(),
   },
   (t) => [primaryKey({ columns: [t.groupId, t.userId] }), index('gm_user').on(t.userId)],
+);
+
+/**
+ * A follower of an invite link waits here until an admin decides. Membership
+ * is only written on approval, so an intercepted link grants nothing on its
+ * own. Decided rows are kept rather than deleted: they are what stops a
+ * rejected user re-requesting with the same link on a loop.
+ */
+export const joinRequests = mysqlTable(
+  'join_requests',
+  {
+    groupId: id('group_id').notNull(),
+    userId: id('user_id').notNull(),
+    inviteToken: varchar('invite_token', { length: 43 }).notNull(),
+    // Set when the joiner is taking over a placeholder instead of joining
+    // fresh; the claim is replayed at approval time, not at request time.
+    claimMemberId: id('claim_member_id'),
+    status: varchar('status', { length: 16 }).notNull().default('pending'),
+    requestedAt: ts('requested_at').notNull(),
+    decidedBy: id('decided_by'),
+    decidedAt: ts('decided_at'),
+  },
+  (t) => [primaryKey({ columns: [t.groupId, t.userId] }), index('jr_group_status').on(t.groupId, t.status)],
 );
 
 export const invites = mysqlTable('invites', {

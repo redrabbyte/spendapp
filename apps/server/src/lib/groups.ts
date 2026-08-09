@@ -17,6 +17,38 @@ export async function isMember(userId: string, groupId: string): Promise<boolean
   return rows.length > 0;
 }
 
+/** Admin check — the gate for approving joins and changing roles. */
+export async function isAdmin(userId: string, groupId: string): Promise<boolean> {
+  const rows = await db
+    .select({ userId: schema.groupMembers.userId })
+    .from(schema.groupMembers)
+    .where(
+      and(
+        eq(schema.groupMembers.groupId, groupId),
+        eq(schema.groupMembers.userId, userId),
+        isNull(schema.groupMembers.leftAt),
+        eq(schema.groupMembers.role, 'admin'),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
+/** Who a pending join request has to reach. */
+export async function activeAdminIds(groupId: string): Promise<string[]> {
+  const rows = await db
+    .select({ userId: schema.groupMembers.userId })
+    .from(schema.groupMembers)
+    .where(
+      and(
+        eq(schema.groupMembers.groupId, groupId),
+        isNull(schema.groupMembers.leftAt),
+        eq(schema.groupMembers.role, 'admin'),
+      ),
+    );
+  return rows.map((r) => r.userId);
+}
+
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 /**

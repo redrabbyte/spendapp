@@ -19,7 +19,7 @@ const FIRE_PROMPT = `(() => {
 const INSTALL = 'Install as an app';
 
 async function signIn(page: Page): Promise<void> {
-  await page.getByPlaceholder('Email').fill('me@example.com');
+  await page.getByPlaceholder('Username').fill('lukas');
   await page.getByPlaceholder('Password', { exact: true }).fill('password12');
   await page.getByRole('button', { name: 'Log in', exact: true }).click();
   await page.getByText('Lukas').waitFor();

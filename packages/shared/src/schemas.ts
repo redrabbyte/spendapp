@@ -12,14 +12,22 @@ const isoDateTime = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d{3})?)?(Z|[+-]\d{2}:\d{2})?)?$/, 'ISO date or datetime');
 
+// Login handle. There is no confirmation flow, so an address bought nothing
+// over a plain name. Stored lower-cased, which is what makes the unique index
+// case-insensitive rather than relying on collation.
+export const usernameSchema = z
+  .string()
+  .trim()
+  .regex(/^[a-z0-9][a-z0-9._-]{1,30}[a-z0-9]$/i, '3–32 characters: letters or digits, with . _ - inside');
+
 export const registerSchema = z.object({
-  email: z.string().email().max(254),
+  username: usernameSchema,
   password: z.string().min(10).max(200),
   displayName: z.string().trim().min(1).max(80),
 });
 
 export const loginSchema = z.object({
-  email: z.string().email().max(254),
+  username: usernameSchema,
   password: z.string().min(1).max(200),
 });
 

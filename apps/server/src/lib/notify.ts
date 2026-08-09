@@ -11,12 +11,57 @@ if (enabled) {
 const MAX_FAILS = 5;
 
 /**
- * Fire-and-forget push fanout to all group members except the actor.
- * Payloads are end-to-end encrypted by the Web Push protocol; the body is
- * "<actor name> <text>", the click target is the group screen. Dead
+ * Fire-and-forget push to an explicit set of users. Payloads are end-to-end
+ * encrypted by the Web Push protocol. `url` is the in-app path the
+ * notification opens; it must address the screen the notification is *about*,
+ * since a tap that lands on the wrong tab makes the alert worthless. Dead
  * subscriptions (404/410 or repeated failures) are pruned.
  */
-export function notifyGroup(groupId: string, actorId: string, text: string): void {
+export function notifyUsers(userIds: string[], title: string, body: string, url: string): void {
+  if (!enabled || userIds.length === 0) return;
+  void (async () => {
+    const subs = await db
+      .select()
+      .from(schema.pushSubscriptions)
+      .where(inArray(schema.pushSubscriptions.userId, userIds));
+    if (subs.length === 0) return;
+
+    const payload = JSON.stringify({ title, body, url });
+
+    await Promise.allSettled(
+      subs.map(async (sub) => {
+        try {
+          await webpush.sendNotification(
+            { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+            payload,
+            { TTL: 86_400 },
+          );
+          await db
+            .update(schema.pushSubscriptions)
+            .set({ lastSuccessAt: new Date(), failCount: 0 })
+            .where(eq(schema.pushSubscriptions.id, sub.id));
+        } catch (err) {
+          const status = (err as { statusCode?: number }).statusCode;
+          if (status === 404 || status === 410 || sub.failCount + 1 >= MAX_FAILS) {
+            await db.delete(schema.pushSubscriptions).where(eq(schema.pushSubscriptions.id, sub.id));
+          } else {
+            await db
+              .update(schema.pushSubscriptions)
+              .set({ failCount: sql`fail_count + 1` })
+              .where(eq(schema.pushSubscriptions.id, sub.id));
+          }
+        }
+      }),
+    );
+  })().catch(() => {});
+}
+
+/**
+ * Fanout to every active group member except the actor. The body is
+ * "<actor name> <text>"; `path` defaults to the group screen but callers
+ * should pass the specific entity they are talking about.
+ */
+export function notifyGroup(groupId: string, actorId: string, text: string, path?: string): void {
   if (!enabled) return;
   void (async () => {
     const groupRows = await db
@@ -45,41 +90,11 @@ export function notifyGroup(groupId: string, actorId: string, text: string): voi
       );
     if (members.length === 0) return;
 
-    const subs = await db
-      .select()
-      .from(schema.pushSubscriptions)
-      .where(inArray(schema.pushSubscriptions.userId, members.map((m) => m.userId)));
-
-    const payload = JSON.stringify({
-      title: group.name,
-      body: `${actorName} ${text}`,
-      url: `/g/${groupId}`,
-    });
-
-    await Promise.allSettled(
-      subs.map(async (sub) => {
-        try {
-          await webpush.sendNotification(
-            { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-            payload,
-            { TTL: 86_400 },
-          );
-          await db
-            .update(schema.pushSubscriptions)
-            .set({ lastSuccessAt: new Date(), failCount: 0 })
-            .where(eq(schema.pushSubscriptions.id, sub.id));
-        } catch (err) {
-          const status = (err as { statusCode?: number }).statusCode;
-          if (status === 404 || status === 410 || sub.failCount + 1 >= MAX_FAILS) {
-            await db.delete(schema.pushSubscriptions).where(eq(schema.pushSubscriptions.id, sub.id));
-          } else {
-            await db
-              .update(schema.pushSubscriptions)
-              .set({ failCount: sql`fail_count + 1` })
-              .where(eq(schema.pushSubscriptions.id, sub.id));
-          }
-        }
-      }),
+    notifyUsers(
+      members.map((m) => m.userId),
+      group.name,
+      `${actorName} ${text}`,
+      path ?? `/g/${groupId}`,
     );
   })().catch(() => {});
 }
