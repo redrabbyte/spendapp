@@ -31,6 +31,8 @@ export interface ApiState {
   signedIn: boolean;
   groups: Map<string, { id: string; name: string; defaultCurrency: string; version: number }>;
   members: Map<string, MemberDto[]>;
+  /** Pending join requests per group — only admins ever see these. */
+  joinRequests: Map<string, { userId: string; displayName: string; claimMemberId: string | null; requestedAt: string }[]>;
   expenses: Map<string, ExpenseDto[]>;
   activity: GroupChanges['activity'];
   /** Every mutation the client pushed, in order. */
@@ -44,6 +46,7 @@ export function createState(overrides: Partial<ApiState> = {}): ApiState {
     signedIn: true,
     groups: new Map(),
     members: new Map(),
+    joinRequests: new Map(),
     expenses: new Map(),
     activity: [],
     mutations: [],
@@ -186,6 +189,47 @@ export async function installApi(context: BrowserContext, state: ApiState): Prom
       });
       state.members.set(groupId, list);
       return json(route, { userId });
+    }
+
+    const joinRequestsMatch = /^\/api\/groups\/([^/]+)\/join-requests$/.exec(path);
+    if (joinRequestsMatch && method === 'GET') {
+      return json(route, { requests: state.joinRequests.get(joinRequestsMatch[1]!) ?? [] });
+    }
+    const decideMatch = /^\/api\/groups\/([^/]+)\/join-requests\/([^/]+)$/.exec(path);
+    if (decideMatch && method === 'POST') {
+      const [, groupId, userId] = decideMatch as unknown as [string, string, string];
+      const queue = state.joinRequests.get(groupId) ?? [];
+      state.joinRequests.set(
+        groupId,
+        queue.filter((r) => r.userId !== userId),
+      );
+      const decision = (body() as { decision?: string } | null)?.decision;
+      if (decision === 'approve') {
+        const list = state.members.get(groupId) ?? [];
+        const req = queue.find((r) => r.userId === userId);
+        list.push({
+          groupId,
+          userId,
+          displayName: req?.displayName ?? 'Joiner',
+          leftAt: null,
+          isPlaceholder: false,
+          role: 'member',
+          version: 1,
+        });
+        state.members.set(groupId, list);
+      }
+      return json(route, { status: decision === 'approve' ? 'approved' : 'rejected' });
+    }
+
+    const leaveMatch = /^\/api\/groups\/([^/]+)\/leave$/.exec(path);
+    if (leaveMatch && method === 'POST') {
+      const groupId = leaveMatch[1]!;
+      const others = (state.members.get(groupId) ?? []).filter(
+        (m) => m.userId !== ME.id && !m.isPlaceholder && m.leftAt === null,
+      );
+      state.groups.delete(groupId);
+      state.members.delete(groupId);
+      return json(route, { status: others.length === 0 ? 'deleted' : 'left' });
     }
 
     if (/^\/api\/groups\/[^/]+\/invites$/.test(path)) {
