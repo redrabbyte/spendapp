@@ -110,6 +110,61 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
   });
 
   /**
+   * Admin removes someone else. Self-removal is deliberately not allowed here:
+   * leaving has to deal with succession and with being the last member, and
+   * duplicating that is how the two paths drift apart. Because the remover is
+   * an admin who stays, this can never empty the group or strip its last admin.
+   *
+   * The member's history stays — their expenses, splits and payments are part
+   * of everyone else's balances, so removal marks them gone rather than
+   * rewriting the past.
+   */
+  app.delete('/api/groups/:groupId/members/:userId', { preHandler: app.requireUser }, async (req, reply) => {
+    const { groupId, userId } = req.params as { groupId: string; userId: string };
+    const adminId = req.user!.id;
+    if (!(await isAdmin(adminId, groupId))) return reply.code(404).send({ error: 'not found' });
+    if (userId === adminId) return reply.code(400).send({ error: 'use leave to remove yourself' });
+
+    const now = new Date();
+    const removed = await db.transaction(async (tx) => {
+      const rows = await tx
+        .select({ leftAt: schema.groupMembers.leftAt })
+        .from(schema.groupMembers)
+        .where(and(eq(schema.groupMembers.groupId, groupId), eq(schema.groupMembers.userId, userId)))
+        .limit(1);
+      if (!rows[0] || rows[0].leftAt) return false;
+
+      const version = await bumpGroupVersion(tx, groupId);
+      await tx
+        .update(schema.groupMembers)
+        .set({ leftAt: now, version })
+        .where(and(eq(schema.groupMembers.groupId, groupId), eq(schema.groupMembers.userId, userId)));
+      await logActivity(tx, {
+        groupId,
+        version,
+        actorId: adminId,
+        type: 'member.removed',
+        entityType: 'member',
+        entityId: userId,
+        payload: {},
+      });
+      return true;
+    });
+    if (!removed) return reply.code(404).send({ error: 'not a member of this group' });
+
+    const groupRows = await db
+      .select({ name: schema.groups.name })
+      .from(schema.groups)
+      .where(eq(schema.groups.id, groupId))
+      .limit(1);
+    const groupName = groupRows[0]?.name ?? 'a group';
+    // Being removed without being told is worse than the removal itself.
+    notifyUsers([userId], groupName, `You were removed from ${groupName}`, '/');
+    notifyGroup(groupId, adminId, 'removed a member', `/g/${groupId}?tab=members`);
+    return { status: 'removed' as const };
+  });
+
+  /**
    * Leaving is always allowed — nobody should be stuck in a group. Two knock-on
    * cases are handled here rather than refused: an admin leaving hands the role
    * on, and the last real member leaving takes the group's data with them.

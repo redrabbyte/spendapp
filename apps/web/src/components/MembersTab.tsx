@@ -5,6 +5,54 @@ import { api } from '../api';
 import { forgetGroupLocally } from '../db';
 import { syncNow } from '../sync';
 
+/**
+ * Two-step remove. The confirmation names the person, because in a list of
+ * short rows the tap target for the wrong one is a few pixels away.
+ */
+function RemoveButton({
+  member,
+  busy,
+  confirming,
+  onAsk,
+  onCancel,
+  onConfirm,
+}: {
+  member: MemberDto;
+  busy: boolean;
+  confirming: boolean;
+  onAsk: () => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const small = 'rounded px-2 py-1 text-xs font-medium disabled:opacity-50';
+  if (!confirming) {
+    return (
+      <button
+        disabled={busy}
+        onClick={onAsk}
+        aria-label={`Remove ${member.displayName}`}
+        className={`${small} border border-red-300 text-red-700 dark:border-red-800 dark:text-red-400`}
+      >
+        Remove
+      </button>
+    );
+  }
+  return (
+    <span className="flex items-center gap-2">
+      <button disabled={busy} onClick={onConfirm} className={`${small} bg-red-700 text-white`}>
+        Remove {member.displayName}?
+      </button>
+      <button
+        disabled={busy}
+        onClick={onCancel}
+        className={`${small} border border-slate-300 text-slate-600 dark:border-slate-600 dark:text-slate-300`}
+      >
+        Cancel
+      </button>
+    </span>
+  );
+}
+
 interface JoinRequest {
   userId: string;
   displayName: string;
@@ -27,6 +75,7 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
   const [requests, setRequests] = useState<JoinRequest[]>([]);
   const [deciding, setDeciding] = useState<string | null>(null);
   const [confirmLeave, setConfirmLeave] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const navigate = useNavigate();
 
   const active = members.filter((m) => m.leftAt === null);
@@ -61,6 +110,20 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
       setError((err as Error).message);
     } finally {
       setDeciding(null);
+    }
+  }
+
+  async function remove(userId: string) {
+    setDeciding(userId);
+    setError(null);
+    try {
+      await api(`/api/groups/${groupId}/members/${userId}`, { method: 'DELETE' });
+      await syncNow();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setDeciding(null);
+      setConfirmRemove(null);
     }
   }
 
@@ -189,6 +252,17 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
                   Remove admin
                 </button>
               )}
+              {/* Removing yourself is leaving, and that lives in its own section. */}
+              {meIsAdmin && m.userId !== meId && (
+                <RemoveButton
+                  member={m}
+                  busy={deciding === m.userId}
+                  confirming={confirmRemove === m.userId}
+                  onAsk={() => setConfirmRemove(m.userId)}
+                  onCancel={() => setConfirmRemove(null)}
+                  onConfirm={() => void remove(m.userId)}
+                />
+              )}
             </span>
           </div>
         ))}
@@ -204,7 +278,19 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
         {placeholders.map((m) => (
           <div key={m.userId} className={row}>
             <span>{m.displayName}</span>
-            <span className="text-xs text-slate-400">unclaimed</span>
+            <span className="flex items-center gap-3">
+              <span className="text-xs text-slate-400">unclaimed</span>
+              {meIsAdmin && (
+                <RemoveButton
+                  member={m}
+                  busy={deciding === m.userId}
+                  confirming={confirmRemove === m.userId}
+                  onAsk={() => setConfirmRemove(m.userId)}
+                  onCancel={() => setConfirmRemove(null)}
+                  onConfirm={() => void remove(m.userId)}
+                />
+              )}
+            </span>
           </div>
         ))}
         <form onSubmit={(e) => void add(e)} className="flex gap-2">
