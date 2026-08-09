@@ -25,6 +25,7 @@ export function GroupPage() {
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [query, setQuery] = useState('');
   const pending = usePendingExpenseIds();
   const { settings } = useSettings();
 
@@ -59,6 +60,11 @@ export function GroupPage() {
         .sort((a, b) => (a.expenseDate !== b.expenseDate ? (a.expenseDate < b.expenseDate ? 1 : -1) : a.createdAt < b.createdAt ? 1 : -1)),
     [liveExpenses],
   );
+  // Filter by description only — that is what people remember an entry by.
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return q ? sorted.filter((e) => e.description.toLowerCase().includes(q)) : sorted;
+  }, [sorted, query]);
   const activeMembers = useMemo(() => (allMembers ?? []).filter((m) => m.leftAt === null), [allMembers]);
   const nameOf = useMemo(() => {
     const map = new Map((allMembers ?? []).map((m) => [m.userId, m.displayName]));
@@ -127,9 +133,36 @@ export function GroupPage() {
       {tab === 'expenses' && (
         <>
           <ExpenseEditor group={group} members={activeMembers} meId={user.id} />
+          {sorted.length > 0 && (
+            <div className="relative">
+              {/* Deliberately not type="search": Chromium and Safari add their
+                  own clear button, which would sit beside this one. */}
+              <input
+                type="text"
+                enterKeyHint="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search expenses"
+                aria-label="Search expenses"
+                className="w-full rounded border border-slate-300 px-3 py-2 pr-9 text-sm dark:border-slate-600 dark:bg-slate-800"
+              />
+              {query && (
+                <button
+                  onClick={() => setQuery('')}
+                  aria-label="Clear search"
+                  className="absolute inset-y-0 right-0 px-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          )}
           <ul className="flex flex-col gap-2">
             {sorted.length === 0 && <p className="text-slate-500 dark:text-slate-400">No expenses yet.</p>}
-            {sorted.map((e) => (
+            {sorted.length > 0 && visible.length === 0 && (
+              <p className="text-slate-500 dark:text-slate-400">Nothing matches “{query.trim()}”.</p>
+            )}
+            {visible.map((e) => (
               <li key={e.id}>
                 <Link
                   to={`/g/${group.id}/e/${e.id}`}
