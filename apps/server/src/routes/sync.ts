@@ -134,6 +134,7 @@ async function collectGroupChanges(groupId: string, cursor: number): Promise<Gro
       groupId: schema.groupMembers.groupId,
       userId: schema.groupMembers.userId,
       leftAt: schema.groupMembers.leftAt,
+      role: schema.groupMembers.role,
       version: schema.groupMembers.version,
       displayName: schema.users.displayName,
       isPlaceholder: schema.users.isPlaceholder,
@@ -181,6 +182,7 @@ async function collectGroupChanges(groupId: string, cursor: number): Promise<Gro
       displayName: m.displayName,
       leftAt: m.leftAt?.toISOString() ?? null,
       isPlaceholder: m.isPlaceholder,
+      role: m.role === 'admin' ? ('admin' as const) : ('member' as const),
       version: m.version,
     })),
     expenses: expenseRows.map((e) => ({

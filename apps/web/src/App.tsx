@@ -1,5 +1,5 @@
-import { useState, useSyncExternalStore } from 'react';
-import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { useEffect, useState, useSyncExternalStore } from 'react';
+import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from './auth';
 import { InstallPrompt } from './components/InstallPrompt';
 import { NamePrompt } from './components/NamePrompt';
@@ -20,6 +20,25 @@ function RequireAuth({ children }: { children: JSX.Element }) {
   if (!user && loading) return <p className="p-6 text-slate-500 dark:text-slate-400">Loading…</p>;
   if (!user) return <Navigate to={`/login?next=${encodeURIComponent(location.pathname)}`} replace />;
   return children;
+}
+
+/**
+ * Routes a notification tap the service worker could not handle itself.
+ * `WindowClient.navigate()` is unavailable for clients the worker does not
+ * control, so it falls back to messaging us; sync.ts re-broadcasts that as
+ * `app:navigate` and we turn it into a client-side route.
+ */
+function NotificationRouter() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    const onNavigate = (e: Event) => {
+      const url = (e as CustomEvent<string>).detail;
+      if (typeof url === 'string' && url.startsWith('/')) navigate(url);
+    };
+    window.addEventListener('app:navigate', onNavigate);
+    return () => window.removeEventListener('app:navigate', onNavigate);
+  }, [navigate]);
+  return null;
 }
 
 /**
@@ -126,6 +145,7 @@ export function App() {
       {/* Mounted signed out too — it watches for the transition into a session. */}
       <InstallPrompt />
       <NamePrompt />
+      <NotificationRouter />
       <main className="p-4">
         <Routes>
           <Route path="/login" element={<LoginPage />} />

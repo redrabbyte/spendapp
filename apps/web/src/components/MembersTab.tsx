@@ -1,21 +1,77 @@
-import { useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import type { MemberDto } from '@spendapp/shared';
 import { api } from '../api';
 import { syncNow } from '../sync';
+
+interface JoinRequest {
+  userId: string;
+  displayName: string;
+  claimMemberId: string | null;
+  requestedAt: string;
+}
 
 /**
  * Who is in the group: real accounts, and placeholders standing in for people
  * who have not signed up. A placeholder can be split with like anyone else,
  * and whoever follows an invite link can take one over.
+ *
+ * Admins additionally see the pending join queue — following an invite only
+ * asks to join, so somebody has to say yes.
  */
 export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; groupId: string; meId: string }) {
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [requests, setRequests] = useState<JoinRequest[]>([]);
+  const [deciding, setDeciding] = useState<string | null>(null);
 
   const active = members.filter((m) => m.leftAt === null);
   const users = active.filter((m) => !m.isPlaceholder);
   const placeholders = active.filter((m) => m.isPlaceholder);
+  const meIsAdmin = active.some((m) => m.userId === meId && m.role === 'admin');
+  const adminCount = active.filter((m) => m.role === 'admin').length;
+
+  // Join requests are not group entities, so they do not ride the sync mirror.
+  const loadRequests = useCallback(async () => {
+    if (!meIsAdmin) return setRequests([]);
+    try {
+      const res = await api<{ requests: JoinRequest[] }>(`/api/groups/${groupId}/join-requests`);
+      setRequests(res.requests);
+    } catch {
+      /* offline: the queue is simply unavailable until the network returns */
+    }
+  }, [groupId, meIsAdmin]);
+
+  useEffect(() => {
+    void loadRequests();
+  }, [loadRequests]);
+
+  async function decide(userId: string, decision: 'approve' | 'reject') {
+    setDeciding(userId);
+    setError(null);
+    try {
+      await api(`/api/groups/${groupId}/join-requests/${userId}`, { method: 'POST', body: { decision } });
+      await loadRequests();
+      if (decision === 'approve') await syncNow(); // pull the new membership in
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setDeciding(null);
+    }
+  }
+
+  async function setRole(userId: string, role: 'admin' | 'member') {
+    setDeciding(userId);
+    setError(null);
+    try {
+      await api(`/api/groups/${groupId}/members/${userId}/role`, { method: 'POST', body: { role } });
+      await syncNow();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setDeciding(null);
+    }
+  }
 
   async function add(e: FormEvent) {
     e.preventDefault();
@@ -36,14 +92,83 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
 
   const row = 'flex items-center justify-between rounded border border-slate-200 px-3 py-2 dark:border-slate-700';
 
+  const smallButton = 'rounded px-2 py-1 text-xs font-medium disabled:opacity-50';
+
   return (
     <div className="flex flex-col gap-4">
+      {meIsAdmin && requests.length > 0 && (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-sm font-medium text-slate-500 dark:text-slate-400">
+            Waiting for approval ({requests.length})
+          </h2>
+          {requests.map((r) => (
+            <div key={r.userId} className={row}>
+              <span className="flex flex-col">
+                <span>{r.displayName}</span>
+                {r.claimMemberId && (
+                  <span className="text-xs text-slate-400">
+                    wants to take over {members.find((m) => m.userId === r.claimMemberId)?.displayName ?? 'a placeholder'}
+                  </span>
+                )}
+              </span>
+              <span className="flex shrink-0 gap-2">
+                <button
+                  disabled={deciding === r.userId}
+                  onClick={() => void decide(r.userId, 'approve')}
+                  className={`${smallButton} bg-teal-700 text-white`}
+                >
+                  Approve
+                </button>
+                <button
+                  disabled={deciding === r.userId}
+                  onClick={() => void decide(r.userId, 'reject')}
+                  className={`${smallButton} border border-slate-300 text-slate-600 dark:border-slate-600 dark:text-slate-300`}
+                >
+                  Decline
+                </button>
+              </span>
+            </div>
+          ))}
+          <p className="text-xs text-slate-400">
+            Declining is final for that account — the same link will not let them ask again.
+          </p>
+        </section>
+      )}
+
       <section className="flex flex-col gap-2">
         <h2 className="text-sm font-medium text-slate-500 dark:text-slate-400">Registered users</h2>
         {users.map((m) => (
           <div key={m.userId} className={row}>
-            <span>{m.displayName}</span>
-            {m.userId === meId && <span className="text-xs text-slate-400">you</span>}
+            <span>
+              {m.displayName}
+              {m.role === 'admin' && (
+                <span className="ml-2 rounded bg-teal-100 px-1.5 py-0.5 text-xs font-medium text-teal-800 dark:bg-teal-900 dark:text-teal-200">
+                  admin
+                </span>
+              )}
+            </span>
+            <span className="flex items-center gap-3">
+              {m.userId === meId && <span className="text-xs text-slate-400">you</span>}
+              {meIsAdmin && m.role !== 'admin' && (
+                <button
+                  disabled={deciding === m.userId}
+                  onClick={() => void setRole(m.userId, 'admin')}
+                  className={`${smallButton} border border-slate-300 text-slate-600 dark:border-slate-600 dark:text-slate-300`}
+                >
+                  Make admin
+                </button>
+              )}
+              {/* Demoting the last admin would leave nobody able to approve joins. */}
+              {meIsAdmin && m.role === 'admin' && adminCount > 1 && (
+                <button
+                  disabled={deciding === m.userId}
+                  onClick={() => void setRole(m.userId, 'member')}
+                  className={`${smallButton} border border-slate-300 text-slate-600 dark:border-slate-600 dark:text-slate-300`}
+                >
+                  Remove admin
+                </button>
+              )}
+            </span>
           </div>
         ))}
       </section>

@@ -3,9 +3,9 @@ import { and, eq, isNull } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { config } from '../config.js';
 import { db, schema } from '../db/index.js';
-import { bumpGroupVersion, isMember, logActivity } from '../lib/groups.js';
-import { claimPlaceholder, claimableMembers } from '../lib/members.js';
-import { notifyGroup } from '../lib/notify.js';
+import { activeAdminIds, isMember } from '../lib/groups.js';
+import { claimableMembers } from '../lib/members.js';
+import { notifyUsers } from '../lib/notify.js';
 
 export async function inviteRoutes(app: FastifyInstance): Promise<void> {
   app.post('/api/groups/:groupId/invites', { preHandler: app.requireUser }, async (req, reply) => {
@@ -44,39 +44,62 @@ export async function inviteRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
+  /**
+   * Following an invite no longer grants membership — it queues a request an
+   * admin must approve. The link is a capability to *ask*, so a forwarded or
+   * intercepted one gets a stranger no further than a row an admin will see
+   * and decline.
+   */
   app.post('/api/invites/:token/join', { preHandler: app.requireUser }, async (req, reply) => {
-    const invite = await findValidInvite((req.params as { token: string }).token);
+    const token = (req.params as { token: string }).token;
+    const invite = await findValidInvite(token);
     if (!invite) return reply.code(404).send({ error: 'invite not found or expired' });
     const userId = req.user!.id;
-    const now = new Date();
 
-    // Taking over an existing member rewrites the group instead of adding a
-    // new one, so it replaces the plain join entirely.
+    if (await isMember(userId, invite.groupId)) return { status: 'joined' as const, groupId: invite.groupId };
+
     const claimMemberId = (req.body as { claimMemberId?: unknown } | null)?.claimMemberId;
-    if (typeof claimMemberId === 'string') {
-      await claimPlaceholder(userId, invite.groupId, claimMemberId);
-      notifyGroup(invite.groupId, userId, 'joined the group');
-      return { groupId: invite.groupId };
-    }
+    const claim = typeof claimMemberId === 'string' ? claimMemberId : null;
 
-    await db.transaction(async (tx) => {
-      const version = await bumpGroupVersion(tx, invite.groupId);
-      await tx
-        .insert(schema.groupMembers)
-        .values({ groupId: invite.groupId, userId, joinedAt: now, version })
-        .onDuplicateKeyUpdate({ set: { leftAt: null, version } }); // rejoin resurrects membership
-      await logActivity(tx, {
+    const existing = await db
+      .select({ status: schema.joinRequests.status })
+      .from(schema.joinRequests)
+      .where(and(eq(schema.joinRequests.groupId, invite.groupId), eq(schema.joinRequests.userId, userId)))
+      .limit(1);
+    const status = existing[0]?.status;
+    if (status === 'pending') return { status: 'pending' as const, groupId: invite.groupId };
+    // A decline is final for this account; otherwise the same link would let
+    // someone re-ask on a loop.
+    if (status === 'rejected') return reply.code(403).send({ error: 'your request to join was declined' });
+
+    const now = new Date();
+    // 'approved' can only be seen here by someone who has since left, so it is
+    // treated as a fresh ask rather than a replay.
+    await db
+      .insert(schema.joinRequests)
+      .values({
         groupId: invite.groupId,
-        version,
-        actorId: userId,
-        type: 'member.joined',
-        entityType: 'member',
-        entityId: userId,
-        payload: { via: 'invite' },
+        userId,
+        inviteToken: token,
+        claimMemberId: claim,
+        status: 'pending',
+        requestedAt: now,
+      })
+      .onDuplicateKeyUpdate({
+        set: { status: 'pending', inviteToken: token, claimMemberId: claim, requestedAt: now, decidedBy: null, decidedAt: null },
       });
-    });
-    notifyGroup(invite.groupId, userId, 'joined the group');
-    return { groupId: invite.groupId };
+
+    const [admins, actor] = await Promise.all([
+      activeAdminIds(invite.groupId),
+      db.select({ displayName: schema.users.displayName }).from(schema.users).where(eq(schema.users.id, userId)).limit(1),
+    ]);
+    notifyUsers(
+      admins,
+      invite.groupName,
+      `${actor[0]?.displayName ?? 'Someone'} asked to join`,
+      `/g/${invite.groupId}?tab=members`,
+    );
+    return { status: 'pending' as const, groupId: invite.groupId };
   });
 
   app.delete('/api/invites/:token', { preHandler: app.requireUser }, async (req, reply) => {

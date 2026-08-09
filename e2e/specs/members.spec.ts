@@ -17,6 +17,7 @@ test('separates registered users from people without accounts', async ({ page, a
     displayName: 'Departed',
     leftAt: '2026-01-01T00:00:00.000Z',
     isPlaceholder: true,
+    role: 'member',
     version: 1,
   });
   await page.goto(`/g/${GROUP}`);

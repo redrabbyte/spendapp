@@ -29,7 +29,7 @@ export async function createSession(reply: FastifyReply, userId: string, userAge
 
 export interface SessionUser {
   id: string;
-  email: string | null;
+  username: string | null;
   displayName: string;
 }
 
@@ -58,7 +58,7 @@ export async function resolveSession(req: FastifyRequest): Promise<SessionUser |
       .set({ expiresAt: new Date(now.getTime() + config.sessionTtlDays * DAY_MS) })
       .where(eq(schema.sessions.idHash, idHash));
   }
-  return { id: row.user.id, email: row.user.email, displayName: row.user.displayName };
+  return { id: row.user.id, username: row.user.username, displayName: row.user.displayName };
 }
 
 export async function destroySession(req: FastifyRequest, reply: FastifyReply): Promise<void> {

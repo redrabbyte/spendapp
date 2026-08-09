@@ -153,7 +153,14 @@ export function startSyncLoop(): void {
   });
   // The SW nudges us when a push arrives or a notification is clicked.
   navigator.serviceWorker?.addEventListener('message', (e) => {
-    if ((e.data as { type?: string } | undefined)?.type === 'sync') scheduleSync(0);
+    const data = e.data as { type?: string; url?: string } | undefined;
+    if (data?.type === 'sync') scheduleSync(0);
+    // Fallback route request: the SW could not navigate this client itself.
+    // Re-broadcast so the router can handle it without a full page load.
+    if (data?.type === 'navigate' && data.url) {
+      scheduleSync(0);
+      window.dispatchEvent(new CustomEvent('app:navigate', { detail: data.url }));
+    }
   });
   applyPollCadence();
   scheduleSync(0);

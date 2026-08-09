@@ -8,6 +8,7 @@ import { inviteRoutes } from './routes/invites.js';
 import { exportRoutes } from './routes/export.js';
 import { fxRoutes } from './routes/fx.js';
 import { googleRoutes } from './routes/google.js';
+import { membershipRoutes } from './routes/membership.js';
 import { pushRoutes } from './routes/push.js';
 import { syncRoutes } from './routes/sync.js';
 
@@ -17,6 +18,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(authRoutes);
   await app.register(groupRoutes);
   await app.register(inviteRoutes);
+  await app.register(membershipRoutes);
   await app.register(expenseRoutes);
   await app.register(syncRoutes);
   await app.register(fxRoutes);

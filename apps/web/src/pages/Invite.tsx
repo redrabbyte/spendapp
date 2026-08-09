@@ -25,6 +25,7 @@ export function InvitePage() {
   const [claim, setClaim] = useState<string>(AS_NEW);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -45,10 +46,17 @@ export function InvitePage() {
     setBusy(true);
     setError(null);
     try {
-      const res = await api<{ groupId: string }>(`/api/invites/${token}/join`, {
+      const res = await api<{ groupId: string; status: 'joined' | 'pending' }>(`/api/invites/${token}/join`, {
         method: 'POST',
         body: claim === AS_NEW ? {} : { claimMemberId: claim },
       });
+      // Following a link only asks; an admin still has to say yes. Already
+      // being a member is the one case that goes straight through.
+      if (res.status === 'pending') {
+        setPending(true);
+        setBusy(false);
+        return;
+      }
       await syncNow();
       navigate(`/g/${res.groupId}`, { replace: true });
     } catch (err) {
@@ -67,7 +75,19 @@ export function InvitePage() {
       </p>
       <h1 className="text-2xl font-semibold">{info.groupName}</h1>
 
-      {user ? (
+      {user && pending ? (
+        <div className="flex flex-col gap-2">
+          <p className="rounded bg-teal-50 px-4 py-3 text-teal-900 dark:bg-teal-950 dark:text-teal-100">
+            Request sent. An admin of this group has to approve it before you can see anything.
+          </p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            You will get a notification when they do. It is safe to close this page.
+          </p>
+          <Link to="/" className="text-sm text-teal-700 underline dark:text-teal-300">
+            Back to your groups
+          </Link>
+        </div>
+      ) : user ? (
         <>
           {info.claimable.length > 0 && (
             <div className="flex w-full flex-col gap-1 text-left">

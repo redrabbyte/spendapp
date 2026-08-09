@@ -29,6 +29,20 @@
       "when": 1785700762761,
       "tag": "0003_chief_masque",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1786276800000,
+      "tag": "0004_wooden_typhoid_mary",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1786278600000,
+      "tag": "0005_lucky_the_hood",
+      "breakpoints": true
     }
   ]
 }
