@@ -44,18 +44,29 @@ test('adds a member who has no account', async ({ page, api }) => {
   expect(api.members.get(GROUP)!.some((m) => m.displayName === 'Carol' && m.isPlaceholder)).toBe(true);
 });
 
-test('an invite offers the unclaimed members, preselecting a matching name', async ({ page, api }) => {
+test('an invite offers the unclaimed members but never preselects one', async ({ page, api }) => {
   // The signed-in account is "Lukas"; rename a placeholder to match it.
   api.members.get(GROUP)![1]!.displayName = 'lukas ';
   await page.goto('/invite/tok');
 
   const claim = page.locator('#claim');
   await expect(claim).toBeVisible();
-  // Matching ignores case and surrounding space.
-  await expect(claim).toHaveValue('aaaa0000-0000-4000-8000-000000000001');
-  await expect(page.getByRole('button', { name: 'Join as this person' })).toBeVisible();
+  // A name match must stay a hint. Claiming rewrites every split naming the
+  // placeholder, so a second Lukas must not be walked into taking the first.
+  await expect(claim).toHaveValue('');
+  await expect(page.getByText(/already called lukas/i)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Join group' })).toBeVisible();
 
-  await claim.selectOption('');
+  // Matching ignores case and surrounding space, so the option is still there.
+  await claim.selectOption('aaaa0000-0000-4000-8000-000000000001');
+  await expect(page.getByRole('button', { name: 'Join as this person' })).toBeVisible();
+});
+
+test('joining as someone new works while other names are still unclaimed', async ({ page }) => {
+  await page.goto('/invite/tok');
+  // Two placeholders are sitting unclaimed; neither may block a fresh join.
+  await expect(page.locator('#claim')).toHaveValue('');
+  await expect(page.getByText(/Joining as someone new is always available/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Join group' })).toBeVisible();
 });
 

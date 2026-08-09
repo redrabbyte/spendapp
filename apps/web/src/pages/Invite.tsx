@@ -30,17 +30,16 @@ export function InvitePage() {
   useEffect(() => {
     if (!token) return;
     api<InviteInfo>(`/api/invites/${token}`)
-      .then((i) => {
-        setInfo(i);
-        // Pre-select the placeholder whose name matches the account — the
-        // common case is being added by name before signing up.
-        const mine = i.claimable.find(
-          (c) => c.displayName.trim().toLowerCase() === (user?.displayName ?? '').trim().toLowerCase(),
-        );
-        if (mine) setClaim(mine.userId);
-      })
+      .then(setInfo)
       .catch((err: Error) => setError(err.message));
-  }, [token, user?.displayName]);
+  }, [token]);
+
+  // A name match is a hint, never a pre-made choice. Claiming rewrites every
+  // split that mentions the placeholder, so a second Sam joining a group that
+  // already lists a Sam must not be walked into taking over the first one.
+  const nameMatch = info?.claimable.find(
+    (c) => c.displayName.trim().toLowerCase() === (user?.displayName ?? '').trim().toLowerCase(),
+  );
 
   async function join() {
     setBusy(true);
@@ -107,8 +106,15 @@ export function InvitePage() {
                   </option>
                 ))}
               </select>
+              {nameMatch && claim === AS_NEW && (
+                <p className="text-xs text-amber-700 dark:text-amber-500">
+                  Somebody here is already called {nameMatch.displayName}. If that was meant to be you, pick
+                  the name above — otherwise join as someone new and you will be listed separately.
+                </p>
+              )}
               <p className="text-xs text-slate-400">
-                Picking a name takes over the expenses already recorded against it.
+                Picking a name takes over the expenses already recorded against it. Joining as someone new is
+                always available, even while other names are still unclaimed.
               </p>
             </div>
           )}
