@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { MemberDto } from '@spendapp/shared';
 import { api } from '../api';
+import { forgetGroupLocally } from '../db';
 import { syncNow } from '../sync';
 
 interface JoinRequest {
@@ -24,6 +26,8 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
   const [error, setError] = useState<string | null>(null);
   const [requests, setRequests] = useState<JoinRequest[]>([]);
   const [deciding, setDeciding] = useState<string | null>(null);
+  const [confirmLeave, setConfirmLeave] = useState(false);
+  const navigate = useNavigate();
 
   const active = members.filter((m) => m.leftAt === null);
   const users = active.filter((m) => !m.isPlaceholder);
@@ -91,6 +95,23 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
   }
 
   const row = 'flex items-center justify-between rounded border border-slate-200 px-3 py-2 dark:border-slate-700';
+
+  // Only real accounts count: placeholders cannot outlive the group.
+  const lastRealMember = users.filter((m) => m.userId !== meId).length === 0;
+
+  async function leave() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/api/groups/${groupId}/leave`, { method: 'POST' });
+      await forgetGroupLocally(groupId);
+      navigate('/', { replace: true });
+    } catch (err) {
+      setError((err as Error).message); // offline: leaving needs the server
+      setBusy(false);
+      setConfirmLeave(false);
+    }
+  }
 
   const smallButton = 'rounded px-2 py-1 text-xs font-medium disabled:opacity-50';
 
@@ -206,6 +227,46 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
           When they sign up, send them an invite link — they can pick their name and take over the entries
           already recorded against it.
         </p>
+      </section>
+
+      <section className="flex flex-col gap-2 rounded border border-red-200 p-3 dark:border-red-900">
+        <h2 className="text-sm font-medium text-red-700 dark:text-red-400">Leave this group</h2>
+        {lastRealMember ? (
+          <p className="text-sm text-slate-600 dark:text-slate-300">
+            You are the last member. Leaving deletes the group and everything in it — expenses, payments and
+            receipts — from this device <em>and</em> from the server. This cannot be undone.
+          </p>
+        ) : (
+          <p className="text-sm text-slate-600 dark:text-slate-300">
+            The group is removed from this device. Everyone else keeps it, along with the entries you have
+            already recorded — your name stays on them.
+          </p>
+        )}
+        {confirmLeave ? (
+          <div className="flex flex-wrap gap-2">
+            <button
+              disabled={busy}
+              onClick={() => void leave()}
+              className="rounded bg-red-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+            >
+              {lastRealMember ? 'Delete the group for good' : 'Yes, leave the group'}
+            </button>
+            <button
+              disabled={busy}
+              onClick={() => setConfirmLeave(false)}
+              className="rounded border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 dark:border-slate-600 dark:text-slate-300"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setConfirmLeave(true)}
+            className="self-start rounded border border-red-300 px-3 py-2 text-sm font-medium text-red-700 dark:border-red-800 dark:text-red-400"
+          >
+            Leave group
+          </button>
+        )}
       </section>
     </div>
   );

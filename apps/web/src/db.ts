@@ -75,6 +75,45 @@ class LocalDb extends Dexie {
 
 export const localDb = new LocalDb();
 
+/**
+ * Forget one group locally. Leaving stops the server sending it, but the
+ * mirror is the app's source of truth, so nothing disappears from the device
+ * until it is deleted here too. Queued mutations for the group go as well:
+ * they would only be rejected now, and retrying them forever is noise.
+ */
+export async function forgetGroupLocally(groupId: string): Promise<void> {
+  await localDb.transaction(
+    'rw',
+    [
+      localDb.groups,
+      localDb.members,
+      localDb.expenses,
+      localDb.payments,
+      localDb.activity,
+      localDb.attachments,
+      localDb.blobs,
+      localDb.outbox,
+      localDb.cursors,
+    ],
+    async () => {
+      // Blobs are keyed by attachment id, so collect those before the rows go.
+      const attachmentIds = (await localDb.attachments.where('groupId').equals(groupId).toArray()).map((a) => a.id);
+      await localDb.blobs.bulkDelete(attachmentIds);
+      await localDb.attachments.where('groupId').equals(groupId).delete();
+      await localDb.expenses.where('groupId').equals(groupId).delete();
+      await localDb.payments.where('groupId').equals(groupId).delete();
+      await localDb.activity.where('groupId').equals(groupId).delete();
+      await localDb.members.where('groupId').equals(groupId).delete();
+      await localDb.cursors.delete(groupId);
+      await localDb.groups.delete(groupId);
+      const stale = await localDb.outbox.filter((o) => o.mutation.groupId === groupId).primaryKeys();
+      await localDb.outbox.bulkDelete(stale);
+    },
+  );
+  // The receipt images for this group are no longer reachable; the SW cache is
+  // shared across groups, so it is left to expire on its own.
+}
+
 /** Called on logout: local data must not survive on a shared device. */
 export async function wipeLocalDb(): Promise<void> {
   await localDb.delete();
