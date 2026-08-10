@@ -132,6 +132,10 @@ export interface ApiState {
   }[];
   /** Set once the account has been deleted, so a spec can assert it happened. */
   deleted: boolean;
+  /** Edits made through PATCH /api/me, so a spec can see what was actually sent. */
+  profile: { displayName?: string; username?: string };
+  /** Usernames the mock treats as already registered, for the 409 path. */
+  takenUsernames: string[];
   /** Bodies rejected by schema validation — a non-empty list is a failure. */
   rejected: { url: string; error: string }[];
 }
@@ -159,6 +163,8 @@ export function createState(overrides: Partial<ApiState> = {}): ApiState {
     acceptedPolicyVersion: 'test-policy-1',
     deletionPreview: [],
     deleted: false,
+    profile: {},
+    takenUsernames: [],
     rejected: [],
     ...overrides,
   };
@@ -463,6 +469,18 @@ export async function installApi(context: BrowserContext, state: ApiState): Prom
       state.deleted = true;
       state.signedIn = false;
       return json(route, { status: 'deleted' });
+    }
+
+    if (path === '/api/me' && method === 'PATCH') {
+      if (!state.signedIn) return json(route, { error: 'authentication required' }, 401);
+      const patch = body() as { displayName?: string; username?: string };
+      // The one answer this endpoint must give differently, and the reason it
+      // is rate-limited like the auth routes.
+      if (patch.username && state.takenUsernames.includes(patch.username.toLowerCase())) {
+        return json(route, { error: 'that username is taken' }, 409);
+      }
+      state.profile = { ...state.profile, ...patch };
+      return json(route, { ...ME, ...state.profile, privacyVersion: state.acceptedPolicyVersion });
     }
 
     if (path === '/api/me') {

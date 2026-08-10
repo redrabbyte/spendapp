@@ -9,6 +9,7 @@ import {
   loginSchema,
   registerSchema,
   rekeySchema,
+  usernameSchema,
 } from '@spendapp/shared';
 import { config } from '../config.js';
 import { db, schema } from '../db/index.js';
@@ -209,14 +210,45 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     return { ...user, wrappedPrivateKey: parseSealed(user.wrappedPrivateKey) };
   });
 
-  app.patch('/api/me', { preHandler: app.requireUser }, async (req, reply) => {
-    const parsed = z.object({ displayName: z.string().trim().min(1).max(80) }).safeParse(req.body);
-    if (!parsed.success) return reply.code(400).send({ error: 'invalid display name' });
-    await db
-      .update(schema.users)
-      .set({ displayName: parsed.data.displayName })
-      .where(eq(schema.users.id, req.user!.id));
-    return { ...req.user!, displayName: parsed.data.displayName };
+  /**
+   * Correcting the account (GDPR Art. 16). Both fields are things people put a
+   * real name in, and until now neither could be changed after signup.
+   *
+   * Rate-limited like the auth routes rather than under the global ceiling: a
+   * taken username has to answer differently from a free one, so this is a
+   * membership oracle, and registration already offers the same one at ten a
+   * minute. It should not be available here at three hundred.
+   *
+   * Changing the username is safe for the encryption: the KDF salt is a stored
+   * column, not derived from the name, so nothing has to be re-keyed and the
+   * session stays valid.
+   */
+  app.patch('/api/me', { preHandler: app.requireUser, config: AUTH_RATE }, async (req, reply) => {
+    const parsed = z
+      .object({
+        displayName: z.string().trim().min(1).max(80).optional(),
+        username: usernameSchema.optional(),
+      })
+      .refine((v) => v.displayName !== undefined || v.username !== undefined, { message: 'nothing to change' })
+      .safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'invalid input' });
+
+    const username = parsed.data.username?.toLowerCase();
+    try {
+      await db
+        .update(schema.users)
+        .set({
+          ...(parsed.data.displayName !== undefined ? { displayName: parsed.data.displayName } : {}),
+          ...(username !== undefined ? { username } : {}),
+        })
+        .where(eq(schema.users.id, req.user!.id));
+    } catch (err) {
+      if (isDuplicate(err)) return reply.code(409).send({ error: 'that username is taken' });
+      throw err;
+    }
+
+    const [user] = await db.select(keyColumns).from(schema.users).where(eq(schema.users.id, req.user!.id)).limit(1);
+    return { ...req.user!, ...user, wrappedPrivateKey: parseSealed(user?.wrappedPrivateKey ?? null) };
   });
 }
 

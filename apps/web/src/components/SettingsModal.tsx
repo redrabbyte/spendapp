@@ -3,6 +3,7 @@ import { COMMON_CURRENCIES } from '@spendapp/shared';
 import { timezoneList, useSettings, type Theme } from '../settings';
 import { DeleteAccount, DownloadMyData } from './AccountData';
 import { ChangePassword } from './ChangePassword';
+import { EditAccount } from './EditAccount';
 import { PushToggle } from './PushToggle';
 
 const THEMES: { key: Theme; label: string }[] = [
@@ -120,6 +121,10 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         <div className={row}>
           <span className={label}>Notifications</span>
           <PushToggle />
+        </div>
+
+        <div className={row}>
+          <EditAccount />
         </div>
 
         <div className={row}>

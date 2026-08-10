@@ -51,6 +51,37 @@ test('the export is a real archive holding the decrypted ledger', async ({ page,
   expect(text).toContain('groups/Trip/expenses.json');
 });
 
+test('the name and the login can both be corrected', async ({ page, api }) => {
+  const patches: Record<string, unknown>[] = [];
+  page.on('request', (r) => {
+    if (new URL(r.url()).pathname === '/api/me' && r.method() === 'PATCH') {
+      patches.push(JSON.parse(r.postData() ?? '{}') as Record<string, unknown>);
+    }
+  });
+
+  await signIn(page);
+  await openSettings(page);
+  await page.getByLabel('Username').fill('lukas-new');
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByText('Saved.')).toBeVisible();
+
+  // Only the changed field travels, so correcting a display name can never
+  // collide with somebody else's username.
+  expect(patches).toEqual([{ username: 'lukas-new' }]);
+  expect(api.profile.username).toBe('lukas-new');
+});
+
+test('a username somebody else holds is refused, not silently kept', async ({ page, api }) => {
+  api.takenUsernames = ['taken'];
+  await signIn(page);
+  await openSettings(page);
+  await page.getByLabel('Username').fill('taken');
+  await page.getByRole('button', { name: 'Save changes' }).click();
+
+  await expect(page.getByText('that username is taken')).toBeVisible();
+  expect(api.profile.username).toBeUndefined();
+});
+
 test('deleting says what it will destroy before asking for the password', async ({ page, api }) => {
   api.deletionPreview = [
     { groupId: 'g1', name: 'Flat', willBeDeleted: true, willPromoteAnAdmin: false, orphanedEpochs: [] },
