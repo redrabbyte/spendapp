@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { api } from '../api';
 import { useAuth } from '../auth';
+import { localDb } from '../db';
 import { syncNow } from '../sync';
 
 interface Claimable {
@@ -26,6 +28,18 @@ export function InvitePage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState(false);
+  const [pendingGroupId, setPendingGroupId] = useState<string | null>(null);
+
+  // The approval happens on somebody else's device, so nothing here knows it
+  // landed. Watching the mirror for the group turning up is what closes the
+  // loop — otherwise the joiner sits on "request sent" until they reload.
+  const joined = useLiveQuery(
+    async () => (pendingGroupId ? ((await localDb.groups.get(pendingGroupId)) ?? null) : null),
+    [pendingGroupId],
+  );
+  useEffect(() => {
+    if (joined) navigate(`/g/${joined.id}`, { replace: true });
+  }, [joined, navigate]);
 
   useEffect(() => {
     if (!token) return;
@@ -53,6 +67,7 @@ export function InvitePage() {
       // being a member is the one case that goes straight through.
       if (res.status === 'pending') {
         setPending(true);
+        setPendingGroupId(res.groupId);
         setBusy(false);
         return;
       }
@@ -80,7 +95,8 @@ export function InvitePage() {
             Request sent. An admin of this group has to approve it before you can see anything.
           </p>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            You will get a notification when they do. It is safe to close this page.
+            This page opens the group by itself the moment they approve. You will get a notification too, so
+            it is safe to close.
           </p>
           <Link to="/" className="text-sm text-teal-700 underline dark:text-teal-300">
             Back to your groups

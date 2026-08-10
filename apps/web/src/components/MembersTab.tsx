@@ -99,6 +99,36 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
     void loadRequests();
   }, [loadRequests]);
 
+  /**
+   * Keep the queue fresh while this tab is open. A join request is pushed to
+   * admins, and the notification deep-links here — but if this screen was
+   * already mounted, nothing reloaded it, so the tap landed on a members list
+   * with no pending request visible and no way to tell that was stale.
+   *
+   * Requests do not ride the sync mirror (they are not group entities), so
+   * there is nothing else that would have refreshed them. Polling while
+   * visible, and on regaining focus, is what the mirror does for everything
+   * else — this just gives the queue the same treatment.
+   */
+  useEffect(() => {
+    if (!meIsAdmin) return;
+    const refresh = () => {
+      if (!document.hidden) void loadRequests();
+    };
+    const id = window.setInterval(refresh, 8000);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    // A notification tap routes through here even when the screen is already
+    // up, which is the exact case the interval would otherwise have to cover.
+    window.addEventListener('app:navigate', refresh);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+      window.removeEventListener('app:navigate', refresh);
+    };
+  }, [loadRequests, meIsAdmin]);
+
   async function decide(userId: string, decision: 'approve' | 'reject') {
     setDeciding(userId);
     setError(null);

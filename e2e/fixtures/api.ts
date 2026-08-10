@@ -95,23 +95,63 @@ export function seedExpense(
     createdAt: now,
     updatedBy: payer,
     updatedAt: now,
-    version: list.length + 1,
+    version: bump(state, groupId),
     deletedAt: null,
   });
   state.expenses.set(groupId, list);
 }
 
-function changesFor(state: ApiState): Record<string, GroupChanges> {
+/**
+ * The next version for anything written into a group, so a change the client
+ * has not seen sorts above its cursor. The server does this with a per-group
+ * counter; the mock derives it, which is enough and cannot drift.
+ *
+ * Every mock writer must use it. A row added or edited at a version the client
+ * has already passed is simply never delivered — which looks exactly like a
+ * client bug and is not one.
+ */
+function bump(state: ApiState, groupId: string): number {
+  const rows = [
+    ...(state.members.get(groupId) ?? []),
+    ...(state.expenses.get(groupId) ?? []),
+    ...state.activity.filter((a) => a.groupId === groupId),
+  ];
+  return Math.max(state.groups.get(groupId)?.version ?? 0, ...rows.map((r) => r.version)) + 1;
+}
+
+/**
+ * The pull, filtered by the caller's cursor exactly as the server filters it.
+ *
+ * This used to send everything every time with `nextCursor: 0`, which made the
+ * mock incapable of reproducing any bug involving the cursor — and left the
+ * whole suite blind to a class of failure where a client advances past rows it
+ * never applied. A fixture that always re-sends hides it completely.
+ *
+ * Membership is honoured too: a joiner waiting for approval must not receive
+ * the group early, or every test of that wait races against the first sync.
+ */
+function changesFor(state: ApiState, cursors: Record<string, number> = {}): Record<string, GroupChanges> {
   const changes: Record<string, GroupChanges> = {};
   for (const [id, group] of state.groups) {
+    const members = state.members.get(id) ?? [];
+    if (!members.some((m) => m.userId === ME.id && m.leftAt === null)) continue;
+    const cursor = cursors[id] ?? 0;
+    const expenses = state.expenses.get(id) ?? [];
+    const activity = state.activity.filter((a) => a.groupId === id);
+    const highWater = Math.max(
+      group.version,
+      ...members.map((m) => m.version),
+      ...expenses.map((e) => e.version),
+      ...activity.map((a) => a.version),
+    );
     changes[id] = {
       group,
-      members: state.members.get(id) ?? [],
-      expenses: state.expenses.get(id) ?? [],
+      members: members.filter((m) => m.version > cursor),
+      expenses: expenses.filter((e) => e.version > cursor),
       payments: [],
       attachments: [],
-      activity: state.activity.filter((a) => a.groupId === id),
-      nextCursor: 0,
+      activity: activity.filter((a) => a.version > cursor),
+      nextCursor: highWater,
     };
   }
   return changes;
@@ -185,7 +225,7 @@ export async function installApi(context: BrowserContext, state: ApiState): Prom
         leftAt: null,
         isPlaceholder: true,
         role: 'member',
-        version: 1,
+        version: bump(state, groupId),
       });
       state.members.set(groupId, list);
       return json(route, { userId });
@@ -214,7 +254,7 @@ export async function installApi(context: BrowserContext, state: ApiState): Prom
           leftAt: null,
           isPlaceholder: false,
           role: 'member',
-          version: 1,
+          version: bump(state, groupId),
         });
         state.members.set(groupId, list);
       }
@@ -225,9 +265,10 @@ export async function installApi(context: BrowserContext, state: ApiState): Prom
     if (removeMatch && method === 'DELETE') {
       const [, groupId, userId] = removeMatch as unknown as [string, string, string];
       const list = state.members.get(groupId) ?? [];
+      const version = bump(state, groupId);
       state.members.set(
         groupId,
-        list.map((m) => (m.userId === userId ? { ...m, leftAt: '2026-08-09T00:00:00.000Z' } : m)),
+        list.map((m) => (m.userId === userId ? { ...m, leftAt: '2026-08-09T00:00:00.000Z', version } : m)),
       );
       return json(route, { status: 'removed' });
     }
@@ -246,6 +287,15 @@ export async function installApi(context: BrowserContext, state: ApiState): Prom
     if (/^\/api\/groups\/[^/]+\/invites$/.test(path)) {
       return json(route, { token: 'tok', path: '/invite/tok' });
     }
+    // Following a link only ever *asks* — an admin still has to approve, so
+    // this can never return 'joined' for someone who is not already a member.
+    // It was missing entirely and fell through to `{}`, which no spec noticed
+    // because none of them clicked through the join.
+    if (/^\/api\/invites\/[^/]+\/join$/.test(path) && method === 'POST') {
+      const [groupId] = [...state.groups.keys()];
+      return json(route, { status: 'pending', groupId: groupId ?? '' });
+    }
+
     if (/^\/api\/invites\/[^/]+$/.test(path)) {
       const [groupId] = [...state.groups.keys()];
       const claimable = (state.members.get(groupId ?? '') ?? [])
@@ -300,7 +350,7 @@ export async function installApi(context: BrowserContext, state: ApiState): Prom
       return json(route, {
         protocol: { current: 1, minSupported: 1 },
         results: data.mutations.map((m) => ({ id: m.id, status: 'applied' as const })),
-        changes: changesFor(state),
+        changes: changesFor(state, data.cursors),
       });
     }
 

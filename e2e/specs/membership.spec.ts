@@ -97,3 +97,48 @@ test('the last member is warned that leaving destroys the group', async ({ page,
   await page.getByRole('button', { name: 'Leave group' }).click();
   await expect(page.getByRole('button', { name: 'Delete the group for good' })).toBeVisible();
 });
+
+test('a join request that arrives while the members tab is open shows up by itself', async ({ page, api }) => {
+  // The push deep-links here, but if this screen was already open nothing
+  // reloaded the queue — requests do not ride the sync mirror — so the tap
+  // landed on a members list that looked empty and was simply stale.
+  seedGroup(api, GROUP, 'Trip', [
+    { userId: ME.id, displayName: ME.displayName, isPlaceholder: false, role: 'admin' },
+  ]);
+
+  await openMembers(page);
+  await expect(page.getByText(/Waiting for approval/)).toHaveCount(0);
+
+  // Somebody asks, elsewhere. No navigation, no reload on this device.
+  api.joinRequests.set(GROUP, [
+    { userId: OTHER, displayName: 'Robin', claimMemberId: null, requestedAt: '2026-08-01T10:00:00.000Z' },
+  ]);
+
+  await expect(page.getByText(/Waiting for approval \(1\)/)).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText('Robin')).toBeVisible();
+});
+
+test('the joiner is taken into the group when an admin approves', async ({ page, api }) => {
+  // The approval happens on somebody else's device. Nothing tells this one, so
+  // without a watcher the joiner sits on "request sent" until they reload.
+  seedGroup(api, GROUP, 'Trip', [
+    { userId: OTHER, displayName: 'Sam', isPlaceholder: false, role: 'admin' },
+  ]);
+
+  await page.goto('/invite/tok');
+  await page.getByRole('button', { name: /join group/i }).click();
+  await expect(page.getByText(/Request sent/i)).toBeVisible();
+
+  // The admin says yes, elsewhere.
+  api.members.get(GROUP)!.push({
+    groupId: GROUP,
+    userId: ME.id,
+    displayName: ME.displayName,
+    leftAt: null,
+    isPlaceholder: false,
+    role: 'member',
+    version: 99,
+  });
+
+  await page.waitForURL(new RegExp(`/g/${GROUP}`), { timeout: 20_000 });
+});
