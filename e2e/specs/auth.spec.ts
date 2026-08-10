@@ -98,6 +98,24 @@ test('the registration payload carries keys, not a password', async ({ page, api
   expect(api.rejected).toEqual([]);
 });
 
+test('accepting the policy at registration is not immediately doubted', async ({ page, api }) => {
+  api.signedIn = false;
+  // Nothing refetches /api/me after signing in, so the register response *is*
+  // the app's user. When it omitted privacyVersion the gate read it as "has
+  // accepted nothing" and told everyone who had just accepted the policy that
+  // it had changed — one second later, showing the same words.
+  await page.goto('/login');
+  await page.getByRole('button', { name: 'New here? Create an account' }).click();
+  await page.getByPlaceholder('Your name').fill('Lukas');
+  await page.getByPlaceholder('Username').fill('lukas');
+  await page.getByPlaceholder(/Password \(min/).fill(TEST_PASSWORD);
+  await page.getByRole('checkbox').check();
+  await page.getByRole('button', { name: 'Create account', exact: true }).click();
+
+  await page.waitForURL((u) => !u.pathname.startsWith('/login'));
+  await expect(page.getByText('The privacy policy has changed')).toBeHidden();
+});
+
 test('registration warns that there is no password reset', async ({ page, api }) => {
   api.signedIn = false;
   await page.goto('/login');

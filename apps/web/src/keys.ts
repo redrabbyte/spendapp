@@ -125,6 +125,13 @@ export interface SessionUser {
   displayName: string;
   publicKey?: string | null;
   wrappedPrivateKey?: SealedWire | null;
+  /**
+   * Required, not optional: this response becomes the app's user directly, and
+   * nothing refetches /api/me after signing in. Absent, it reads as "accepted
+   * nothing", which sends someone who has just accepted the policy straight to
+   * a notice saying it changed.
+   */
+  privacyVersion: string | null;
 }
 
 export async function register(

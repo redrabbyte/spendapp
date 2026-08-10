@@ -131,7 +131,11 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       throw err;
     }
     await createSession(reply, userId, req.headers['user-agent']);
-    return { id: userId, username: username.toLowerCase(), displayName };
+    // The client sets its user straight from this, and the re-consent gate
+    // compares that against the served policy. Leaving it out made every new
+    // account land on "the privacy policy has changed" one second after
+    // accepting it — the field was undefined, which is not equal to anything.
+    return { id: userId, username: username.toLowerCase(), displayName, privacyVersion: policy.version };
   });
 
   app.post('/api/auth/login', { config: AUTH_RATE }, async (req, reply) => {
@@ -160,6 +164,9 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       displayName: user.displayName,
       publicKey: user.publicKey,
       wrappedPrivateKey: parseSealed(user.wrappedPrivateKey),
+      // Same reason as register: this response *is* the client's user until
+      // something refetches /api/me, which nothing does after signing in.
+      privacyVersion: user.privacyVersion,
     };
   });
 
