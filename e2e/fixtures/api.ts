@@ -894,9 +894,31 @@ export async function installApi(context: BrowserContext, state: ApiState): Prom
   });
 }
 
+/**
+ * Pin the interface language for every spec.
+ *
+ * Specs find things by the words on screen, which is the right way to test a
+ * UI and the reason they would all break the moment the app started following
+ * the browser's locale. Writing it into localStorage before the app boots is
+ * exactly how a real user's saved choice reaches it, so this pins the language
+ * without adding a test-only code path.
+ *
+ * Localised rendering is covered deliberately, by the specs that set this to
+ * something else, rather than incidentally by whatever locale CI happens to
+ * run under.
+ */
+async function pinLanguage(context: BrowserContext, language: 'en' | 'de'): Promise<void> {
+  await context.addInitScript((lang) => {
+    const key = 'settings';
+    const stored = JSON.parse(localStorage.getItem(key) ?? '{}') as Record<string, unknown>;
+    localStorage.setItem(key, JSON.stringify({ ...stored, language: lang }));
+  }, language);
+}
+
 export const test = base.extend<{ api: ApiState }>({
   api: async ({ context }, use) => {
     const state = createState();
+    await pinLanguage(context, 'en');
     await installApi(context, state);
     await use(state);
     // A body the server would have refused is a bug in the client, always.
@@ -905,5 +927,11 @@ export const test = base.extend<{ api: ApiState }>({
     }
   },
 });
+
+/**
+ * Switch a spec to German. Call before the first navigation — the app reads
+ * the setting once, at boot.
+ */
+export const useGerman = (context: BrowserContext): Promise<void> => pinLanguage(context, 'de');
 
 export { expect } from '@playwright/test';

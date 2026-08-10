@@ -80,6 +80,15 @@ test('a deleted expense can still be brought back', async ({ page, api }) => {
   await page.getByRole('button', { name: /delete/i }).first().click();
   await expect(page.getByText('Taxi')).toHaveCount(0);
 
+  // The row vanishing is optimistic and local, so it says nothing about the
+  // delete having left the device. Navigating on that alone races the outbox:
+  // the activity feed is built from what the server sent back, so under load
+  // the restore button simply is not there yet. The sibling test above already
+  // guards its restore this way; this one was missing the same wait.
+  await expect
+    .poll(() => api.mutations.filter((m) => m.type === 'expense.delete').length, { timeout: 15_000 })
+    .toBe(1);
+
   await page.goto(`/g/${GROUP}?tab=activity`);
   const restore = page.getByRole('button', { name: 'restore' }).first();
   await expect(restore).toBeVisible({ timeout: 15_000 });

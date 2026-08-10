@@ -1,19 +1,18 @@
 import { useState } from 'react';
 import { COMMON_CURRENCIES } from '@spendapp/shared';
+import { LANGUAGES, type Language } from '../i18n';
+import { useT } from '../i18n/useT';
 import { timezoneList, useSettings, type Theme } from '../settings';
 import { DeleteAccount, DownloadMyData } from './AccountData';
 import { ChangePassword } from './ChangePassword';
 import { EditAccount } from './EditAccount';
 import { PushToggle } from './PushToggle';
 
-const THEMES: { key: Theme; label: string }[] = [
-  { key: 'system', label: 'system' },
-  { key: 'light', label: 'light' },
-  { key: 'dark', label: 'dark' },
-];
+const THEMES: Theme[] = ['system', 'light', 'dark'];
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
   const { settings, update } = useSettings();
+  const t = useT();
   const [tzFilter, setTzFilter] = useState('');
   const zones = timezoneList();
   const deviceZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -22,6 +21,10 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const label = 'text-sm font-medium text-slate-500 dark:text-slate-400';
   const input =
     'rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-800 bg-white px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-800';
+  const chip = (on: boolean) =>
+    `rounded px-3 py-1 text-sm ${
+      on ? 'bg-teal-700 text-white' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+    }`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4" onClick={onClose}>
@@ -30,33 +33,44 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Settings</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:text-slate-300 dark:hover:text-slate-200">
+          <h2 className="text-lg font-semibold">{t('settings.title')}</h2>
+          <button
+            onClick={onClose}
+            aria-label={t('settings.close')}
+            className="text-slate-400 hover:text-slate-600 dark:text-slate-300 dark:hover:text-slate-200"
+          >
             ✕
           </button>
         </div>
 
         <div className={row}>
-          <span className={label}>Appearance</span>
+          <span className={label}>{t('settings.language')}</span>
           <div className="flex gap-1">
-            {THEMES.map(({ key, label: l }) => (
+            {(Object.keys(LANGUAGES) as Language[]).map((code) => (
               <button
-                key={key}
-                onClick={() => update({ theme: key })}
-                className={`rounded px-3 py-1 text-sm capitalize ${
-                  settings.theme === key
-                    ? 'bg-teal-700 text-white'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 dark:bg-slate-800 dark:text-slate-300'
-                }`}
+                key={code}
+                onClick={() => update({ language: code })}
+                className={chip(settings.language === code)}
               >
-                {l}
+                {LANGUAGES[code]}
               </button>
             ))}
           </div>
         </div>
 
         <div className={row}>
-          <span className={label}>My default currency</span>
+          <span className={label}>{t('settings.appearance')}</span>
+          <div className="flex gap-1">
+            {THEMES.map((key) => (
+              <button key={key} onClick={() => update({ theme: key })} className={chip(settings.theme === key)}>
+                {t(`settings.theme.${key}`)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className={row}>
+          <span className={label}>{t('settings.currency')}</span>
           <select
             className={input}
             value={settings.defaultCurrency}
@@ -66,38 +80,30 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               <option key={c}>{c}</option>
             ))}
           </select>
-          <span className="text-xs text-slate-400">Pre-selected when you create a new group.</span>
+          <span className="text-xs text-slate-400">{t('settings.currency.hint')}</span>
         </div>
 
         <div className={row}>
-          <span className={label}>Display timezone</span>
+          <span className={label}>{t('settings.timezone')}</span>
           <div className="flex gap-1">
             <button
               onClick={() => update({ displayTz: 'device' })}
-              className={`rounded px-3 py-1 text-sm ${
-                settings.displayTz === 'device'
-                  ? 'bg-teal-700 text-white'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 dark:bg-slate-800 dark:text-slate-300'
-              }`}
+              className={chip(settings.displayTz === 'device')}
             >
-              device ({deviceZone})
+              {t('settings.timezone.device', { zone: deviceZone })}
             </button>
             <button
               onClick={() => update({ displayTz: settings.displayTz === 'device' ? deviceZone : settings.displayTz })}
-              className={`rounded px-3 py-1 text-sm ${
-                settings.displayTz !== 'device'
-                  ? 'bg-teal-700 text-white'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 dark:bg-slate-800 dark:text-slate-300'
-              }`}
+              className={chip(settings.displayTz !== 'device')}
             >
-              choose…
+              {t('settings.timezone.choose')}
             </button>
           </div>
           {settings.displayTz !== 'device' && (
             <>
               <input
                 className={input}
-                placeholder="filter zones…"
+                placeholder={t('settings.timezone.filter')}
                 value={tzFilter}
                 onChange={(e) => setTzFilter(e.target.value)}
               />
@@ -115,11 +121,11 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               </select>
             </>
           )}
-          <span className="text-xs text-slate-400">Times are stored in UTC and shown in this zone.</span>
+          <span className="text-xs text-slate-400">{t('settings.timezone.hint')}</span>
         </div>
 
         <div className={row}>
-          <span className={label}>Notifications</span>
+          <span className={label}>{t('settings.notifications')}</span>
           <PushToggle />
         </div>
 
