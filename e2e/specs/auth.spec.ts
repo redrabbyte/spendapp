@@ -64,7 +64,7 @@ test('a wrong password fails cleanly instead of caching a useless key', async ({
   // check. This covers the second guard: even if the server lets it through,
   // the unwrap must fail — and must say something, since WebCrypto's own
   // DOMException carries an empty message in Chromium.
-  await expect(page.getByText('Wrong password — those keys did not unlock.')).toBeVisible();
+  await expect(page.getByText('Wrong password — that did not unlock your data.')).toBeVisible();
 });
 
 test('the registration payload carries keys, not a password', async ({ page, api }) => {

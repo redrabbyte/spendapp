@@ -59,7 +59,7 @@ test('a member added without a keyring is reported, not silently broken', async 
   await openMembers(page);
   await page.getByRole('button', { name: 'Approve' }).click();
   // They are already a member by this point, so this must not read as failure.
-  await expect(page.getByText(/Added, but sending the keys failed/)).toBeVisible();
+  await expect(page.getByText(/Added, but sharing the group with them failed/)).toBeVisible();
 });
 
 test('the pending queue is invisible to members who are not admins', async ({ page, api }) => {

@@ -173,9 +173,9 @@ export function DeleteAccount() {
         <h2 className="text-lg font-semibold text-red-700 dark:text-red-400">Delete your account</h2>
 
         <p className="text-sm text-slate-600 dark:text-slate-300">
-          This cannot be undone. Your login, your keys and everything that identifies you are erased. Your name
-          stays on the expenses and payments you shared with other people, because those are their records of
-          money owed too.
+          This cannot be undone. Your login and everything that identifies you are erased. Your name stays on
+          the expenses and payments you shared with other people, because those are their records of money
+          owed too.
         </p>
 
         <p className="text-sm text-slate-600 dark:text-slate-300">
@@ -197,9 +197,8 @@ export function DeleteAccount() {
 
         {orphaning.length > 0 && (
           <div className="rounded bg-amber-50 p-2 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-100">
-            You are the only member holding the keys to part of the history in{' '}
-            {orphaning.map((g) => g.name).join(', ')}. Those entries become unreadable to everyone once you are
-            gone, and nothing can bring them back.
+            You are the only person who can read part of the history in {orphaning.map((g) => g.name).join(', ')}.
+            Those entries are lost to everyone once you are gone, and nothing can bring them back.
           </div>
         )}
 

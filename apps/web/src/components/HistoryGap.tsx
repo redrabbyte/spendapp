@@ -15,8 +15,8 @@ const WORDING: Record<string, string> = {
   expenses: 'Entries written before you joined are not listed here.',
   balances: 'These balances cover only what you can read. Your own position is exact — you were in none of the earlier splits — but debts between other people from before you joined are not included.',
   charts: 'These charts cover only what you can read, so totals and categories start from when you joined.',
-  activity: 'The history starts when you joined. Earlier entries, comments and receipts are sealed with keys this account was not given.',
-  members: 'You were added without the group’s earlier keys, so you cannot pass its full history on to anyone new.',
+  activity: 'The history starts when you joined. Earlier entries, comments and receipts are not shown.',
+  members: 'You joined partway through, so you cannot pass this group’s full history on to anyone new.',
 };
 
 export function HistoryGap({ groupId, tab }: { groupId: string; tab: string }) {
@@ -26,10 +26,7 @@ export function HistoryGap({ groupId, tab }: { groupId: string; tab: string }) {
   return (
     <p className="mb-3 rounded bg-amber-50 p-2 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
       <span className="font-medium">Showing only part of this group. </span>
-      {WORDING[tab] ?? WORDING.balances}{' '}
-      <span className="text-amber-800 dark:text-amber-200">
-        Any member who has the earlier keys can give them to you.
-      </span>
+      {WORDING[tab] ?? WORDING.balances}
     </p>
   );
 }

@@ -241,17 +241,17 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
       // admin can put it right by re-sharing.
       if (decision === 'approve' && res.publicKey) {
         try {
-          const shared = await shareKeyring(groupId, userId, res.publicKey);
+          await shareKeyring(groupId, userId, res.publicKey);
           // Only a full-keyring member can grant full history (design §4.7).
           // Saying nothing here would quietly produce a second partial member
           // and leave both of them believing they see the whole ledger.
           if (!(await holdsFullHistory(groupId))) {
             setKeyHandoff(
-              `Added — but you were given this group from partway through, so they got the same ${shared} key${shared === 1 ? '' : 's'} you hold and see the same partial history. A member who has the earlier keys can fix that for both of you.`,
+              'Added — but you joined this group partway through, so they can see only the same part of its history that you can.',
             );
           }
         } catch (err) {
-          setKeyHandoff(`Added, but sending the keys failed (${(err as Error).message}) — they cannot read anything yet.`);
+          setKeyHandoff(`Added, but sharing the group with them failed (${(err as Error).message}) — they cannot see anything yet.`);
         }
       }
       await loadRequests();
@@ -558,8 +558,8 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
         {orphanEpochs.length > 0 && !lastRealMember && (
           <p className="rounded bg-red-50 p-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-300">
             You are the last member who can read part of this group&apos;s history. If you leave, those
-            entries stay on the server but become unreadable to everyone, for good — no rotation can bring
-            them back. Add someone else to the earlier keys first if that matters.
+            entries are lost to everyone, for good, and nothing can bring them back. Give someone else
+            access to the earlier entries first if that matters.
           </p>
         )}
         {confirmLeave ? (

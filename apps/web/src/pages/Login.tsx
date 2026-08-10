@@ -137,7 +137,7 @@ export function LoginPage() {
       </button>
       {busy && (
         // Argon2id is deliberately slow; without this the pause reads as a hang.
-        <p className="text-center text-xs text-slate-400">Deriving your keys — this takes a moment on a phone.</p>
+        <p className="text-center text-xs text-slate-400">Securing your account — this takes a moment on a phone.</p>
       )}
 
       <button

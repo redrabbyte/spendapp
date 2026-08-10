@@ -205,7 +205,7 @@ async function unlockWith(kek: Uint8Array, user: SessionUser): Promise<UnlockedK
   } catch {
     // WebCrypto throws a DOMException whose message is empty in Chromium, so
     // surfacing it verbatim gives the user a blank error box.
-    throw new Error('Wrong password — those keys did not unlock.');
+    throw new Error('Wrong password — that did not unlock your data.');
   }
 }
 

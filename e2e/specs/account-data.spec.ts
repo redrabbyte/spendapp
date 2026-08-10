@@ -63,7 +63,7 @@ test('deleting says what it will destroy before asking for the password', async 
   // The three consequences someone cannot be expected to work out themselves.
   await expect(page.getByText(/last member of this group/)).toBeVisible();
   await expect(page.getByText('Flat')).toBeVisible();
-  await expect(page.getByText(/only member holding the keys/)).toBeVisible();
+  await expect(page.getByText(/only person who can read part of the history/)).toBeVisible();
   await expect(page.getByText(/longest-standing member/)).toBeVisible();
   expect(api.deleted).toBe(false);
 });
