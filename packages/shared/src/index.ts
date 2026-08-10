@@ -6,3 +6,4 @@ export * from './schemas.js';
 export * from './sync.js';
 export * from './convert.js';
 export * from './csv-import.js';
+export * from './crypto.js';

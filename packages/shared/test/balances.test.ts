@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { computeBalances } from '../src/balances.js';
+import { aliasResolver, computeBalances, resolveSplits } from '../src/balances.js';
 import { computeOwed } from '../src/split.js';
 import { simplifyDebts } from '../src/simplify.js';
 
@@ -118,5 +118,60 @@ describe('simplifyDebts', () => {
       ['u3', 100],
     ]);
     expect(simplifyDebts(m)).toEqual(simplifyDebts(m));
+  });
+});
+
+describe('placeholder aliases', () => {
+  const claimed = [
+    { userId: 'ghost', aliasOf: 'real' },
+    { userId: 'real', aliasOf: null },
+    { userId: 'other', aliasOf: null },
+  ];
+
+  it('attributes a retired placeholder to the account that claimed it', () => {
+    const resolve = aliasResolver(claimed);
+    expect(resolve('ghost')).toBe('real');
+    expect(resolve('other')).toBe('other');
+  });
+
+  it('follows a chain and survives a cycle rather than hanging', () => {
+    const resolve = aliasResolver([
+      { userId: 'a', aliasOf: 'b' },
+      { userId: 'b', aliasOf: 'c' },
+      { userId: 'c', aliasOf: 'a' }, // only reachable through bad data
+    ]);
+    expect(['a', 'b', 'c']).toContain(resolve('a'));
+  });
+
+  it('folds a split the claimer was already on instead of double counting', () => {
+    const resolve = aliasResolver(claimed);
+    const merged = resolveSplits(
+      [
+        { userId: 'ghost', paidMinor: 300, owedMinor: 500 },
+        { userId: 'real', paidMinor: 700, owedMinor: 500 },
+      ],
+      resolve,
+    );
+    expect(merged).toEqual([{ userId: 'real', paidMinor: 1000, owedMinor: 1000 }]);
+  });
+
+  it('leaves the balance sheet summing to zero after a claim', () => {
+    const resolve = aliasResolver(claimed);
+    const expenses = [
+      {
+        currency: 'EUR',
+        splits: resolveSplits(
+          [
+            { userId: 'ghost', paidMinor: 0, owedMinor: 500 },
+            { userId: 'other', paidMinor: 1000, owedMinor: 500 },
+          ],
+          resolve,
+        ),
+      },
+    ];
+    const eur = computeBalances(expenses, []).get('EUR')!;
+    expect(eur.get('real')).toBe(-500);
+    expect(eur.get('other')).toBe(500);
+    expect([...eur.values()].reduce((a, b) => a + b, 0)).toBe(0);
   });
 });

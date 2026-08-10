@@ -1,12 +1,16 @@
-import { expect, ME, seedExpense, seedGroup, test } from '../fixtures/api';
+import { expect, ME, seedExpense, seedGroup, seedGroupKey, signIn, test } from '../fixtures/api';
 
 const GROUP = '55555555-5555-4555-8555-555555555555';
 
-test.beforeEach(async ({ api }) => {
+test.beforeEach(async ({ api, page }) => {
   seedGroup(api, GROUP, 'Trip', [{ userId: ME.id, displayName: ME.displayName, isPlaceholder: false }]);
-  seedExpense(api, GROUP, 'Hotel Quito', ME.id);
-  seedExpense(api, GROUP, 'Taxi to airport', ME.id);
-  seedExpense(api, GROUP, 'Hotel Isabela', ME.id);
+  // Expenses are sealed, so the group needs a key before any exist.
+  await seedGroupKey(api, GROUP);
+  await seedExpense(api, GROUP, 'Hotel Quito', ME.id);
+  await seedExpense(api, GROUP, 'Taxi to airport', ME.id);
+  await seedExpense(api, GROUP, 'Hotel Isabela', ME.id);
+  // And the client needs its account keys to unwrap that group key.
+  await signIn(page);
 });
 
 const list = (page: import('@playwright/test').Page) => page.getByRole('main').getByRole('listitem');

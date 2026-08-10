@@ -1,17 +1,28 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { deriveSas } from '@spendapp/shared';
 import { api } from '../api';
 import { useAuth } from '../auth';
+import { localDb } from '../db';
+import { loadKeys } from '../keys';
 import { syncNow } from '../sync';
 
 interface Claimable {
   userId: string;
   displayName: string;
+  kind?: 'placeholder' | 'departed';
+  /** Names already folded into this one, so a taken-over name is traceable. */
+  alsoKnownAs?: string[];
 }
 interface InviteInfo {
   groupName: string;
   inviterName: string;
+  /** False: this link shares nothing recorded before it is accepted (§4.7). */
+  shareHistory?: boolean;
   claimable: Claimable[];
+  /** Set when this account was in the group before and left (design §5). */
+  wasMember?: { userId: string; displayName: string } | null;
 }
 
 /** '' means "join as a new member" rather than taking over a placeholder. */
@@ -26,6 +37,19 @@ export function InvitePage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState(false);
+  const [pendingGroupId, setPendingGroupId] = useState<string | null>(null);
+  const [sas, setSas] = useState<string | null>(null);
+
+  // The approval happens on somebody else's device, so nothing here knows it
+  // landed. Watching the mirror for the group turning up is what closes the
+  // loop — otherwise the joiner sits on "request sent" until they reload.
+  const joined = useLiveQuery(
+    async () => (pendingGroupId ? ((await localDb.groups.get(pendingGroupId)) ?? null) : null),
+    [pendingGroupId],
+  );
+  useEffect(() => {
+    if (joined) navigate(`/g/${joined.id}`, { replace: true });
+  }, [joined, navigate]);
 
   useEffect(() => {
     if (!token) return;
@@ -53,7 +77,14 @@ export function InvitePage() {
       // being a member is the one case that goes straight through.
       if (res.status === 'pending') {
         setPending(true);
+        setPendingGroupId(res.groupId);
         setBusy(false);
+        // The admin sees the same six digits (design §4.3). Derived from this
+        // device's own public key, so an interceptor who followed the link
+        // reads out a different number — which is the only thing that
+        // distinguishes them from the person the admin is expecting.
+        const keys = await loadKeys();
+        if (keys && token) setSas(await deriveSas(token, keys.publicKey, res.groupId));
         return;
       }
       await syncNow();
@@ -74,13 +105,46 @@ export function InvitePage() {
       </p>
       <h1 className="text-2xl font-semibold">{info.groupName}</h1>
 
+      {/* Rejoining on the same account restores the old membership row by
+          itself, so there is nothing to pick. Saying so is the whole fix: the
+          option that does the right thing used to be labelled "join as someone
+          new", which reads like abandoning your own history. */}
+      {info.wasMember && (
+        <p className="rounded bg-teal-50 p-3 text-left text-sm text-teal-900 dark:bg-teal-950 dark:text-teal-100">
+          You were in this group before as <strong>{info.wasMember.displayName}</strong>. Rejoining puts you
+          back under that name with everything already recorded against it — there is nothing to pick below.
+        </p>
+      )}
+
+      {info.shareHistory === false && (
+        <p className="rounded bg-amber-50 p-3 text-left text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
+          This invite shares the group from today onwards. Whatever has been recorded so far stays sealed —
+          you will not see those amounts, and balances between other people will be incomplete for you. Your
+          own balance will still be exact, because you were in none of those splits.
+        </p>
+      )}
+
       {user && pending ? (
         <div className="flex flex-col gap-2">
           <p className="rounded bg-teal-50 px-4 py-3 text-teal-900 dark:bg-teal-950 dark:text-teal-100">
             Request sent. An admin of this group has to approve it before you can see anything.
           </p>
+          {sas && (
+            <div className="flex flex-col gap-1 rounded border border-slate-200 px-4 py-3 dark:border-slate-700">
+              <span className="text-sm text-slate-500 dark:text-slate-400">
+                If they ask you to confirm a code, it is
+              </span>
+              <span className="font-mono text-2xl font-medium tracking-widest">
+                {sas.slice(0, 3)} {sas.slice(3)}
+              </span>
+              <span className="text-xs text-slate-400">
+                Read it out to them — over a call, not over the same chat the link came from.
+              </span>
+            </div>
+          )}
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            You will get a notification when they do. It is safe to close this page.
+            This page opens the group by itself the moment they approve. You will get a notification too, so
+            it is safe to close.
           </p>
           <Link to="/" className="text-sm text-teal-700 underline dark:text-teal-300">
             Back to your groups
@@ -91,7 +155,7 @@ export function InvitePage() {
           {info.claimable.length > 0 && (
             <div className="flex w-full flex-col gap-1 text-left">
               <label htmlFor="claim" className="text-sm font-medium text-slate-500 dark:text-slate-400">
-                Are you one of these people?
+                {info.wasMember ? 'Taking over somebody else’s name instead?' : 'Are you one of these people?'}
               </label>
               <select
                 id="claim"
@@ -99,10 +163,14 @@ export function InvitePage() {
                 onChange={(e) => setClaim(e.target.value)}
                 className="rounded border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-800"
               >
-                <option value={AS_NEW}>No — join as someone new</option>
+                <option value={AS_NEW}>
+                  {info.wasMember ? `No — rejoin as ${info.wasMember.displayName}` : 'No — join as someone new'}
+                </option>
                 {info.claimable.map((c) => (
                   <option key={c.userId} value={c.userId}>
                     {c.displayName}
+                    {c.alsoKnownAs?.length ? ` (also ${c.alsoKnownAs.join(', ')})` : ''}
+                    {c.kind === 'departed' ? ' — left this group' : ''}
                   </option>
                 ))}
               </select>
@@ -113,8 +181,10 @@ export function InvitePage() {
                 </p>
               )}
               <p className="text-xs text-slate-400">
-                Picking a name takes over the expenses already recorded against it. Joining as someone new is
-                always available, even while other names are still unclaimed.
+                Picking a name takes over the expenses already recorded against it. Names marked{' '}
+                <em>left this group</em> belonged to a real account — take one over only if it was yours and
+                you cannot get back into it. Joining as someone new is always available, even while other
+                names are still unclaimed.
               </p>
             </div>
           )}
@@ -123,7 +193,7 @@ export function InvitePage() {
             disabled={busy}
             className="rounded bg-teal-700 px-6 py-2 font-medium text-white disabled:opacity-50"
           >
-            {claim === AS_NEW ? 'Join group' : 'Join as this person'}
+            {claim !== AS_NEW ? 'Join as this person' : info.wasMember ? 'Rejoin group' : 'Join group'}
           </button>
           {error && <p className="text-sm text-red-600">{error}</p>}
         </>

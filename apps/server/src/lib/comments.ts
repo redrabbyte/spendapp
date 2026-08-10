@@ -11,7 +11,7 @@ import { notifyGroup } from './notify.js';
  */
 export async function applyCommentCreate(
   userId: string,
-  input: { id: string; expenseId: string; groupId: string; text: string },
+  input: { id: string; expenseId: string; groupId: string; keyEpoch: number; iv: string; ct: string },
   mutationId?: string,
 ): Promise<ApplyResult> {
   if (!(await isMember(userId, input.groupId))) return { ok: false, status: 404, reason: 'not found' };
@@ -37,7 +37,7 @@ export async function applyCommentCreate(
       type: 'comment',
       entityType: 'expense',
       entityId: input.expenseId,
-      payload: { text: input.text },
+      payload: { keyEpoch: input.keyEpoch, iv: input.iv, ct: input.ct },
       createdAt: now,
     });
     if (mutationId) {

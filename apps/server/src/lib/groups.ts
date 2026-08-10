@@ -78,11 +78,16 @@ export async function logActivity(
     entityType: string;
     entityId: string;
     payload: unknown;
+    /**
+     * Client-minted, when the row carries a sealed snapshot: its AAD binds to
+     * this id, so the server cannot be the one to choose it.
+     */
+    id?: string;
   },
 ): Promise<void> {
   await tx.insert(schema.activity).values({
-    id: crypto.randomUUID(),
     ...entry,
+    id: entry.id ?? crypto.randomUUID(),
     payload: entry.payload as object,
     createdAt: new Date(),
   });

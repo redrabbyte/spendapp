@@ -20,8 +20,12 @@ if [ -z "$ORIGIN" ]; then
 usage: $0 <public-url>
 
   <public-url>  the origin the app is served from, e.g. https://spend.example.com
-                It becomes APP_ORIGIN, which the session cookie and the
-                Google Sign-In redirect URI depend on.
+                It becomes APP_ORIGIN, which deploy.sh health-checks after
+                each release. The app itself does not read it — the session
+                cookie is __Host- prefixed and scoped to whatever host serves
+                it, so it needs no configuring.
+                Must be https: the camera used for in-person joins needs a
+                secure context, and __Host- cookies require one.
 
 env: SPENDAPP_DIR (default /opt/spendapp)
 USAGE
@@ -85,6 +89,7 @@ fi
 say "service user and directories"
 id -u "$SERVICE_USER" >/dev/null 2>&1 || $SUDO useradd --system --home-dir "$APP_DIR" --shell /usr/sbin/nologin "$SERVICE_USER"
 $SUDO mkdir -p "$APP_DIR/releases" "$SHARED/receipts" "$SHARED/backups"
+
 $SUDO chown -R "$SERVICE_USER:$SERVICE_USER" "$APP_DIR"
 # The web server runs as its own user and serves the built files from here.
 $SUDO chmod 755 "$APP_DIR" "$APP_DIR/releases"
@@ -105,15 +110,11 @@ PORT=3000
 # Behind HTTPS: enables the __Host- session cookie.
 COOKIE_SECURE=1
 RECEIPTS_DIR=$SHARED/receipts
+PRIVACY_PATH=$SHARED/privacy.md
 APP_ORIGIN=$ORIGIN
 
 # VAPID keys are generated on the first release if absent.
 VAPID_SUBJECT=mailto:admin@$DOMAIN
-
-# Google Sign-In (optional; openid scope only). Redirect URI:
-# $ORIGIN/api/auth/google/callback
-#GOOGLE_CLIENT_ID=
-#GOOGLE_CLIENT_SECRET=
 ENV
   $SUDO chown "$SERVICE_USER:$SERVICE_USER" "$SHARED/.env"
   $SUDO chmod 600 "$SHARED/.env"
@@ -127,6 +128,11 @@ else
   else
     echo "$SHARED/.env exists and already points at $ORIGIN — left alone"
   fi
+  # Added after the first releases, so an existing .env will not have it.
+  if ! $SUDO grep -q '^PRIVACY_PATH=' "$SHARED/.env"; then
+    echo "PRIVACY_PATH=$SHARED/privacy.md" | $SUDO tee -a "$SHARED/.env" >/dev/null
+    echo "added PRIVACY_PATH=$SHARED/privacy.md"
+  fi
 fi
 
 say "systemd unit"
@@ -136,11 +142,29 @@ $SUDO chmod 644 /etc/systemd/system/spendapp.service
 $SUDO systemctl daemon-reload
 $SUDO systemctl enable spendapp
 
+# .env is read once at startup, so anything changed above is still stale in the
+# running process. Only meaningful once a release exists — before the first
+# deploy there is nothing behind `current` to start.
+if [ -e "$APP_DIR/current" ]; then
+  if $SUDO systemctl restart spendapp; then
+    echo "restarted spendapp — the current .env is live"
+  else
+    echo "warning: spendapp did not restart; check 'systemctl status spendapp'" >&2
+  fi
+else
+  echo "no release yet — deploy.sh will start the service"
+fi
+
 port=$($SUDO grep -m1 '^PORT=' "$SHARED/.env" | cut -d= -f2- || true)
 
 cat <<DONE
 
 Provisioned for $ORIGIN.
+
+Write your privacy policy to $SHARED/privacy.md before letting anyone
+else sign up — apps/server/privacy.example.md says what it has to cover, and
+the app picks the file up without a rebuild. Until it exists, registration
+shows a placeholder that says so, and nobody is asked to re-consent.
 
 Build and activate the first release:
 

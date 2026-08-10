@@ -40,8 +40,12 @@ test('adds a member who has no account', async ({ page, api }) => {
   await page.getByPlaceholder('Name').fill('Carol');
   await page.getByRole('button', { name: 'Add', exact: true }).click();
 
+  // Listed at once — the name is splittable before any network (design §3.6)…
   await expect(page.getByText('Carol', { exact: true })).toBeVisible();
-  expect(api.members.get(GROUP)!.some((m) => m.displayName === 'Carol' && m.isPlaceholder)).toBe(true);
+  // …and the mutation catches up behind it.
+  await expect
+    .poll(() => api.members.get(GROUP)?.some((m) => m.displayName === 'Carol' && m.isPlaceholder) ?? false)
+    .toBe(true);
 });
 
 test('an invite offers the unclaimed members but never preselects one', async ({ page, api }) => {

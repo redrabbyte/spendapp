@@ -1,31 +1,28 @@
 import Fastify, { type FastifyInstance } from 'fastify';
+import { loggerOptions } from './lib/logging.js';
 import { securityPlugin } from './plugins/security.js';
+import { accountRoutes } from './routes/account.js';
 import { attachmentRoutes } from './routes/attachments.js';
 import { authRoutes } from './routes/auth.js';
-import { expenseRoutes } from './routes/expenses.js';
-import { groupRoutes } from './routes/groups.js';
 import { inviteRoutes } from './routes/invites.js';
-import { exportRoutes } from './routes/export.js';
 import { fxRoutes } from './routes/fx.js';
-import { googleRoutes } from './routes/google.js';
 import { membershipRoutes } from './routes/membership.js';
 import { pushRoutes } from './routes/push.js';
 import { syncRoutes } from './routes/sync.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
-  const app = Fastify({ logger: true, trustProxy: true, bodyLimit: 1_048_576 });
+  // trustProxy stays: the rate limiter keys on req.ip, and behind a reverse
+  // proxy the socket address is the proxy's for everyone.
+  const app = Fastify({ logger: loggerOptions, trustProxy: true, bodyLimit: 1_048_576 });
   await app.register(securityPlugin);
   await app.register(authRoutes);
-  await app.register(groupRoutes);
+  await app.register(accountRoutes);
   await app.register(inviteRoutes);
   await app.register(membershipRoutes);
-  await app.register(expenseRoutes);
   await app.register(syncRoutes);
   await app.register(fxRoutes);
   await app.register(attachmentRoutes);
   await app.register(pushRoutes);
-  await app.register(googleRoutes);
-  await app.register(exportRoutes);
   app.get('/api/health', async () => ({ ok: true }));
   return app;
 }

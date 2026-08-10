@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { COMMON_CURRENCIES } from '@spendapp/shared';
 import { timezoneList, useSettings, type Theme } from '../settings';
+import { DeleteAccount, DownloadMyData } from './AccountData';
+import { ChangePassword } from './ChangePassword';
 import { PushToggle } from './PushToggle';
 
 const THEMES: { key: Theme; label: string }[] = [
@@ -118,6 +120,18 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         <div className={row}>
           <span className={label}>Notifications</span>
           <PushToggle />
+        </div>
+
+        <div className={row}>
+          <ChangePassword />
+        </div>
+
+        <div className={row}>
+          <DownloadMyData />
+        </div>
+
+        <div className={`${row} border-t border-slate-200 pt-4 dark:border-slate-700`}>
+          <DeleteAccount />
         </div>
       </div>
     </div>

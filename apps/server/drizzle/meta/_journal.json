@@ -5,43 +5,8 @@
     {
       "idx": 0,
       "version": "5",
-      "when": 1784907542476,
-      "tag": "0000_dusty_night_thrasher",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "5",
-      "when": 1785688462890,
-      "tag": "0001_right_ironclad",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "5",
-      "when": 1785696364252,
-      "tag": "0002_jittery_gravity",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "5",
-      "when": 1785700762761,
-      "tag": "0003_chief_masque",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "5",
-      "when": 1786276800000,
-      "tag": "0004_wooden_typhoid_mary",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "5",
-      "when": 1786278600000,
-      "tag": "0005_lucky_the_hood",
+      "when": 1786367846538,
+      "tag": "0000_initial_schema",
       "breakpoints": true
     }
   ]

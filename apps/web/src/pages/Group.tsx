@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { formatMinor } from '@spendapp/shared';
+import { aliasResolver, formatMinor, resolveSplits } from '@spendapp/shared';
 import { api } from '../api';
+import { downloadCsv, toCsv } from '../export';
 import { useAuth } from '../auth';
 import { localDb } from '../db';
 import { usePendingExpenseIds } from '../pending';
@@ -12,7 +13,9 @@ import { BalancesTab } from '../components/BalancesTab';
 import { ChartsTab } from '../components/ChartsTab';
 import { ActivityTab } from '../components/ActivityTab';
 import { InviteLink } from '../components/InviteLink';
+import { HistoryGap } from '../components/HistoryGap';
 import { ImportDialog } from '../components/ImportDialog';
+import { InvalidEntries } from '../components/InvalidEntries';
 import { MembersTab } from '../components/MembersTab';
 import { SyncPendingBadge } from '../components/SyncPendingBadge';
 
@@ -35,6 +38,8 @@ export function GroupPage() {
   };
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteScoped, setInviteScoped] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [query, setQuery] = useState('');
   const pending = usePendingExpenseIds();
@@ -77,17 +82,32 @@ export function GroupPage() {
     return q ? sorted.filter((e) => e.description.toLowerCase().includes(q)) : sorted;
   }, [sorted, query]);
   const activeMembers = useMemo(() => (allMembers ?? []).filter((m) => m.leftAt === null), [allMembers]);
+  // A claimed placeholder keeps its id in every split; following the alias
+  // here means one lookup is right everywhere instead of each tab remembering.
+  const resolve = useMemo(() => aliasResolver(allMembers ?? []), [allMembers]);
   const nameOf = useMemo(() => {
     const map = new Map((allMembers ?? []).map((m) => [m.userId, m.displayName]));
-    return (id: string) => map.get(id) ?? '(former member)';
-  }, [allMembers]);
+    return (id: string) => map.get(resolve(id)) ?? map.get(id) ?? '(former member)';
+  }, [allMembers, resolve]);
+  // Charts total per person, so a claimed placeholder must be folded into the
+  // claimer here — an alias-aware name alone would show them twice under one
+  // name, which reads as a bug in the chart rather than in the data.
+  const chartExpenses = useMemo(
+    () => liveExpenses.map((e) => ({ ...e, splits: resolveSplits(e.splits, resolve) })),
+    [liveExpenses, resolve],
+  );
 
-  async function createInvite() {
+  async function createInvite(shareHistory: boolean) {
     if (!groupId) return;
     setInviteError(null);
+    setInviteOpen(false);
     try {
-      const res = await api<{ path: string }>(`/api/groups/${groupId}/invites`, { method: 'POST' });
+      const res = await api<{ path: string }>(`/api/groups/${groupId}/invites`, {
+        method: 'POST',
+        body: { shareHistory },
+      });
       setInviteUrl(`${location.origin}${res.path}`);
+      setInviteScoped(!shareHistory);
     } catch (err) {
       setInviteError((err as Error).message); // e.g. offline — invites need the server
     }
@@ -104,13 +124,18 @@ export function GroupPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">{group.name}</h1>
         <span className="flex gap-3 text-sm">
-          <a href={`/api/groups/${group.id}/export.csv`} download className="text-slate-500 dark:text-slate-400 underline">
+          <button
+            onClick={() =>
+              downloadCsv(`${group.name}.csv`, toCsv(liveExpenses, payments ?? [], allMembers ?? [], resolve))
+            }
+            className="text-slate-500 underline dark:text-slate-400"
+          >
             CSV
-          </a>
+          </button>
           <button onClick={() => setImportOpen(true)} className="text-slate-500 underline dark:text-slate-400">
             Import
           </button>
-          <button onClick={() => void createInvite()} className="text-teal-700 underline">
+          <button onClick={() => setInviteOpen((o) => !o)} className="text-teal-700 underline">
             Invite link
           </button>
         </span>
@@ -124,7 +149,42 @@ export function GroupPage() {
           onDone={() => setImportOpen(false)}
         />
       )}
-      {inviteUrl && <InviteLink url={inviteUrl} />}
+      {inviteOpen && (
+        <div className="flex flex-col items-start gap-2 rounded border border-slate-200 p-3 dark:border-slate-700">
+          <button
+            onClick={() => void createInvite(true)}
+            className="rounded bg-teal-700 px-3 py-1.5 text-sm font-medium text-white"
+          >
+            Invite, sharing everything
+          </button>
+          <p className="text-xs text-slate-400">
+            They read the group from the beginning, like everyone else in it.
+          </p>
+          {/* Rare on purpose (design §4.7): it forces a key rotation, and the
+              person it admits can never pass the group's history on. */}
+          <button
+            onClick={() => void createInvite(false)}
+            className="rounded border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 dark:border-slate-600 dark:text-slate-300"
+          >
+            Invite, from today only
+          </button>
+          <p className="text-xs text-slate-400">
+            Nothing recorded so far will be readable to them — not the amounts, not who owed whom. Their own
+            balance stays exact, but they see a partial picture of everyone else&apos;s, and they cannot pass
+            the earlier history on to anyone.
+          </p>
+        </div>
+      )}
+      {inviteUrl && (
+        <div className="flex flex-col gap-1">
+          <InviteLink url={inviteUrl} />
+          {inviteScoped && (
+            <p className="text-xs text-amber-700 dark:text-amber-500">
+              This link shares nothing from before it is accepted, and accepting it rotates the group key.
+            </p>
+          )}
+        </div>
+      )}
       {inviteError && <p className="text-sm text-red-600">{inviteError}</p>}
       {/* Scrolls rather than wrapping: five tabs do not fit a phone width. */}
       <nav className="flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-700">
@@ -140,6 +200,11 @@ export function GroupPage() {
           </button>
         ))}
       </nav>
+
+      {/* Above the panel, not inside one: a partial view is a property of the
+          whole group, and it is true on whichever tab you happen to open. */}
+      <HistoryGap groupId={group.id} tab={tab} />
+      <InvalidEntries groupId={group.id} members={allMembers} />
 
       {tab === 'expenses' && (
         <>
@@ -212,7 +277,7 @@ export function GroupPage() {
       )}
 
       {tab === 'charts' && (
-        <ChartsTab expenses={liveExpenses} nameOf={nameOf} defaultCurrency={group.defaultCurrency} />
+        <ChartsTab expenses={chartExpenses} nameOf={nameOf} defaultCurrency={group.defaultCurrency} />
       )}
 
       {tab === 'members' && <MembersTab members={allMembers} groupId={group.id} meId={user.id} />}
@@ -220,6 +285,7 @@ export function GroupPage() {
         <ActivityTab
           activity={activity}
           expenses={expenses}
+          payments={payments}
           meId={user.id}
           groupId={group.id}
           nameOf={nameOf}

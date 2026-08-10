@@ -11,6 +11,17 @@ import {
   type UpsertPayment,
 } from '@spendapp/shared';
 import { api, ApiError } from './api';
+import { openExpense, openPayment, sealAttachment, sealComment, sealExpense, sealPayment } from './envelope';
+import { noteMissingEpochs, refreshCoverage } from './coverage';
+import { KEYS_CACHED_EVENT } from './keys';
+import {
+  absorbWrappedKeys,
+  adoptGroupKey,
+  currentEpoch,
+  forgetGroupKeys,
+  keyForEpoch,
+  mintGroupKey,
+} from './groupKeys';
 import { localDb, type OutboxItem } from './db';
 import { uuid } from './uuid';
 
@@ -58,15 +69,65 @@ export async function syncNow(): Promise<void> {
     const pendingExpenseIds = new Set<string>();
     const pendingPaymentIds = new Set<string>();
     const pendingAttachmentIds = new Set<string>();
+    const unsyncedGroupIds = new Set<string>();
     for (const o of remaining) {
       const m = o.mutation;
       if (m.type === 'expense.upsert' || m.type === 'expense.restore') pendingExpenseIds.add(m.data.id);
       else if (m.type === 'expense.delete') pendingExpenseIds.add(m.data.expenseId);
-      else if (m.type === 'payment.upsert') pendingPaymentIds.add(m.data.id);
+      else if (m.type === 'payment.upsert' || m.type === 'payment.restore') pendingPaymentIds.add(m.data.id);
       else if (m.type === 'payment.delete') pendingPaymentIds.add(m.data.paymentId);
-      else if (m.type === 'attachment.upsert') pendingAttachmentIds.add(m.data.id);
+      else if (m.type === 'group.create') unsyncedGroupIds.add(m.data.id);
+      else if (m.type === 'attachment.upsert' || m.type === 'attachment.restore') pendingAttachmentIds.add(m.data.id);
       else if (m.type === 'attachment.delete') pendingAttachmentIds.add(m.data.attachmentId);
       // comment.create writes an activity row, which is applied unconditionally
+    }
+
+    // Keys first, then decrypt: both are WebCrypto and neither can happen
+    // inside a Dexie transaction, which does not survive awaiting a foreign
+    // promise. Rows that will not open are dropped rather than stored blank.
+    let rewound = false;
+    for (const [groupId, ch] of Object.entries(res.changes)) {
+      if (!ch.keys?.length) continue;
+      // What this group had already given up on before these keys arrived.
+      const dropped = (await localDb.coverage.get(groupId))?.missingEpochs ?? [];
+      const added = await absorbWrappedKeys(groupId, ch.keys);
+      await refreshCoverage(groupId);
+      // A key that opens something already dropped means those rows are behind
+      // this group's cursor and will never be offered again. That happens both
+      // when history is granted after the fact (design §4.7) and — far more
+      // often — on a second device, whose first sync ran before the password
+      // had been entered and so dropped the entire group.
+      if (added.some((e) => dropped.includes(e))) {
+        await localDb.cursors.put({ groupId, version: 0 });
+        rewound = true;
+      }
+    }
+    if (rewound) {
+      runAgain = true;
+      return; // re-pull from the rewound cursors before touching the mirror
+    }
+
+    const opened = new Map<string, ExpenseDto[]>();
+    const openedPayments = new Map<string, PaymentDto[]>();
+    for (const [groupId, ch] of Object.entries(res.changes)) {
+      // Epochs whose ciphertext turned up with no key to open it. Recorded so
+      // every total derived from what is left can say it is partial.
+      const missing = new Set<number>();
+      const rows: ExpenseDto[] = [];
+      for (const wire of ch.expenses) {
+        const e = await openExpense(wire);
+        if (e) rows.push(e);
+        else if (!(await keyForEpoch(groupId, wire.keyEpoch))) missing.add(wire.keyEpoch);
+      }
+      opened.set(groupId, rows);
+      const prows: PaymentDto[] = [];
+      for (const wire of ch.payments) {
+        const p = await openPayment(wire);
+        if (p) prows.push(p);
+        else if (!(await keyForEpoch(groupId, wire.keyEpoch))) missing.add(wire.keyEpoch);
+      }
+      openedPayments.set(groupId, prows);
+      await noteMissingEpochs(groupId, missing);
     }
 
     await localDb.transaction(
@@ -79,16 +140,17 @@ export async function syncNow(): Promise<void> {
         localDb.attachments,
         localDb.activity,
         localDb.cursors,
+        localDb.groupKeys,
       ],
       async () => {
         const seenGroups = new Set(Object.keys(res.changes));
         for (const [groupId, ch] of Object.entries(res.changes)) {
           await localDb.groups.put(ch.group);
           for (const m of ch.members) await localDb.members.put(m); // leftAt kept: history stays readable
-          for (const e of ch.expenses) {
+          for (const e of opened.get(groupId) ?? []) {
             if (!pendingExpenseIds.has(e.id)) await localDb.expenses.put(e);
           }
-          for (const p of ch.payments) {
+          for (const p of openedPayments.get(groupId) ?? []) {
             if (!pendingPaymentIds.has(p.id)) await localDb.payments.put(p);
           }
           for (const a of ch.attachments) {
@@ -100,13 +162,19 @@ export async function syncNow(): Promise<void> {
         // Groups I'm no longer in (left / deleted) disappear locally.
         for (const g of await localDb.groups.toArray()) {
           if (seenGroups.has(g.id)) continue;
+          // ...but one created offline has not reached the server yet, so its
+          // absence from the pull means nothing. Deleting it here would throw
+          // away a group the moment it was made (design §3.6).
+          if (unsyncedGroupIds.has(g.id)) continue;
           await localDb.groups.delete(g.id);
           await localDb.members.where('groupId').equals(g.id).delete();
           await localDb.expenses.where('groupId').equals(g.id).delete();
           await localDb.payments.where('groupId').equals(g.id).delete();
           await localDb.attachments.where('groupId').equals(g.id).delete();
           await localDb.activity.where('groupId').equals(g.id).delete();
+          await localDb.groupKeys.delete(g.id);
           await localDb.cursors.delete(g.id);
+          forgetGroupKeys(g.id);
         }
       },
     );
@@ -147,6 +215,11 @@ export function startSyncLoop(): void {
   if (loopStarted) return;
   loopStarted = true;
   window.addEventListener('online', () => scheduleSync(0));
+  // Unlocking is the moment a device becomes able to read a group it has
+  // already been sent and had to drop. Syncing on it makes the rewind happen
+  // now rather than on the next poll tick, which is the difference between the
+  // group filling in as the prompt closes and appearing to be empty.
+  window.addEventListener(KEYS_CACHED_EVENT, () => scheduleSync(0));
   document.addEventListener('visibilitychange', () => {
     applyPollCadence();
     if (!document.hidden) scheduleSync(0);
@@ -170,8 +243,12 @@ export function startSyncLoop(): void {
 export async function upsertExpenseLocal(input: UpsertExpense, meId: string): Promise<void> {
   const now = new Date().toISOString();
   const existing = await localDb.expenses.get(input.id);
+  // Sealed first: it is what refuses a bad split, and it names the epoch the
+  // mirror row has to record so a later reader knows which key wrote it.
+  const data = await sealExpense(input);
   const doc: ExpenseDto = {
     ...input,
+    keyEpoch: data.keyEpoch,
     createdBy: existing?.createdBy ?? meId,
     createdAt: existing?.createdAt ?? now,
     updatedBy: meId,
@@ -179,12 +256,13 @@ export async function upsertExpenseLocal(input: UpsertExpense, meId: string): Pr
     version: existing?.version ?? 0,
     deletedAt: null,
   };
+  // The mirror keeps plaintext; only what crosses to the server is sealed.
   const mutation: Mutation = {
     id: uuid(),
     v: MUTATION_SCHEMA_VERSION,
     type: 'expense.upsert',
     groupId: input.groupId,
-    data: input,
+    data,
     clientTs: now,
   };
   await localDb.transaction('rw', [localDb.expenses, localDb.outbox], async () => {
@@ -215,8 +293,10 @@ export async function deleteExpenseLocal(expense: ExpenseDto): Promise<void> {
 export async function restoreExpenseLocal(snapshot: UpsertExpense, meId: string): Promise<void> {
   const now = new Date().toISOString();
   const existing = await localDb.expenses.get(snapshot.id);
+  const data = await sealExpense(snapshot);
   const doc: ExpenseDto = {
     ...snapshot,
+    keyEpoch: data.keyEpoch,
     createdBy: existing?.createdBy ?? meId,
     createdAt: existing?.createdAt ?? now,
     updatedBy: meId,
@@ -229,7 +309,7 @@ export async function restoreExpenseLocal(snapshot: UpsertExpense, meId: string)
     v: MUTATION_SCHEMA_VERSION,
     type: 'expense.restore',
     groupId: snapshot.groupId,
-    data: snapshot,
+    data,
     clientTs: now,
   };
   await localDb.transaction('rw', [localDb.expenses, localDb.outbox], async () => {
@@ -239,11 +319,70 @@ export async function restoreExpenseLocal(snapshot: UpsertExpense, meId: string)
   scheduleSync();
 }
 
+/**
+ * Put a payment back the way a version of it was. Same shape as the expense
+ * path: an explicit, aware restore, exempt from the deletes-win rule.
+ */
+export async function restorePaymentLocal(snapshot: UpsertPayment, meId: string): Promise<void> {
+  const now = new Date().toISOString();
+  const existing = await localDb.payments.get(snapshot.id);
+  const data = await sealPayment(snapshot);
+  const doc: PaymentDto = {
+    ...snapshot,
+    keyEpoch: data.keyEpoch,
+    createdBy: existing?.createdBy ?? meId,
+    updatedAt: now,
+    version: existing?.version ?? 0,
+    deletedAt: null,
+  };
+  const mutation: Mutation = {
+    id: uuid(),
+    v: MUTATION_SCHEMA_VERSION,
+    type: 'payment.restore',
+    groupId: snapshot.groupId,
+    data,
+    clientTs: now,
+  };
+  await localDb.transaction('rw', [localDb.payments, localDb.outbox], async () => {
+    await localDb.payments.put(doc);
+    await localDb.outbox.add({ mutation } as OutboxItem);
+  });
+  scheduleSync();
+}
+
+/**
+ * Undelete a receipt. The bytes survived the delete — it only ever wrote a
+ * tombstone — so this brings the image back and not an empty frame.
+ */
+export async function restoreAttachmentLocal(attachment: AttachmentDto): Promise<void> {
+  const now = new Date().toISOString();
+  const mutation: Mutation = {
+    id: uuid(),
+    v: MUTATION_SCHEMA_VERSION,
+    type: 'attachment.restore',
+    groupId: attachment.groupId,
+    data: {
+      id: attachment.id,
+      expenseId: attachment.expenseId,
+      groupId: attachment.groupId,
+      keyEpoch: attachment.keyEpoch,
+    },
+    clientTs: now,
+  };
+  await localDb.transaction('rw', [localDb.attachments, localDb.outbox], async () => {
+    await localDb.attachments.put({ ...attachment, deletedAt: null });
+    await localDb.outbox.add({ mutation } as OutboxItem);
+  });
+  scheduleSync();
+}
+
 export async function upsertPaymentLocal(input: UpsertPayment, meId: string): Promise<void> {
   const now = new Date().toISOString();
   const existing = await localDb.payments.get(input.id);
+  const data = await sealPayment(input);
   const doc: PaymentDto = {
     ...input,
+    keyEpoch: data.keyEpoch,
     createdBy: existing?.createdBy ?? meId,
     updatedAt: now,
     version: existing?.version ?? 0,
@@ -254,7 +393,7 @@ export async function upsertPaymentLocal(input: UpsertPayment, meId: string): Pr
     v: MUTATION_SCHEMA_VERSION,
     type: 'payment.upsert',
     groupId: input.groupId,
-    data: input,
+    data,
     clientTs: now,
   };
   await localDb.transaction('rw', [localDb.payments, localDb.outbox], async () => {
@@ -281,6 +420,10 @@ async function compressImage(file: Blob): Promise<Blob> {
 }
 
 export async function addPhotoLocal(expense: ExpenseDto, file: Blob, meId: string): Promise<void> {
+  // Pin the epoch now, not at upload time: the row goes to the server long
+  // before the bytes do, and both have to name the same key.
+  const keyEpoch = await currentEpoch(expense.groupId);
+  if (keyEpoch === null) throw new Error('No key for this group yet — wait for it to sync, then try again.');
   const blob = await compressImage(file);
   const id = uuid();
   const now = new Date().toISOString();
@@ -288,6 +431,7 @@ export async function addPhotoLocal(expense: ExpenseDto, file: Blob, meId: strin
     id,
     expenseId: expense.id,
     groupId: expense.groupId,
+    keyEpoch,
     createdBy: meId,
     createdAt: now,
     version: 0,
@@ -298,7 +442,7 @@ export async function addPhotoLocal(expense: ExpenseDto, file: Blob, meId: strin
     v: MUTATION_SCHEMA_VERSION,
     type: 'attachment.upsert',
     groupId: expense.groupId,
-    data: { id, expenseId: expense.id, groupId: expense.groupId },
+    data: { id, expenseId: expense.id, groupId: expense.groupId, keyEpoch },
     clientTs: now,
   };
   await localDb.transaction('rw', [localDb.attachments, localDb.blobs, localDb.outbox], async () => {
@@ -337,13 +481,22 @@ async function uploadPendingBlobs(): Promise<void> {
   for (const row of rows) {
     if (notYetAcked.has(row.id)) continue; // metadata row not on the server yet
     try {
+      const meta = await localDb.attachments.get(row.id);
+      if (!meta) continue; // row vanished under us; the tombstone path cleans the blob up
+      const body = await sealAttachment(
+        row.id,
+        meta.groupId,
+        meta.keyEpoch,
+        new Uint8Array(await row.blob.arrayBuffer()),
+      );
       const res = await fetch(`/api/attachments/${row.id}`, {
         method: 'PUT',
         headers: {
           'x-requested-with': 'spendapp',
-          'content-type': row.blob.type || 'application/octet-stream',
+          // Opaque on purpose: what goes up is ciphertext, not a JPEG.
+          'content-type': 'application/octet-stream',
         },
-        body: row.blob,
+        body: body as BodyInit,
       });
       // 404 = attachment deleted meanwhile, 415 = somehow invalid: drop either way.
       if (res.ok || res.status === 404 || res.status === 415) await localDb.blobs.delete(row.id);
@@ -351,6 +504,74 @@ async function uploadPendingBlobs(): Promise<void> {
       /* offline or flaky — the blob stays queued for the next sync */
     }
   }
+}
+
+/**
+ * Create a group without waiting for a server (design §3.6). The key is minted
+ * and adopted first: a group that exists locally with no key can hold nothing,
+ * and the mutation would then queue behind an unusable group forever.
+ */
+export async function createGroupLocal(
+  name: string,
+  defaultCurrency: string,
+  me: { id: string; displayName: string },
+): Promise<string> {
+  const id = uuid();
+  const { key, wrapped } = await mintGroupKey();
+  await adoptGroupKey(id, 0, key);
+
+  const mutation: Mutation = {
+    id: uuid(),
+    v: MUTATION_SCHEMA_VERSION,
+    type: 'group.create',
+    groupId: id,
+    data: { id, name, defaultCurrency, wrappedKey: wrapped },
+    clientTs: new Date().toISOString(),
+  };
+  await localDb.transaction('rw', [localDb.groups, localDb.members, localDb.outbox], async () => {
+    await localDb.groups.put({ id, name, defaultCurrency, version: 0 });
+    // The creator is the first admin here as well as server-side, or the
+    // members tab would offer them nothing until the first sync landed.
+    await localDb.members.put({
+      groupId: id,
+      userId: me.id,
+      displayName: me.displayName,
+      leftAt: null,
+      isPlaceholder: false,
+      role: 'admin',
+      version: 0,
+    });
+    await localDb.outbox.add({ mutation } as OutboxItem);
+  });
+  scheduleSync();
+  return id;
+}
+
+/** Name someone with no account, offline. Their id is minted here (design §3.6). */
+export async function addPlaceholderLocal(groupId: string, displayName: string): Promise<string> {
+  const id = uuid();
+  const mutation: Mutation = {
+    id: uuid(),
+    v: MUTATION_SCHEMA_VERSION,
+    type: 'member.add',
+    groupId,
+    data: { id, groupId, displayName },
+    clientTs: new Date().toISOString(),
+  };
+  await localDb.transaction('rw', [localDb.members, localDb.outbox], async () => {
+    await localDb.members.put({
+      groupId,
+      userId: id,
+      displayName,
+      leftAt: null,
+      isPlaceholder: true,
+      role: 'member',
+      version: 0,
+    });
+    await localDb.outbox.add({ mutation } as OutboxItem);
+  });
+  scheduleSync();
+  return id;
 }
 
 /** A comment is an activity row of type 'comment'; written optimistically. */
@@ -373,7 +594,12 @@ export async function addCommentLocal(expense: ExpenseDto, text: string, meId: s
     v: MUTATION_SCHEMA_VERSION,
     type: 'comment.create',
     groupId: expense.groupId,
-    data: { id, expenseId: expense.id, groupId: expense.groupId, text },
+    data: {
+      id,
+      expenseId: expense.id,
+      groupId: expense.groupId,
+      ...(await sealComment(id, expense.groupId, text)),
+    },
     clientTs: now,
   };
   await localDb.transaction('rw', [localDb.activity, localDb.outbox], async () => {

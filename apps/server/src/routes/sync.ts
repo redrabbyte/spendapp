@@ -12,6 +12,7 @@ import {
 import { db, schema } from '../db/index.js';
 import { applyAttachmentDelete, applyAttachmentUpsert } from '../lib/attachments.js';
 import { applyCommentCreate } from '../lib/comments.js';
+import { applyGroupCreate, applyMemberAdd } from '../lib/create.js';
 import { applyImportRecord, applyImportRevert } from '../lib/imports.js';
 import { applyExpenseDelete, applyExpenseUpsert } from '../lib/expenses.js';
 import { applyPaymentDelete, applyPaymentUpsert } from '../lib/payments.js';
@@ -44,7 +45,7 @@ export async function syncRoutes(app: FastifyInstance): Promise<void> {
       .where(and(eq(schema.groupMembers.userId, userId), isNull(schema.groupMembers.leftAt)));
     const changes: Record<string, GroupChanges> = {};
     for (const { groupId } of memberships) {
-      const change = await collectGroupChanges(groupId, cursors[groupId] ?? 0);
+      const change = await collectGroupChanges(groupId, cursors[groupId] ?? 0, userId);
       if (change) changes[groupId] = change;
     }
 
@@ -66,6 +67,16 @@ async function applyMutation(userId: string, m: Mutation): Promise<MutationResul
   // v currently has one version; when it bumps, up-convert old shapes here.
   try {
     switch (m.type) {
+      case 'group.create': {
+        if (m.data.id !== m.groupId) return { id: m.id, status: 'rejected', reason: 'group mismatch' };
+        const r = await applyGroupCreate(userId, m.data, m.id);
+        return r.ok ? { id: m.id, status: 'applied' } : { id: m.id, status: 'rejected', reason: r.reason };
+      }
+      case 'member.add': {
+        if (m.data.groupId !== m.groupId) return { id: m.id, status: 'rejected', reason: 'group mismatch' };
+        const r = await applyMemberAdd(userId, m.data, m.id);
+        return r.ok ? { id: m.id, status: 'applied' } : { id: m.id, status: 'rejected', reason: r.reason };
+      }
       case 'expense.upsert': {
         if (m.data.groupId !== m.groupId) return { id: m.id, status: 'rejected', reason: 'group mismatch' };
         const r = await applyExpenseUpsert(userId, m.data, m.id);
@@ -85,6 +96,11 @@ async function applyMutation(userId: string, m: Mutation): Promise<MutationResul
         const r = await applyPaymentUpsert(userId, m.data, m.id);
         return r.ok ? { id: m.id, status: 'applied' } : { id: m.id, status: 'rejected', reason: r.reason };
       }
+      case 'payment.restore': {
+        if (m.data.groupId !== m.groupId) return { id: m.id, status: 'rejected', reason: 'group mismatch' };
+        const r = await applyPaymentUpsert(userId, m.data, m.id, { revive: true });
+        return r.ok ? { id: m.id, status: 'applied' } : { id: m.id, status: 'rejected', reason: r.reason };
+      }
       case 'payment.delete': {
         const r = await applyPaymentDelete(userId, m.data.paymentId, m.id);
         return r.ok ? { id: m.id, status: 'applied' } : { id: m.id, status: 'rejected', reason: r.reason };
@@ -92,6 +108,11 @@ async function applyMutation(userId: string, m: Mutation): Promise<MutationResul
       case 'attachment.upsert': {
         if (m.data.groupId !== m.groupId) return { id: m.id, status: 'rejected', reason: 'group mismatch' };
         const r = await applyAttachmentUpsert(userId, m.data, m.id);
+        return r.ok ? { id: m.id, status: 'applied' } : { id: m.id, status: 'rejected', reason: r.reason };
+      }
+      case 'attachment.restore': {
+        if (m.data.groupId !== m.groupId) return { id: m.id, status: 'rejected', reason: 'group mismatch' };
+        const r = await applyAttachmentUpsert(userId, m.data, m.id, { revive: true });
         return r.ok ? { id: m.id, status: 'applied' } : { id: m.id, status: 'rejected', reason: r.reason };
       }
       case 'attachment.delete': {
@@ -120,7 +141,11 @@ async function applyMutation(userId: string, m: Mutation): Promise<MutationResul
   }
 }
 
-async function collectGroupChanges(groupId: string, cursor: number): Promise<GroupChanges | null> {
+async function collectGroupChanges(
+  groupId: string,
+  cursor: number,
+  userId: string,
+): Promise<GroupChanges | null> {
   const groupRows = await db
     .select()
     .from(schema.groups)
@@ -129,12 +154,27 @@ async function collectGroupChanges(groupId: string, cursor: number): Promise<Gro
   const group = groupRows[0];
   if (!group) return null;
 
+  // Sent in full every pull, ignoring the cursor: a handful of rows, and a
+  // client that missed one would hold ciphertext it cannot open with no way to
+  // notice. Cheap insurance against the worst failure mode in the design.
+  const keys = await db
+    .select({
+      groupId: schema.groupKeys.groupId,
+      epoch: schema.groupKeys.epoch,
+      epk: schema.groupKeys.epk,
+      iv: schema.groupKeys.iv,
+      ct: schema.groupKeys.ct,
+    })
+    .from(schema.groupKeys)
+    .where(and(eq(schema.groupKeys.groupId, groupId), eq(schema.groupKeys.userId, userId)));
+
   const members = await db
     .select({
       groupId: schema.groupMembers.groupId,
       userId: schema.groupMembers.userId,
       leftAt: schema.groupMembers.leftAt,
       role: schema.groupMembers.role,
+      aliasOf: schema.groupMembers.aliasOf,
       version: schema.groupMembers.version,
       displayName: schema.users.displayName,
       isPlaceholder: schema.users.isPlaceholder,
@@ -147,13 +187,6 @@ async function collectGroupChanges(groupId: string, cursor: number): Promise<Gro
     .select()
     .from(schema.expenses)
     .where(and(eq(schema.expenses.groupId, groupId), gt(schema.expenses.version, cursor)));
-  const splitRows = expenseRows.length
-    ? await db
-        .select()
-        .from(schema.expenseSplits)
-        .where(inArray(schema.expenseSplits.expenseId, expenseRows.map((e) => e.id)))
-    : [];
-
   const paymentRows = await db
     .select()
     .from(schema.payments)
@@ -176,6 +209,7 @@ async function collectGroupChanges(groupId: string, cursor: number): Promise<Gro
       defaultCurrency: group.defaultCurrency,
       version: group.version,
     },
+    keys,
     members: members.map((m) => ({
       groupId: m.groupId,
       userId: m.userId,
@@ -183,22 +217,15 @@ async function collectGroupChanges(groupId: string, cursor: number): Promise<Gro
       leftAt: m.leftAt?.toISOString() ?? null,
       isPlaceholder: m.isPlaceholder,
       role: m.role === 'admin' ? ('admin' as const) : ('member' as const),
+      aliasOf: m.aliasOf,
       version: m.version,
     })),
     expenses: expenseRows.map((e) => ({
       id: e.id,
       groupId: e.groupId,
-      description: e.description,
-      category: e.category,
-      note: e.note,
-      expenseDate: e.expenseDate,
-      currency: e.currency,
-      amountMinor: e.amountMinor,
-      rateToDefault: e.rateToDefault,
-      splitMeta: e.splitMeta as SplitMeta,
-      splits: splitRows
-        .filter((s) => s.expenseId === e.id)
-        .map((s) => ({ userId: s.userId, paidMinor: s.paidMinor, owedMinor: s.owedMinor })),
+      keyEpoch: e.keyEpoch,
+      iv: e.iv,
+      ct: e.ct,
       createdBy: e.createdBy,
       createdAt: e.createdAt.toISOString(),
       updatedBy: e.updatedBy,
@@ -209,15 +236,9 @@ async function collectGroupChanges(groupId: string, cursor: number): Promise<Gro
     payments: paymentRows.map((p) => ({
       id: p.id,
       groupId: p.groupId,
-      fromUser: p.fromUser,
-      toUser: p.toUser,
-      currency: p.currency,
-      amountMinor: p.amountMinor,
-      settlesCurrency: p.settlesCurrency,
-      rate: p.rate,
-      settledMinor: p.settledMinor,
-      paidOn: p.paidOn,
-      note: p.note,
+      keyEpoch: p.keyEpoch,
+      iv: p.iv,
+      ct: p.ct,
       createdBy: p.createdBy,
       updatedAt: p.updatedAt.toISOString(),
       version: p.version,
@@ -227,6 +248,7 @@ async function collectGroupChanges(groupId: string, cursor: number): Promise<Gro
       id: a.id,
       expenseId: a.expenseId,
       groupId: a.groupId,
+      keyEpoch: a.keyEpoch,
       createdBy: a.createdBy,
       createdAt: a.createdAt.toISOString(),
       version: a.version,

@@ -1,11 +1,12 @@
-import { and, eq, isNull, ne } from 'drizzle-orm';
+import { and, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { admitSchema, publishKeysSchema } from '@spendapp/shared';
 import { db, schema } from '../db/index.js';
 import { activeAdminIds, bumpGroupVersion, isAdmin, isMember, logActivity } from '../lib/groups.js';
-import { claimPlaceholder } from '../lib/members.js';
+import { leaveGroup } from '../lib/leave.js';
+import { claimPlaceholder, unclaimMember } from '../lib/members.js';
 import { notifyGroup, notifyUsers } from '../lib/notify.js';
-import { purgeGroup } from '../lib/purge.js';
 
 const decisionSchema = z.object({ decision: z.enum(['approve', 'reject']) });
 const roleSchema = z.object({ role: z.enum(['admin', 'member']) });
@@ -29,13 +30,65 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
         claimMemberId: schema.joinRequests.claimMemberId,
         requestedAt: schema.joinRequests.requestedAt,
         displayName: schema.users.displayName,
+        // Both halves of the SAS the admin reads out (design §4.3). Derived
+        // client-side from these rather than sent as six digits: a number the
+        // server computed proves nothing about the person on the phone.
+        publicKey: schema.users.publicKey,
+        inviteToken: schema.joinRequests.inviteToken,
+        // Which invite they followed decides whether approving hands over the
+        // whole keyring or forces a rotation (design §4.7). The approving
+        // client needs to know before it acts, not after.
+        shareHistory: schema.invites.shareHistory,
       })
       .from(schema.joinRequests)
       .innerJoin(schema.users, eq(schema.users.id, schema.joinRequests.userId))
+      // Left join: a revoked or deleted invite must not hide a pending row.
+      .leftJoin(schema.invites, eq(schema.invites.token, schema.joinRequests.inviteToken))
       .where(and(eq(schema.joinRequests.groupId, groupId), eq(schema.joinRequests.status, 'pending')));
 
     return {
-      requests: rows.map((r) => ({ ...r, requestedAt: r.requestedAt.toISOString() })),
+      requests: rows.map((r) => ({
+        ...r,
+        requestedAt: r.requestedAt.toISOString(),
+        shareHistory: r.shareHistory ?? true, // invite gone: fall back to the norm
+      })),
+    };
+  });
+
+  /**
+   * Who can still open which epoch. The server holds only wraps, so this is a
+   * row count and reveals nothing it does not already store — but it is the
+   * only way a client can know it is the **last** holder of an epoch, which
+   * §4.7 says must be a loud warning before leaving: once nobody left holds
+   * epoch 0, no rotation can ever recover what was written under it.
+   */
+  app.get('/api/groups/:groupId/key-coverage', { preHandler: app.requireUser }, async (req, reply) => {
+    const { groupId } = req.params as { groupId: string };
+    const userId = req.user!.id;
+    if (!(await isMember(userId, groupId))) return reply.code(404).send({ error: 'not found' });
+
+    const rows = await db
+      .select({ epoch: schema.groupKeys.epoch, userId: schema.groupKeys.userId })
+      .from(schema.groupKeys)
+      .innerJoin(
+        schema.groupMembers,
+        and(
+          eq(schema.groupMembers.groupId, schema.groupKeys.groupId),
+          eq(schema.groupMembers.userId, schema.groupKeys.userId),
+        ),
+      )
+      .where(and(eq(schema.groupKeys.groupId, groupId), isNull(schema.groupMembers.leftAt)));
+
+    const byEpoch = new Map<number, Set<string>>();
+    for (const r of rows) {
+      const set = byEpoch.get(r.epoch) ?? new Set<string>();
+      set.add(r.userId);
+      byEpoch.set(r.epoch, set);
+    }
+    return {
+      epochs: [...byEpoch]
+        .map(([epoch, holders]) => ({ epoch, holders: holders.size, mine: holders.has(userId) }))
+        .sort((a, b) => a.epoch - b.epoch),
     };
   });
 
@@ -106,7 +159,191 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
     // The joiner has been waiting on this, so they are told directly.
     notifyUsers([userId], groupName, 'Your request to join was approved', `/g/${groupId}`);
     notifyGroup(groupId, userId, 'joined the group', `/g/${groupId}?tab=members`);
-    return { status: 'approved' as const };
+
+    // Membership alone gets them ciphertext. The approving client has to
+    // follow up by wrapping its keyring to this public key, which is why it
+    // is returned here rather than fetched separately.
+    const joiner = await db
+      .select({ publicKey: schema.users.publicKey })
+      .from(schema.users)
+      .where(eq(schema.users.id, userId))
+      .limit(1);
+    return { status: 'approved' as const, publicKey: joiner[0]?.publicKey ?? null };
+  });
+
+  /**
+   * Admit someone whose code an admin just scanned in person (design §4.2).
+   * There is no request to approve here: the scan *is* the authorisation, and
+   * it happened face to face, so this is the one join path that does not wait.
+   *
+   * The public key is echoed back rather than taken on trust. The client wraps
+   * to the key it scanned, never to the one stored here, so substituting a key
+   * server-side yields nothing readable — but saying that the two disagree is
+   * worth doing, because there is no innocent reason for it.
+   */
+  app.post('/api/groups/:groupId/admit', { preHandler: app.requireUser }, async (req, reply) => {
+    const { groupId } = req.params as { groupId: string };
+    const adminId = req.user!.id;
+    if (!(await isAdmin(adminId, groupId))) return reply.code(404).send({ error: 'not found' });
+
+    const parsed = admitSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'invalid input' });
+    const { userId, publicKey, claimMemberId } = parsed.data;
+
+    const rows = await db
+      .select({
+        publicKey: schema.users.publicKey,
+        displayName: schema.users.displayName,
+        isPlaceholder: schema.users.isPlaceholder,
+      })
+      .from(schema.users)
+      .where(eq(schema.users.id, userId))
+      .limit(1);
+    const joiner = rows[0];
+    if (!joiner || joiner.isPlaceholder) return reply.code(404).send({ error: 'no such account' });
+    if (await isMember(userId, groupId)) return { status: 'already a member' as const, keyMatches: true };
+
+    const now = new Date();
+    if (claimMemberId) {
+      await claimPlaceholder(userId, groupId, claimMemberId);
+    } else {
+      await db.transaction(async (tx) => {
+        const version = await bumpGroupVersion(tx, groupId);
+        await tx
+          .insert(schema.groupMembers)
+          .values({ groupId, userId, joinedAt: now, role: 'member', version })
+          .onDuplicateKeyUpdate({ set: { leftAt: null, version } });
+        await logActivity(tx, {
+          groupId,
+          version,
+          actorId: userId,
+          type: 'member.joined',
+          entityType: 'member',
+          entityId: userId,
+          payload: { via: 'scan', approvedBy: adminId },
+        });
+      });
+    }
+
+    // A request they filed earlier is moot now that they are in; leaving it
+    // pending would have an admin decide something already decided.
+    await db
+      .update(schema.joinRequests)
+      .set({ status: 'approved', decidedBy: adminId, decidedAt: now })
+      .where(
+        and(
+          eq(schema.joinRequests.groupId, groupId),
+          eq(schema.joinRequests.userId, userId),
+          eq(schema.joinRequests.status, 'pending'),
+        ),
+      );
+
+    notifyGroup(groupId, userId, 'joined the group', `/g/${groupId}?tab=members`);
+    return { status: 'admitted' as const, keyMatches: joiner.publicKey === publicKey };
+  });
+
+  /**
+   * Store group keys wrapped to members. The server checks who may publish and
+   * writes the blobs unread — it cannot verify that a wrap contains the key it
+   * claims to, so this is trust within a group, exactly as rotation is.
+   *
+   * Idempotent: re-publishing the same (epoch, member) overwrites, which is
+   * what makes a failed hand-off safe to retry.
+   */
+  app.post('/api/groups/:groupId/keys', { preHandler: app.requireUser }, async (req, reply) => {
+    const { groupId } = req.params as { groupId: string };
+    if (!(await isMember(req.user!.id, groupId))) return reply.code(404).send({ error: 'not found' });
+
+    const parsed = publishKeysSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'invalid input' });
+
+    // Only for people actually in the group: otherwise this would be a way to
+    // hand a group's keys to an arbitrary account.
+    const members = await db
+      .select({ userId: schema.groupMembers.userId })
+      .from(schema.groupMembers)
+      .where(and(eq(schema.groupMembers.groupId, groupId), isNull(schema.groupMembers.leftAt)));
+    const allowed = new Set(members.map((m) => m.userId));
+    const wraps = parsed.data.wraps.filter((w) => allowed.has(w.userId));
+    if (wraps.length === 0) return reply.code(400).send({ error: 'no wraps for current members' });
+
+    const now = new Date();
+    if (parsed.data.mint) {
+      // First-writer-wins, decided here rather than by whichever request
+      // happened to land last. Losing is not an error: the winner's key is
+      // just as good, and the loser will pull it on its next sync.
+      let claimed = false;
+      await db.transaction(async (tx) => {
+        const epochs = [...new Set(wraps.map((w) => w.epoch))];
+        const existing = await tx
+          .select({ epoch: schema.groupKeys.epoch })
+          .from(schema.groupKeys)
+          .where(and(eq(schema.groupKeys.groupId, groupId), inArray(schema.groupKeys.epoch, epochs)))
+          .for('update');
+        if (existing.length > 0) return;
+        await tx
+          .insert(schema.groupKeys)
+          .values(wraps.map((w) => ({ groupId, epoch: w.epoch, userId: w.userId, epk: w.epk, iv: w.iv, ct: w.ct, createdAt: now })));
+        claimed = true;
+      });
+      return { stored: claimed ? wraps.length : 0, skipped: 0, minted: claimed };
+    }
+
+    await db
+      .insert(schema.groupKeys)
+      .values(wraps.map((w) => ({ groupId, epoch: w.epoch, userId: w.userId, epk: w.epk, iv: w.iv, ct: w.ct, createdAt: now })))
+      .onDuplicateKeyUpdate({ set: { epk: sql`values(epk)`, iv: sql`values(iv)`, ct: sql`values(ct)` } });
+
+    return { stored: wraps.length, skipped: parsed.data.wraps.length - wraps.length };
+  });
+
+  /**
+   * Public keys of everyone currently in the group, so a member's client can
+   * wrap a group key to all of them. Public by design — these are the halves
+   * meant to be handed out, and membership is already visible to members.
+   */
+  app.get('/api/groups/:groupId/member-keys', { preHandler: app.requireUser }, async (req, reply) => {
+    const { groupId } = req.params as { groupId: string };
+    if (!(await isMember(req.user!.id, groupId))) return reply.code(404).send({ error: 'not found' });
+
+    const rows = await db
+      .select({
+        userId: schema.groupMembers.userId,
+        displayName: schema.users.displayName,
+        publicKey: schema.users.publicKey,
+      })
+      .from(schema.groupMembers)
+      .innerJoin(schema.users, eq(schema.users.id, schema.groupMembers.userId))
+      .where(
+        and(
+          eq(schema.groupMembers.groupId, groupId),
+          isNull(schema.groupMembers.leftAt),
+          eq(schema.users.isPlaceholder, false),
+        ),
+      );
+    // A member who has not logged in since §4.1 has no key yet, so nothing can
+    // be wrapped to them. Naming them is what lets the UI say who will be left
+    // out rather than silently excluding someone.
+    return {
+      members: rows.map((r) => ({ userId: r.userId, displayName: r.displayName, publicKey: r.publicKey })),
+    };
+  });
+
+  /**
+   * Undo a claim. Admin-only, like every other membership decision, and the
+   * only way back from picking the wrong name — which is otherwise permanent
+   * and leaves that name unusable by the person it belonged to.
+   */
+  app.post('/api/groups/:groupId/members/:userId/unclaim', { preHandler: app.requireUser }, async (req, reply) => {
+    const { groupId, userId } = req.params as { groupId: string; userId: string };
+    if (!(await isAdmin(req.user!.id, groupId))) return reply.code(404).send({ error: 'not found' });
+    try {
+      await unclaimMember(req.user!.id, groupId, userId);
+    } catch (err) {
+      const status = (err as { statusCode?: number }).statusCode ?? 500;
+      return reply.code(status).send({ error: (err as Error).message });
+    }
+    return { status: 'unclaimed' as const };
   });
 
   /**
@@ -165,94 +402,16 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
   });
 
   /**
-   * Leaving is always allowed — nobody should be stuck in a group. Two knock-on
-   * cases are handled here rather than refused: an admin leaving hands the role
-   * on, and the last real member leaving takes the group's data with them.
+   * Leaving is always allowed — nobody should be stuck in a group. The two
+   * knock-on cases (succession, and the last member taking the data with them)
+   * live in lib/leave.ts, because deleting an account does this to every group
+   * at once and has to behave identically.
    */
   app.post('/api/groups/:groupId/leave', { preHandler: app.requireUser }, async (req, reply) => {
     const { groupId } = req.params as { groupId: string };
     const userId = req.user!.id;
     if (!(await isMember(userId, groupId))) return reply.code(404).send({ error: 'not found' });
-
-    // Placeholders are names, not people: they cannot keep a group alive.
-    const remaining = await db
-      .select({
-        userId: schema.groupMembers.userId,
-        role: schema.groupMembers.role,
-        joinedAt: schema.groupMembers.joinedAt,
-        isPlaceholder: schema.users.isPlaceholder,
-      })
-      .from(schema.groupMembers)
-      .innerJoin(schema.users, eq(schema.users.id, schema.groupMembers.userId))
-      .where(
-        and(
-          eq(schema.groupMembers.groupId, groupId),
-          isNull(schema.groupMembers.leftAt),
-          ne(schema.groupMembers.userId, userId),
-        ),
-      );
-    const realRemaining = remaining.filter((m) => !m.isPlaceholder);
-
-    if (realRemaining.length === 0) {
-      await purgeGroup(groupId);
-      return { status: 'deleted' as const };
-    }
-
-    // Somebody has to be able to approve joins after this.
-    const heir =
-      realRemaining.some((m) => m.role === 'admin') || !(await isAdmin(userId, groupId))
-        ? null
-        : [...realRemaining].sort((a, b) => a.joinedAt.getTime() - b.joinedAt.getTime())[0]!;
-
-    const now = new Date();
-    await db.transaction(async (tx) => {
-      const version = await bumpGroupVersion(tx, groupId);
-      await tx
-        .update(schema.groupMembers)
-        .set({ leftAt: now, version })
-        .where(and(eq(schema.groupMembers.groupId, groupId), eq(schema.groupMembers.userId, userId)));
-      await logActivity(tx, {
-        groupId,
-        version,
-        actorId: userId,
-        type: 'member.left',
-        entityType: 'member',
-        entityId: userId,
-        payload: {},
-      });
-      if (heir) {
-        const v2 = await bumpGroupVersion(tx, groupId);
-        await tx
-          .update(schema.groupMembers)
-          .set({ role: 'admin', version: v2 })
-          .where(and(eq(schema.groupMembers.groupId, groupId), eq(schema.groupMembers.userId, heir.userId)));
-        await logActivity(tx, {
-          groupId,
-          version: v2,
-          actorId: userId,
-          type: 'member.promoted',
-          entityType: 'member',
-          entityId: heir.userId,
-          payload: { role: 'admin', reason: 'last admin left' },
-        });
-      }
-    });
-
-    notifyGroup(groupId, userId, 'left the group', `/g/${groupId}?tab=members`);
-    if (heir) {
-      const groupRows = await db
-        .select({ name: schema.groups.name })
-        .from(schema.groups)
-        .where(eq(schema.groups.id, groupId))
-        .limit(1);
-      notifyUsers(
-        [heir.userId],
-        groupRows[0]?.name ?? 'your group',
-        'You are now an admin — the last one left the group',
-        `/g/${groupId}?tab=members`,
-      );
-    }
-    return { status: 'left' as const };
+    return { status: await leaveGroup(userId, groupId) };
   });
 
   app.post('/api/groups/:groupId/members/:userId/role', { preHandler: app.requireUser }, async (req, reply) => {

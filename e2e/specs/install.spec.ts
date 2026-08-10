@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '../fixtures/api';
 
+
 /**
  * Installing the PWA. `beforeinstallprompt` is Chromium-only and fires once,
  * so it is dispatched by hand; iOS has no such event at all and is emulated

@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { api, ApiError } from './api';
 import { wipeLocalDb } from './db';
+import { forgetKeys } from './keys';
 import { startSyncLoop } from './sync';
 import type { Me } from './types';
 
@@ -55,6 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(async () => {
     await api('/api/auth/logout', { method: 'POST' }).catch(() => {});
     localStorage.removeItem(CACHE_KEY);
+    forgetKeys(); // the in-memory copy outlives the database wipe otherwise
     await wipeLocalDb();
     location.assign('/login');
   }, []);

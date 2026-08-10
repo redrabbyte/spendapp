@@ -2,32 +2,77 @@ import { useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import type { AttachmentDto, ExpenseDto } from '@spendapp/shared';
 import { localDb } from '../db';
+import { fetchReceiptBlob } from '../receipts';
 import { addPhotoLocal, deleteAttachmentLocal } from '../sync';
 
-/** Renders the queued local blob while it waits to upload, else the server URL. */
-function AttachmentImg({ id, className, onClick }: { id: string; className: string; onClick?: () => void }) {
+/**
+ * Receipts fetched from the server are ciphertext, so there is no URL an <img>
+ * can be pointed at: every one is fetched, opened and turned into an object
+ * URL. Decrypted bytes are cached per attachment id so opening the viewer on a
+ * photo already shown as a thumbnail costs nothing.
+ */
+const decrypted = new Map<string, Promise<Blob | null>>();
+
+function openCached(a: AttachmentDto): Promise<Blob | null> {
+  const hit = decrypted.get(a.id);
+  if (hit) return hit;
+  const p = fetchReceiptBlob(a).catch(() => null);
+  decrypted.set(a.id, p);
+  void p.then((b) => {
+    if (!b) decrypted.delete(a.id); // a failure should not be remembered forever
+  });
+  return p;
+}
+
+/** Renders the queued local blob while it waits to upload, else the decrypted one. */
+function AttachmentImg({
+  attachment,
+  className,
+  onClick,
+}: {
+  attachment: AttachmentDto;
+  className: string;
+  onClick?: () => void;
+}) {
+  const id = attachment.id;
   const blobRow = useLiveQuery(() => localDb.blobs.get(id), [id]);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    if (!blobRow) {
-      setBlobUrl(null);
-      return;
+    let url: string | null = null;
+    let live = true;
+    const show = (b: Blob) => {
+      if (!live) return;
+      url = URL.createObjectURL(b);
+      setBlobUrl(url);
+    };
+    if (blobRow) show(blobRow.blob);
+    else {
+      void openCached(attachment).then((b) => {
+        if (!live) return;
+        if (b) show(b);
+        else setFailed(true);
+      });
     }
-    const url = URL.createObjectURL(blobRow.blob);
-    setBlobUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [blobRow]);
+    return () => {
+      live = false;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [blobRow, attachment]);
 
-  return (
-    <img
-      src={blobUrl ?? `/api/attachments/${id}`}
-      className={className}
-      loading="lazy"
-      alt="receipt"
-      onClick={onClick}
-    />
-  );
+  if (failed) {
+    return (
+      <div
+        className={`${className} flex items-center justify-center bg-slate-100 text-center text-[10px] text-slate-500 dark:bg-slate-800`}
+        onClick={onClick}
+      >
+        can’t decrypt
+      </div>
+    );
+  }
+  if (!blobUrl) return <div className={`${className} bg-slate-100 dark:bg-slate-800`} />;
+  return <img src={blobUrl} className={className} loading="lazy" alt="receipt" onClick={onClick} />;
 }
 
 export function AttachmentRow({ expense, meId }: { expense: ExpenseDto; meId: string }) {
@@ -61,7 +106,7 @@ export function AttachmentRow({ expense, meId }: { expense: ExpenseDto; meId: st
       {(attachments ?? []).map((a) => (
         <AttachmentImg
           key={a.id}
-          id={a.id}
+          attachment={a}
           className="h-16 w-16 cursor-pointer rounded object-cover"
           onClick={() => setViewing(a)}
         />
@@ -98,7 +143,7 @@ export function AttachmentRow({ expense, meId }: { expense: ExpenseDto; meId: st
           className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-black/80 p-4"
           onClick={() => setViewing(null)}
         >
-          <AttachmentImg id={viewing.id} className="max-h-[80vh] max-w-full rounded object-contain" />
+          <AttachmentImg attachment={viewing} className="max-h-[80vh] max-w-full rounded object-contain" />
           <button
             className="rounded bg-white/90 px-3 py-1 text-sm text-red-600"
             onClick={(e) => {

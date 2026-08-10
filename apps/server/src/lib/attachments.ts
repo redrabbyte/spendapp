@@ -1,4 +1,3 @@
-import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { and, count, eq, isNull } from 'drizzle-orm';
 import { config } from '../config.js';
@@ -12,8 +11,9 @@ export const attachmentPath = (id: string): string => path.join(config.receiptsD
 
 export async function applyAttachmentUpsert(
   userId: string,
-  input: { id: string; expenseId: string; groupId: string },
+  input: { id: string; expenseId: string; groupId: string; keyEpoch: number },
   mutationId?: string,
+  opts: { revive?: boolean } = {},
 ): Promise<ApplyResult> {
   if (!(await isMember(userId, input.groupId))) return { ok: false, status: 404, reason: 'not found' };
 
@@ -48,17 +48,34 @@ export async function applyAttachmentUpsert(
       failure = { ok: false, status: 409, reason: 'id belongs to another group' };
       return;
     }
-    if (existing?.deletedAt) {
+    if (existing?.deletedAt && !opts.revive) {
       failure = { ok: false, status: 409, reason: 'attachment was deleted' };
       return;
     }
 
     const version = await bumpGroupVersion(tx, input.groupId);
-    if (!existing) {
+    if (existing?.deletedAt && opts.revive) {
+      // The file was never removed on a soft delete, so clearing the tombstone
+      // brings the image itself back rather than an empty frame.
+      await tx
+        .update(schema.attachments)
+        .set({ deletedAt: null, version })
+        .where(eq(schema.attachments.id, input.id));
+      await logActivity(tx, {
+        groupId: input.groupId,
+        version,
+        actorId: userId,
+        type: 'attachment.restored',
+        entityType: 'attachment',
+        entityId: input.id,
+        payload: { expenseId: input.expenseId },
+      });
+    } else if (!existing) {
       await tx.insert(schema.attachments).values({
         id: input.id,
         expenseId: input.expenseId,
         groupId: input.groupId,
+        keyEpoch: input.keyEpoch,
         createdBy: userId,
         createdAt: now,
         version,
@@ -117,7 +134,8 @@ export async function applyAttachmentDelete(
       await tx.insert(schema.processedMutations).values({ mutationId, userId, createdAt: now });
     }
   });
-  // Best-effort file cleanup; the tombstone is the source of truth.
-  await fs.rm(attachmentPath(attachmentId), { force: true }).catch(() => {});
+  // The file stays. A delete here is a tombstone, and undelete has to bring
+  // the image back and not an empty frame — purging the group is what actually
+  // removes the bytes.
   return { ok: true };
 }

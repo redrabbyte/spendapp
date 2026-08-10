@@ -1,7 +1,7 @@
 {
   "version": "5",
   "dialect": "mysql",
-  "id": "efcc8708-607c-471e-b9ec-dee6a80dcc12",
+  "id": "61a59484-601a-432d-8b34-ecf728f05eeb",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "activity": {
@@ -118,6 +118,13 @@
           "notNull": true,
           "autoincrement": false
         },
+        "key_epoch": {
+          "name": "key_epoch",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
         "created_by": {
           "name": "created_by",
           "type": "char(36)",
@@ -177,52 +184,6 @@
       "uniqueConstraints": {},
       "checkConstraint": {}
     },
-    "expense_splits": {
-      "name": "expense_splits",
-      "columns": {
-        "expense_id": {
-          "name": "expense_id",
-          "type": "char(36)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "char(36)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "paid_minor": {
-          "name": "paid_minor",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "owed_minor": {
-          "name": "owed_minor",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {
-        "expense_splits_expense_id_user_id_pk": {
-          "name": "expense_splits_expense_id_user_id_pk",
-          "columns": [
-            "expense_id",
-            "user_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "checkConstraint": {}
-    },
     "expenses": {
       "name": "expenses",
       "columns": {
@@ -240,51 +201,23 @@
           "notNull": true,
           "autoincrement": false
         },
-        "description": {
-          "name": "description",
-          "type": "varchar(200)",
+        "key_epoch": {
+          "name": "key_epoch",
+          "type": "int",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "category": {
-          "name": "category",
-          "type": "varchar(40)",
+        "iv": {
+          "name": "iv",
+          "type": "varchar(32)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "note": {
-          "name": "note",
+        "ct": {
+          "name": "ct",
           "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "expense_date": {
-          "name": "expense_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "currency": {
-          "name": "currency",
-          "type": "char(3)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "amount_minor": {
-          "name": "amount_minor",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "split_meta": {
-          "name": "split_meta",
-          "type": "json",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -402,6 +335,83 @@
       "uniqueConstraints": {},
       "checkConstraint": {}
     },
+    "group_keys": {
+      "name": "group_keys",
+      "columns": {
+        "group_id": {
+          "name": "group_id",
+          "type": "char(36)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "epoch": {
+          "name": "epoch",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "char(36)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "epk": {
+          "name": "epk",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "iv": {
+          "name": "iv",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ct": {
+          "name": "ct",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "datetime(3)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "gk_user_group": {
+          "name": "gk_user_group",
+          "columns": [
+            "user_id",
+            "group_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "group_keys_group_id_epoch_user_id_pk": {
+          "name": "group_keys_group_id_epoch_user_id_pk",
+          "columns": [
+            "group_id",
+            "epoch",
+            "user_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
     "group_members": {
       "name": "group_members",
       "columns": {
@@ -429,6 +439,21 @@
         "left_at": {
           "name": "left_at",
           "type": "datetime(3)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "role": {
+          "name": "role",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'member'"
+        },
+        "alias_of": {
+          "name": "alias_of",
+          "type": "char(36)",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
@@ -583,6 +608,30 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "max_uses": {
+          "name": "max_uses",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "use_count": {
+          "name": "use_count",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "share_history": {
+          "name": "share_history",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
         }
       },
       "indexes": {},
@@ -592,6 +641,90 @@
           "name": "invites_token",
           "columns": [
             "token"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "join_requests": {
+      "name": "join_requests",
+      "columns": {
+        "group_id": {
+          "name": "group_id",
+          "type": "char(36)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "char(36)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "invite_token": {
+          "name": "invite_token",
+          "type": "varchar(43)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "claim_member_id": {
+          "name": "claim_member_id",
+          "type": "char(36)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'pending'"
+        },
+        "requested_at": {
+          "name": "requested_at",
+          "type": "datetime(3)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "decided_by": {
+          "name": "decided_by",
+          "type": "char(36)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "decided_at": {
+          "name": "decided_at",
+          "type": "datetime(3)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "jr_group_status": {
+          "name": "jr_group_status",
+          "columns": [
+            "group_id",
+            "status"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "join_requests_group_id_user_id_pk": {
+          "name": "join_requests_group_id_user_id_pk",
+          "columns": [
+            "group_id",
+            "user_id"
           ]
         }
       },
@@ -615,64 +748,22 @@
           "notNull": true,
           "autoincrement": false
         },
-        "from_user": {
-          "name": "from_user",
-          "type": "char(36)",
+        "key_epoch": {
+          "name": "key_epoch",
+          "type": "int",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "to_user": {
-          "name": "to_user",
-          "type": "char(36)",
+        "iv": {
+          "name": "iv",
+          "type": "varchar(32)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "currency": {
-          "name": "currency",
-          "type": "char(3)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "amount_minor": {
-          "name": "amount_minor",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "settles_currency": {
-          "name": "settles_currency",
-          "type": "char(3)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "rate": {
-          "name": "rate",
-          "type": "decimal(18,8)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "settled_minor": {
-          "name": "settled_minor",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "paid_on": {
-          "name": "paid_on",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "note": {
-          "name": "note",
+        "ct": {
+          "name": "ct",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -925,9 +1016,9 @@
           "notNull": true,
           "autoincrement": false
         },
-        "email": {
-          "name": "email",
-          "type": "varchar(254)",
+        "username": {
+          "name": "username",
+          "type": "varchar(32)",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
@@ -939,9 +1030,30 @@
           "notNull": false,
           "autoincrement": false
         },
-        "google_sub": {
-          "name": "google_sub",
+        "kdf_salt": {
+          "name": "kdf_salt",
           "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "kdf_params": {
+          "name": "kdf_params",
+          "type": "json",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "public_key": {
+          "name": "public_key",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "wrapped_private_key": {
+          "name": "wrapped_private_key",
+          "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
@@ -959,6 +1071,42 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
+        },
+        "privacy_accepted_at": {
+          "name": "privacy_accepted_at",
+          "type": "datetime(3)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "privacy_version": {
+          "name": "privacy_version",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "datetime(3)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "is_placeholder": {
+          "name": "is_placeholder",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "placeholder_group_id": {
+          "name": "placeholder_group_id",
+          "type": "char(36)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         }
       },
       "indexes": {},
@@ -972,16 +1120,10 @@
         }
       },
       "uniqueConstraints": {
-        "users_email_unique": {
-          "name": "users_email_unique",
+        "users_username_unique": {
+          "name": "users_username_unique",
           "columns": [
-            "email"
-          ]
-        },
-        "users_google_sub_unique": {
-          "name": "users_google_sub_unique",
-          "columns": [
-            "google_sub"
+            "username"
           ]
         }
       },

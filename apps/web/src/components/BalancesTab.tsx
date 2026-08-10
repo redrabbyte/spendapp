@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import {
   COMMON_CURRENCIES,
+  aliasResolver,
   computeBalances,
+  resolveSplits,
   convertExpense,
   convertPayment,
   formatMinor,
@@ -69,8 +71,25 @@ interface Props {
 }
 
 export function BalancesTab({ group, members, expenses, payments, meId, nameOf }: Props) {
-  const livePayments = useMemo(() => payments.filter((p) => !p.deletedAt), [payments]);
-  const balances = useMemo(() => computeBalances(expenses, livePayments), [expenses, livePayments]);
+  // Claiming a placeholder aliases it rather than rewriting history, so every
+  // split and payment still names the retired id and has to be resolved here.
+  // Without this the claimer's money stays attributed to nobody (design §3.4).
+  const resolve = useMemo(() => aliasResolver(members), [members]);
+  const livePayments = useMemo(
+    () =>
+      payments
+        .filter((p) => !p.deletedAt)
+        .map((p) => ({ ...p, fromUser: resolve(p.fromUser), toUser: resolve(p.toUser) })),
+    [payments, resolve],
+  );
+  const resolvedExpenses = useMemo(
+    () => expenses.map((e) => ({ ...e, splits: resolveSplits(e.splits, resolve) })),
+    [expenses, resolve],
+  );
+  const balances = useMemo(
+    () => computeBalances(resolvedExpenses, livePayments),
+    [resolvedExpenses, livePayments],
+  );
   const [draft, setDraft] = useState<PaymentDraft | null>(null);
   const [fx, setFx] = useState<FxCacheRow | null>(null);
 

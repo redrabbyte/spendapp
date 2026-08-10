@@ -61,3 +61,56 @@ export function computeBalances(
   }
   return out;
 }
+
+/**
+ * Resolve retired placeholders to the accounts that took them over.
+ *
+ * Claiming does not rewrite history — splits keep naming the placeholder — so
+ * every reader has to follow the alias or the claimer's money stays attributed
+ * to an id that is nobody. Chains are followed (A→B→C) with a visited set, so
+ * a cycle produced by bad data terminates instead of hanging the UI.
+ */
+export function aliasResolver(
+  members: ReadonlyArray<{ userId: string; aliasOf?: string | null }>,
+): (userId: string) => string {
+  const direct = new Map<string, string>();
+  for (const m of members) if (m.aliasOf) direct.set(m.userId, m.aliasOf);
+  if (direct.size === 0) return (id) => id;
+
+  const cache = new Map<string, string>();
+  return (userId: string): string => {
+    const hit = cache.get(userId);
+    if (hit) return hit;
+    let current = userId;
+    const seen = new Set<string>([current]);
+    for (;;) {
+      const next = direct.get(current);
+      if (!next || seen.has(next)) break;
+      seen.add(next);
+      current = next;
+    }
+    cache.set(userId, current);
+    return current;
+  };
+}
+
+/** Apply an alias resolver to an expense's splits, folding merged rows. */
+export function resolveSplits(
+  splits: ReadonlyArray<{ userId: string; paidMinor: number; owedMinor: number }>,
+  resolve: (userId: string) => string,
+): { userId: string; paidMinor: number; owedMinor: number }[] {
+  const out = new Map<string, { userId: string; paidMinor: number; owedMinor: number }>();
+  for (const s of splits) {
+    const userId = resolve(s.userId);
+    const existing = out.get(userId);
+    // The claimer may already be on the same expense; the two rows become one
+    // rather than double-counting or colliding.
+    if (existing) {
+      existing.paidMinor += s.paidMinor;
+      existing.owedMinor += s.owedMinor;
+    } else {
+      out.set(userId, { userId, paidMinor: s.paidMinor, owedMinor: s.owedMinor });
+    }
+  }
+  return [...out.values()];
+}

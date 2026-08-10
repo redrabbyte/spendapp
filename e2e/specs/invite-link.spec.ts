@@ -12,6 +12,9 @@ test.beforeEach(async ({ api }) => {
 async function showLink(page: import('@playwright/test').Page): Promise<void> {
   await page.goto(`/g/${GROUP}`);
   await page.getByRole('button', { name: 'Invite link' }).click();
+  // Two steps now: how much history the link shares is a choice, not a default
+  // to be discovered afterwards (design §4.7).
+  await page.getByRole('button', { name: /sharing everything/i }).click();
   await page.getByText(/valid 14 days/).waitFor();
 }
 

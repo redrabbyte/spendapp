@@ -4,10 +4,19 @@ A self-hosted, offline-first PWA for shared group expenses — per-currency
 balances kept side by side, debt simplification, receipts, push
 notifications, and a full audit trail with revert.
 
+> **Breaking change from the unencrypted version.** Group data is now sealed
+> under keys derived from each member's password, which the server never sees,
+> so there is nothing that could read the old rows and re-seal them. There is
+> no migration: wipe the old install and start fresh. `deploy/README.md` has
+> the teardown.
+
 ## Features
 
-- **Groups & invites** — email+password or Google Sign-In (`openid` scope
-  only: no email/profile access); 128-bit capability invite links.
+- **End-to-end encrypted** — expenses, payments, comments and receipt images
+  are sealed on the device under a per-group key the server never holds. A
+  database dump is opaque. See "Encryption" below for what that achieves.
+- **Groups & invites** — username + password; join by showing a QR code to a
+  member in person, or by a 128-bit capability invite link an admin approves.
 - **Expenses** — equal / exact / percentage / shares splits, multiple
   payers, notes, categories, multi-photo receipts (compressed + EXIF-stripped
   on device).
@@ -19,13 +28,17 @@ notifications, and a full audit trail with revert.
   ids, idempotent mutations, LWW with full audit trail). Photos queue too.
 - **Settle up** — per-currency greedy debt simplification (≤ n−1 transfers),
   one-click payment recording.
-- **History** — per-group activity feed; per-expense version log with
-  revert-to-any-version; deleted expenses restorable.
+- **History** — per-group activity feed with revert-to-any-version for
+  expenses and payments, and undelete for expenses, payments and receipts.
+  Version snapshots are sealed under the group key like everything else, so
+  the audit trail survives encryption without the server holding a readable
+  copy of anything.
 - **Insight** — per-person spending, category breakdown, monthly trend
   (per currency or display-converted); CSV export (formula-injection safe).
 - **Push notifications** — Web Push/VAPID on expense/payment/member events.
 - All money is integer minor units; split math is largest-remainder exact and
-  property-tested; the server re-validates every invariant.
+  property-tested. The **client** re-validates every invariant on read and on
+  write — the server cannot, because it cannot see inside an expense.
 
 ## Layout
 
@@ -53,9 +66,47 @@ pnpm dev:web                                   # vite on :5173, proxies /api
 Optional integrations (see `apps/server/.env.example`):
 
 - **Push**: `npx web-push generate-vapid-keys` → `VAPID_*` vars.
-- **Google Sign-In**: OAuth client with redirect URI
-  `$APP_ORIGIN/api/auth/google/callback` → `GOOGLE_CLIENT_*` vars.
 - **FX rates**: automatic (key-free ECB via frankfurter.dev), cached daily.
+
+## Encryption
+
+Expenses, payments, comments and receipt images never reach the server
+readable. The password derives a master key on the device (Argon2id); that
+splits into an auth key the server does verify and a wrapping key that never
+leaves. Each group has a key per *epoch*, wrapped to each member's X25519
+public key, and every entity is sealed with AES-GCM bound to its own id, group
+and epoch.
+
+A database dump, a stolen backup or a curious operator
+reading tables gets ciphertext. What stays readable is the metadata the server
+must route on: group names, who is in which group, entry counts, sizes and
+timestamps.
+
+**Consequences worth knowing before you deploy:**
+
+- **A forgotten password loses the data.** There is no reset and deliberately
+  no recovery code. A *shared* group survives socially — another member
+  re-wraps its keys to a fresh account, which is what the join flow already
+  does — but a group of one is unrecoverable.
+- **The server validates no money.** It cannot see a split, so a modified
+  client can write a corrupt entry into a shared group. Clients check on read
+  and refuse it, and the group is told which entry and who wrote it.
+- **No server-side search, reporting or aggregation**, permanently.
+- Keys are cached unwrapped in IndexedDB, so the app works offline from a cold
+  start. This protects data on the server, not on an unlocked stolen phone.
+
+### Release check
+
+Do this once after deploying, and again after any migration that touches the
+sealed tables. It is the only check that tests the actual claim:
+
+```sh
+mysqldump spendapp > /tmp/check.sql
+grep -i 'a description you know is in there' /tmp/check.sql   # must find nothing
+```
+
+`pnpm --filter server test` pins the sealed tables to explicit column lists, so
+a plaintext column reappearing fails in CI rather than in the dump.
 
 ## Schema changes
 
@@ -70,16 +121,12 @@ pnpm --filter server db:migrate    # apply it
 recreate a table for some column-type changes — **back up first**
 (`mysqldump spendapp > backup.sql`).
 
-If expenses are ever lost, they can be rebuilt from the activity log, which
-stores a full snapshot of every expense write:
-
-```sh
-pnpm --filter server recover:expenses          # report what is recoverable
-pnpm --filter server recover:expenses --apply  # restore it
-```
-
-It never overwrites rows that still exist and skips expenses that were
-deliberately deleted.
+There is no server-side recovery script any more. It used to rebuild lost
+expenses from the activity log, which held a full snapshot of every write;
+those snapshots are gone, because storing them meant storing the plaintext
+this design exists to keep off the server. A member's device holds a complete
+decrypted mirror, so restoring from a backup and letting clients re-sync is
+what recovery looks like now.
 
 ## Production
 
@@ -100,3 +147,27 @@ point it at `/opt/spendapp/current/apps/web/dist` with an SPA fallback to
 `index.html`, and proxy `/api` to `127.0.0.1:3000`. HTTPS is required for the
 service worker, installability, and push. Back up the MySQL database and the
 `RECEIPTS_DIR` directory.
+
+## Privacy obligations
+
+Write a privacy policy to `PRIVACY_PATH` before letting anyone else sign up —
+registration will not complete without one being shown and accepted, and until
+the file exists the app serves a placeholder that says so. `deploy/README.md`
+covers the file, its version marker, and why the access log should stay off.
+
+Both rights people are most likely to exercise are self-serve, in Settings, so
+neither needs the operator:
+
+- **Download my data** builds a ZIP on the device: the account and membership
+  data the server holds, plus every expense, payment, comment and receipt,
+  decrypted. It has to be assembled client-side — the server holds ciphertext,
+  so it could never produce a readable copy, and an archive of ciphertext would
+  not be portable in any useful sense.
+- **Delete my account** asks for the password again, leaves every group
+  (handing on admin, and destroying any group where they were the last member),
+  then clears the credentials, keys, sessions, push subscriptions, invites and
+  consent record. The row survives as a tombstone holding only an id and a
+  display name: the id is written inside sealed splits that nothing can rewrite,
+  and the name is what keeps other members' balances legible. A test pins that
+  every other column is cleared, so adding one to `users` fails until deletion
+  accounts for it.

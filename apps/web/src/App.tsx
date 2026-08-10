@@ -2,14 +2,16 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from './auth';
 import { InstallPrompt } from './components/InstallPrompt';
-import { NamePrompt } from './components/NamePrompt';
 import { NotificationPrompt } from './components/NotificationPrompt';
 import { SettingsModal } from './components/SettingsModal';
+import { PrivacyGate } from './components/PrivacyGate';
+import { UnlockPrompt } from './components/UnlockPrompt';
 import { promptInstall, useInstallState } from './install';
 import { ExpenseDetailPage } from './pages/ExpenseDetail';
 import { GroupPage } from './pages/Group';
 import { GroupsPage } from './pages/Groups';
 import { InvitePage } from './pages/Invite';
+import { JoinByCodePage } from './pages/JoinByCode';
 import { LoginPage } from './pages/Login';
 
 function RequireAuth({ children }: { children: JSX.Element }) {
@@ -144,8 +146,9 @@ export function App() {
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
       {/* Mounted signed out too — it watches for the transition into a session. */}
       <InstallPrompt />
-      <NamePrompt />
       <NotificationRouter />
+      <UnlockPrompt />
+      <PrivacyGate />
       <main className="p-4">
         <Routes>
           <Route path="/login" element={<LoginPage />} />
@@ -155,6 +158,14 @@ export function App() {
             element={
               <RequireAuth>
                 <GroupsPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/join"
+            element={
+              <RequireAuth>
+                <JoinByCodePage />
               </RequireAuth>
             }
           />

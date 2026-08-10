@@ -1,9 +1,7 @@
 import { useState } from 'react';
 import { formatMinor, parseImport, type MemberDto, type ParsedImport } from '@spendapp/shared';
-import { api } from '../api';
 import { applyImport, suggestAssignment, type Assignment } from '../import';
-import { syncNow } from '../sync';
-import { uuid } from '../uuid';
+import { addPlaceholderLocal, createGroupLocal, syncNow } from '../sync';
 
 /**
  * Say which step failed. A bare server message ("Required") tells the user
@@ -83,12 +81,11 @@ export function ImportDialog({
         map = assignment;
       } else {
         const currency = parsed.entries[0]?.currency ?? mode.defaultCurrency;
-        groupId = uuid(); // group ids are client-generated, like every other id
-        await step('create the group', () =>
-          api('/api/groups', {
-            method: 'POST',
-            body: { id: groupId, name: groupName.trim() || 'Imported group', defaultCurrency: currency },
-          }),
+        // Both of these are local writes now (design §3.6), so an import needs
+        // no network at all — which matters most on the first run, when
+        // somebody is moving years of history in from another app.
+        groupId = await step('create the group', () =>
+          createGroupLocal(groupName.trim() || 'Imported group', currency, { id: meId, displayName: meName }),
         );
         map = {};
         // Everyone in the file becomes a member: the chosen one is me, the
@@ -98,15 +95,8 @@ export function ImportDialog({
             map[name] = meId;
             continue;
           }
-          const created = await step(`add “${name}”`, () =>
-            api<{ userId: string }>(`/api/groups/${groupId}/members`, {
-              method: 'POST',
-              body: { displayName: name },
-            }),
-          );
-          map[name] = created.userId;
+          map[name] = await step(`add “${name}”`, () => addPlaceholderLocal(groupId, name));
         }
-        await syncNow(); // members must exist locally before entries reference them
       }
 
       const outcome = await applyImport(parsed, groupId, map, meId);

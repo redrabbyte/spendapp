@@ -13,7 +13,9 @@ precacheAndRoute(self.__WB_MANIFEST);
 // SPA navigation fallback; the API is never handled by the SW.
 registerRoute(new NavigationRoute(createHandlerBoundToURL('index.html'), { denylist: [/^\/api\//] }));
 
-// Receipt images: uuid-addressed + immutable → small offline cache.
+// Receipt images: uuid-addressed + immutable → small offline cache. What is
+// cached is the sealed file; the page decrypts it, so the cache holds nothing
+// readable either.
 // API JSON is deliberately NOT cached — freshness belongs to Dexie.
 registerRoute(
   ({ url }) => url.pathname.startsWith('/api/attachments/'),

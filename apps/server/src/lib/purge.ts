@@ -1,5 +1,5 @@
 import fs from 'node:fs/promises';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { attachmentPath } from './attachments.js';
 
@@ -19,13 +19,8 @@ export async function purgeGroup(groupId: string): Promise<void> {
     .where(eq(schema.attachments.groupId, groupId));
 
   await db.transaction(async (tx) => {
-    const expenseIds = (
-      await tx.select({ id: schema.expenses.id }).from(schema.expenses).where(eq(schema.expenses.groupId, groupId))
-    ).map((e) => e.id);
-    // expense_splits is the one table keyed by expense rather than by group.
-    if (expenseIds.length > 0) {
-      await tx.delete(schema.expenseSplits).where(inArray(schema.expenseSplits.expenseId, expenseIds));
-    }
+    // Every table here is keyed by group; the split rows that were not went
+    // with expense_splits when the split moved inside the blob.
     await tx.delete(schema.expenses).where(eq(schema.expenses.groupId, groupId));
     await tx.delete(schema.payments).where(eq(schema.payments.groupId, groupId));
     await tx.delete(schema.attachments).where(eq(schema.attachments.groupId, groupId));

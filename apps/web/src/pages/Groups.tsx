@@ -2,10 +2,8 @@ import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { COMMON_CURRENCIES } from '@spendapp/shared';
-import { api } from '../api';
 import { localDb } from '../db';
-import { syncNow } from '../sync';
-import { uuid } from '../uuid';
+import { createGroupLocal } from '../sync';
 import { useSettings } from '../settings';
 import { useAuth } from '../auth';
 import { ImportDialog } from '../components/ImportDialog';
@@ -24,15 +22,14 @@ export function GroupsPage() {
   async function createGroup(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!user) return;
     try {
-      await api('/api/groups', {
-        method: 'POST',
-        body: { id: uuid(), name, defaultCurrency: currency },
-      });
+      // Local first, like everything else: the group is usable the moment it
+      // is named, and the mutation catches up whenever there is a network.
+      await createGroupLocal(name, currency, user);
       setName('');
-      await syncNow();
     } catch (err) {
-      setError((err as Error).message);
+      setError((err as Error).message); // keys locked, essentially
     }
   }
 
@@ -87,12 +84,19 @@ export function GroupsPage() {
         <button className="rounded bg-teal-700 px-4 py-2 font-medium text-white">Create</button>
         {error && <p className="w-full text-sm text-red-600">{error}</p>}
       </form>
-      <button
-        onClick={() => setImportOpen(true)}
-        className="self-start text-sm text-teal-700 underline dark:text-teal-500"
-      >
-        Import from CSV
-      </button>
+      <div className="flex flex-col items-start gap-2">
+        {/* The joiner's side of an in-person add: no link to send, nothing to
+            type, and a member scans them on the spot (design §4.2). */}
+        <Link to="/join" className="text-sm text-teal-700 underline dark:text-teal-500">
+          Join a group in person
+        </Link>
+        <button
+          onClick={() => setImportOpen(true)}
+          className="text-sm text-teal-700 underline dark:text-teal-500"
+        >
+          Import from CSV
+        </button>
+      </div>
       {importOpen && user && (
         <ImportDialog
           mode={{ kind: 'new', defaultCurrency: settings.defaultCurrency }}

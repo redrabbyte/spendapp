@@ -1,1 +1,0 @@
-ALTER TABLE `users` ADD `placeholder_group_id` char(36);

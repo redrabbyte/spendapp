@@ -6,22 +6,24 @@ import { db, schema } from '../db/index.js';
 import { attachmentPath } from '../lib/attachments.js';
 import { isMember } from '../lib/groups.js';
 
-/** magic-byte sniff: only real images are stored or served */
-function sniffImageType(buf: Buffer): string | null {
-  if (buf.length > 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
-  if (buf.length > 7 && buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])))
-    return 'image/png';
-  if (buf.length > 11 && buf.subarray(0, 4).toString('latin1') === 'RIFF' && buf.subarray(8, 12).toString('latin1') === 'WEBP')
-    return 'image/webp';
-  return null;
-}
+/**
+ * Uploads are ciphertext now (design §3.5), so nothing here can tell an image
+ * from anything else — the magic-byte sniff that used to gate this is gone.
+ * The type is established client-side after decryption instead.
+ *
+ * What is still enforced: membership, the size cap, and that the metadata row
+ * exists first, so a file can never be orphaned.
+ */
+const IV_BYTES = 12;
 
 export async function attachmentRoutes(app: FastifyInstance): Promise<void> {
   await fs.mkdir(config.receiptsDir, { recursive: true });
 
-  // Raw image bodies for this route only, capped at the upload limit.
+  // Raw bodies for this route only, capped at the upload limit. Only
+  // octet-stream: a client claiming image/jpeg is either out of date or not
+  // sealing, and both should fail loudly rather than store a readable receipt.
   app.addContentTypeParser(
-    ['image/jpeg', 'image/png', 'image/webp', 'application/octet-stream'],
+    'application/octet-stream',
     { parseAs: 'buffer', bodyLimit: config.maxUploadBytes },
     (_req, body, done) => done(null, body),
   );
@@ -33,8 +35,9 @@ export async function attachmentRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(404).send({ error: 'not found' }); // metadata must sync first
     }
     const body = req.body;
-    if (!Buffer.isBuffer(body)) return reply.code(415).send({ error: 'image body required' });
-    if (!sniffImageType(body)) return reply.code(415).send({ error: 'not a supported image (jpeg/png/webp)' });
+    if (!Buffer.isBuffer(body)) return reply.code(415).send({ error: 'body required' });
+    // iv || ciphertext || GCM tag. Anything shorter cannot be either.
+    if (body.length <= IV_BYTES + 16) return reply.code(415).send({ error: 'body too short to be sealed' });
     await fs.writeFile(attachmentPath(id), body);
     return { ok: true };
   });
@@ -47,18 +50,14 @@ export async function attachmentRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(404).send({ error: 'not found' });
     }
     const filePath = attachmentPath(id);
-    let head: Buffer;
     try {
-      const fh = await fs.open(filePath, 'r');
-      head = Buffer.alloc(12);
-      await fh.read(head, 0, 12, 0);
-      await fh.close();
+      await fs.access(filePath);
     } catch {
       return reply.code(404).send({ error: 'not uploaded yet' });
     }
     // uuid-addressed and immutable -> long-lived PRIVATE cache, never shared/public
     reply.header('cache-control', 'private, max-age=31536000, immutable');
-    reply.header('content-type', sniffImageType(head) ?? 'application/octet-stream');
+    reply.header('content-type', 'application/octet-stream'); // opaque: it is ciphertext
     return reply.send(createReadStream(filePath));
   });
 }

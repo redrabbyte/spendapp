@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { convertExpense, formatMinor, type UpsertExpense } from '@spendapp/shared';
+import { aliasResolver, convertExpense, formatMinor, resolveSplits, type UpsertExpense } from '@spendapp/shared';
+import { openComment } from '../envelope';
 import { useAuth } from '../auth';
 import { localDb, type FxCacheRow } from '../db';
 import { getRates, suggestRate } from '../fx';
@@ -36,10 +37,18 @@ export function ExpenseDetailPage() {
     [groupId],
   );
 
+  const resolve = useMemo(() => aliasResolver(members ?? []), [members]);
   const nameOf = useMemo(() => {
     const map = new Map((members ?? []).map((m) => [m.userId, m.displayName]));
-    return (id: string) => map.get(id) ?? '(former member)';
-  }, [members]);
+    return (id: string) => map.get(resolve(id)) ?? map.get(id) ?? '(former member)';
+  }, [members, resolve]);
+
+  // Folded, not just renamed: if the claimer was already on this expense the
+  // table would otherwise list the same person twice.
+  const shownSplits = useMemo(
+    () => (expense ? resolveSplits(expense.splits, resolve) : []),
+    [expense, resolve],
+  );
 
   const activeMembers = useMemo(() => (members ?? []).filter((m) => m.leftAt === null), [members]);
   const pending = usePendingExpenseIds();
@@ -76,13 +85,34 @@ export function ExpenseDetailPage() {
     }
   }
 
-  const comments = useMemo(
+  const commentRows = useMemo(
     () =>
       (activity ?? [])
         .filter((a) => a.type === 'comment' && a.entityType === 'expense' && a.entityId === expenseId)
         .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1)),
     [activity, expenseId],
   );
+  // Bodies are sealed, and decrypting is async while rendering is not, so it
+  // happens here and the list receives plain strings.
+  const [comments, setComments] = useState<
+    { id: string; actorId: string; createdAt: string; text: string | null }[]
+  >([]);
+  useEffect(() => {
+    let live = true;
+    void Promise.all(
+      commentRows.map(async (c) => ({
+        id: c.id,
+        actorId: c.actorId,
+        createdAt: c.createdAt,
+        text: await openComment(c.id, c.groupId, c.payload),
+      })),
+    ).then((rows) => {
+      if (live) setComments(rows);
+    });
+    return () => {
+      live = false;
+    };
+  }, [commentRows]);
 
   if (!user) return null;
   if (group === undefined || expense === undefined || !members || !activity) {
@@ -140,7 +170,7 @@ export function ExpenseDetailPage() {
             </tr>
           </thead>
           <tbody>
-            {expense.splits.map((s) => (
+            {shownSplits.map((s) => (
               <tr key={s.userId}>
                 <td className="pr-3">{nameOf(s.userId)}</td>
                 <td className="text-right tabular-nums text-slate-500 dark:text-slate-400">
@@ -206,7 +236,7 @@ function CommentList({
   comments,
   nameOf,
 }: {
-  comments: { id: string; actorId: string; createdAt: string; payload: unknown }[];
+  comments: { id: string; actorId: string; createdAt: string; text: string | null }[];
   nameOf: (id: string) => string;
 }) {
   if (comments.length === 0) return <p className="text-sm text-slate-400">No comments yet.</p>;
@@ -218,7 +248,12 @@ function CommentList({
           <span className="text-slate-400">
             {new Date(c.createdAt).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
           </span>
-          <p className="text-slate-700 dark:text-slate-200">{(c.payload as { text?: string })?.text}</p>
+          {/* A body that will not open is said so, not shown blank. */}
+          {c.text === null ? (
+            <p className="text-slate-400 italic">Cannot be read on this device.</p>
+          ) : (
+            <p className="text-slate-700 dark:text-slate-200">{c.text}</p>
+          )}
         </li>
       ))}
     </ul>

@@ -15,6 +15,7 @@ CREATE TABLE `attachments` (
 	`id` char(36) NOT NULL,
 	`expense_id` char(36) NOT NULL,
 	`group_id` char(36) NOT NULL,
+	`key_epoch` int NOT NULL,
 	`created_by` char(36) NOT NULL,
 	`created_at` datetime(3) NOT NULL,
 	`version` bigint NOT NULL DEFAULT 0,
@@ -22,24 +23,12 @@ CREATE TABLE `attachments` (
 	CONSTRAINT `attachments_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
-CREATE TABLE `expense_splits` (
-	`expense_id` char(36) NOT NULL,
-	`user_id` char(36) NOT NULL,
-	`paid_minor` bigint NOT NULL,
-	`owed_minor` bigint NOT NULL,
-	CONSTRAINT `expense_splits_expense_id_user_id_pk` PRIMARY KEY(`expense_id`,`user_id`)
-);
---> statement-breakpoint
 CREATE TABLE `expenses` (
 	`id` char(36) NOT NULL,
 	`group_id` char(36) NOT NULL,
-	`description` varchar(200) NOT NULL,
-	`category` varchar(40) NOT NULL,
-	`note` text NOT NULL,
-	`expense_date` date NOT NULL,
-	`currency` char(3) NOT NULL,
-	`amount_minor` bigint NOT NULL,
-	`split_meta` json NOT NULL,
+	`key_epoch` int NOT NULL,
+	`iv` varchar(32) NOT NULL,
+	`ct` text NOT NULL,
 	`created_by` char(36) NOT NULL,
 	`created_at` datetime(3) NOT NULL,
 	`updated_by` char(36) NOT NULL,
@@ -57,11 +46,24 @@ CREATE TABLE `fx_rates` (
 	CONSTRAINT `fx_rates_day_base_quote_pk` PRIMARY KEY(`day`,`base`,`quote`)
 );
 --> statement-breakpoint
+CREATE TABLE `group_keys` (
+	`group_id` char(36) NOT NULL,
+	`epoch` int NOT NULL,
+	`user_id` char(36) NOT NULL,
+	`epk` varchar(64) NOT NULL,
+	`iv` varchar(32) NOT NULL,
+	`ct` varchar(255) NOT NULL,
+	`created_at` datetime(3) NOT NULL,
+	CONSTRAINT `group_keys_group_id_epoch_user_id_pk` PRIMARY KEY(`group_id`,`epoch`,`user_id`)
+);
+--> statement-breakpoint
 CREATE TABLE `group_members` (
 	`group_id` char(36) NOT NULL,
 	`user_id` char(36) NOT NULL,
 	`joined_at` datetime(3) NOT NULL,
 	`left_at` datetime(3),
+	`role` varchar(16) NOT NULL DEFAULT 'member',
+	`alias_of` char(36),
 	`version` bigint NOT NULL DEFAULT 0,
 	CONSTRAINT `group_members_group_id_user_id_pk` PRIMARY KEY(`group_id`,`user_id`)
 );
@@ -85,21 +87,30 @@ CREATE TABLE `invites` (
 	`created_at` datetime(3) NOT NULL,
 	`expires_at` datetime(3),
 	`revoked_at` datetime(3),
+	`max_uses` int NOT NULL DEFAULT 1,
+	`use_count` int NOT NULL DEFAULT 0,
+	`share_history` boolean NOT NULL DEFAULT true,
 	CONSTRAINT `invites_token` PRIMARY KEY(`token`)
+);
+--> statement-breakpoint
+CREATE TABLE `join_requests` (
+	`group_id` char(36) NOT NULL,
+	`user_id` char(36) NOT NULL,
+	`invite_token` varchar(43) NOT NULL,
+	`claim_member_id` char(36),
+	`status` varchar(16) NOT NULL DEFAULT 'pending',
+	`requested_at` datetime(3) NOT NULL,
+	`decided_by` char(36),
+	`decided_at` datetime(3),
+	CONSTRAINT `join_requests_group_id_user_id_pk` PRIMARY KEY(`group_id`,`user_id`)
 );
 --> statement-breakpoint
 CREATE TABLE `payments` (
 	`id` char(36) NOT NULL,
 	`group_id` char(36) NOT NULL,
-	`from_user` char(36) NOT NULL,
-	`to_user` char(36) NOT NULL,
-	`currency` char(3) NOT NULL,
-	`amount_minor` bigint NOT NULL,
-	`settles_currency` char(3),
-	`rate` decimal(18,8),
-	`settled_minor` bigint,
-	`paid_on` date NOT NULL,
-	`note` text NOT NULL,
+	`key_epoch` int NOT NULL,
+	`iv` varchar(32) NOT NULL,
+	`ct` text NOT NULL,
 	`created_by` char(36) NOT NULL,
 	`created_at` datetime(3) NOT NULL,
 	`updated_at` datetime(3) NOT NULL,
@@ -140,19 +151,28 @@ CREATE TABLE `sessions` (
 --> statement-breakpoint
 CREATE TABLE `users` (
 	`id` char(36) NOT NULL,
-	`email` varchar(254),
+	`username` varchar(32),
 	`password_hash` varchar(255),
-	`google_sub` varchar(64),
+	`kdf_salt` varchar(64),
+	`kdf_params` json,
+	`public_key` varchar(64),
+	`wrapped_private_key` text,
 	`display_name` varchar(80) NOT NULL,
 	`created_at` datetime(3) NOT NULL,
+	`privacy_accepted_at` datetime(3),
+	`privacy_version` varchar(64),
+	`deleted_at` datetime(3),
+	`is_placeholder` boolean NOT NULL DEFAULT false,
+	`placeholder_group_id` char(36),
 	CONSTRAINT `users_id` PRIMARY KEY(`id`),
-	CONSTRAINT `users_email_unique` UNIQUE(`email`),
-	CONSTRAINT `users_google_sub_unique` UNIQUE(`google_sub`)
+	CONSTRAINT `users_username_unique` UNIQUE(`username`)
 );
 --> statement-breakpoint
 CREATE INDEX `act_group_version` ON `activity` (`group_id`,`version`);--> statement-breakpoint
 CREATE INDEX `a_group_version` ON `attachments` (`group_id`,`version`);--> statement-breakpoint
 CREATE INDEX `a_expense` ON `attachments` (`expense_id`);--> statement-breakpoint
 CREATE INDEX `e_group_version` ON `expenses` (`group_id`,`version`);--> statement-breakpoint
+CREATE INDEX `gk_user_group` ON `group_keys` (`user_id`,`group_id`);--> statement-breakpoint
 CREATE INDEX `gm_user` ON `group_members` (`user_id`);--> statement-breakpoint
+CREATE INDEX `jr_group_status` ON `join_requests` (`group_id`,`status`);--> statement-breakpoint
 CREATE INDEX `p_group_version` ON `payments` (`group_id`,`version`);

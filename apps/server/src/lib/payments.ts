@@ -1,21 +1,26 @@
 import { eq } from 'drizzle-orm';
-import { formatMinor, type UpsertPayment } from '@spendapp/shared';
+import { type SealedEntity, type SealedSnapshot } from '@spendapp/shared';
 import { db, schema } from '../db/index.js';
 import type { ApplyResult } from './expenses.js';
 import { bumpGroupVersion, isMember, logActivity } from './groups.js';
 import { notifyGroup } from './notify.js';
 
+/**
+ * Sealed write path (design §4.2). The old one checked that both endpoints
+ * were members of the group; that check is gone with the plaintext, because
+ * the endpoints are inside the blob. A modified client can now record a
+ * payment naming someone who is not in the group — the same trade the expense
+ * path already makes. What the client can re-check on read it does (a positive
+ * amount, two different endpoints); membership it deliberately does not, since
+ * an aliased placeholder is a legitimate endpoint the mirror resolves later.
+ */
 export async function applyPaymentUpsert(
   userId: string,
-  input: UpsertPayment,
+  input: SealedEntity & { snapshot?: SealedSnapshot },
   mutationId?: string,
+  opts: { revive?: boolean } = {},
 ): Promise<ApplyResult> {
   if (!(await isMember(userId, input.groupId))) return { ok: false, status: 404, reason: 'not found' };
-  for (const u of [input.fromUser, input.toUser]) {
-    if (!(await isMember(u, input.groupId))) {
-      return { ok: false, status: 400, reason: 'payment references a non-member' };
-    }
-  }
 
   const now = new Date();
   let failure: ApplyResult | null = null;
@@ -30,25 +35,20 @@ export async function applyPaymentUpsert(
       failure = { ok: false, status: 409, reason: 'id belongs to another group' };
       return;
     }
-    if (existing?.deletedAt) {
-      failure = { ok: false, status: 409, reason: 'payment was deleted' };
+    if (existing?.deletedAt && !opts.revive) {
+      failure = { ok: false, status: 409, reason: 'payment was deleted' }; // deletes win
       return;
     }
 
     const version = await bumpGroupVersion(tx, input.groupId);
     const row = {
       groupId: input.groupId,
-      fromUser: input.fromUser,
-      toUser: input.toUser,
-      currency: input.currency,
-      amountMinor: input.amountMinor,
-      settlesCurrency: input.settlesCurrency,
-      rate: input.rate,
-      settledMinor: input.settledMinor,
-      paidOn: input.paidOn,
-      note: input.note,
+      keyEpoch: input.keyEpoch,
+      iv: input.iv,
+      ct: input.ct,
       updatedAt: now,
       version,
+      deletedAt: null,
     };
     if (existing) {
       await tx.update(schema.payments).set(row).where(eq(schema.payments.id, input.id));
@@ -62,19 +62,18 @@ export async function applyPaymentUpsert(
       type: existing ? 'payment.updated' : 'payment.created',
       entityType: 'payment',
       entityId: input.id,
-      payload: { snapshot: { ...input } },
+      id: input.snapshot?.activityId,
+      payload: input.snapshot
+        ? { keyEpoch: input.keyEpoch, iv: input.snapshot.iv, ct: input.snapshot.ct }
+        : { keyEpoch: input.keyEpoch },
     });
     if (mutationId) {
       await tx.insert(schema.processedMutations).values({ mutationId, userId, createdAt: now });
     }
   });
   if (!failure) {
-    notifyGroup(
-      input.groupId,
-      userId,
-      `recorded a payment (${formatMinor(input.amountMinor, input.currency)})`,
-      `/g/${input.groupId}?tab=balances`,
-    );
+    // Generic: the amount is the thing being hidden (design §3.3).
+    notifyGroup(input.groupId, userId, 'recorded a payment', `/g/${input.groupId}?tab=balances`);
   }
   return failure ?? { ok: true };
 }

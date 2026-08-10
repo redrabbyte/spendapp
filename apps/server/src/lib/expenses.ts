@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import { computeOwed, formatMinor, validateSplits, type UpsertExpense } from '@spendapp/shared';
+import { type SealedEntity, type SealedSnapshot } from '@spendapp/shared';
 import { db, schema } from '../db/index.js';
 import { bumpGroupVersion, isMember, logActivity } from './groups.js';
 import { notifyGroup } from './notify.js';
@@ -7,40 +7,23 @@ import { notifyGroup } from './notify.js';
 export type ApplyResult = { ok: true } | { ok: false; status: number; reason: string };
 
 /**
- * Shared write path for REST and /api/sync. Enforces the money invariants,
- * membership of every referenced user, and the deletes-win rule; bumps the
- * group version and logs a full-snapshot activity entry in one transaction.
- * When `mutationId` is set, it is recorded in the same transaction for
- * idempotent replays.
+ * Sealed write path, and the only one. Everything the old plaintext path
+ * validated — splits summing to the amount, matching splitMeta, referencing
+ * real members — is inside the blob and unreadable here, so none of it can be
+ * checked (design §3.1). That guarantee has moved to the client; a modified
+ * client can write a corrupt entry into a shared group. It is the price of the
+ * server holding no plaintext.
+ *
+ * What survives is everything the server still needs: membership of the
+ * author, the deletes-win rule, group-version ordering and idempotency.
  */
 export async function applyExpenseUpsert(
   userId: string,
-  input: UpsertExpense,
+  input: SealedEntity & { snapshot?: SealedSnapshot },
   mutationId?: string,
   opts: { revive?: boolean } = {},
 ): Promise<ApplyResult> {
   if (!(await isMember(userId, input.groupId))) return { ok: false, status: 404, reason: 'not found' };
-
-  try {
-    validateSplits(input.amountMinor, input.splits);
-    const expected = computeOwed(input.amountMinor, input.splitMeta);
-    const expectedByUser = new Map(expected.map((e) => [e.userId, e.owedMinor]));
-    const actualByUser = new Map(input.splits.map((s) => [s.userId, s.owedMinor]));
-    for (const e of expected) {
-      if ((actualByUser.get(e.userId) ?? 0) !== e.owedMinor) throw new Error('splits do not match split meta');
-    }
-    for (const s of input.splits) {
-      if (s.owedMinor > 0 && !expectedByUser.has(s.userId)) throw new Error('splits do not match split meta');
-    }
-  } catch (err) {
-    return { ok: false, status: 400, reason: (err as Error).message };
-  }
-
-  for (const s of input.splits) {
-    if (!(await isMember(s.userId, input.groupId))) {
-      return { ok: false, status: 400, reason: 'split references a non-member' };
-    }
-  }
 
   const now = new Date();
   let failure: ApplyResult | null = null;
@@ -59,59 +42,47 @@ export async function applyExpenseUpsert(
       failure = { ok: false, status: 409, reason: 'expense was deleted' }; // deletes win
       return;
     }
-    const reviving = Boolean(existing?.deletedAt && opts.revive);
 
     const version = await bumpGroupVersion(tx, input.groupId);
     const row = {
       groupId: input.groupId,
-      description: input.description,
-      category: input.category,
-      note: input.note,
-      expenseDate: input.expenseDate,
-      currency: input.currency,
-      amountMinor: input.amountMinor,
-      rateToDefault: input.rateToDefault,
-      splitMeta: input.splitMeta as object,
+      keyEpoch: input.keyEpoch,
+      iv: input.iv,
+      ct: input.ct,
       updatedBy: userId,
       updatedAt: now,
       version,
-      deletedAt: null, // no-op unless reviving
+      deletedAt: null,
     };
     if (existing) {
       await tx.update(schema.expenses).set(row).where(eq(schema.expenses.id, input.id));
-      await tx.delete(schema.expenseSplits).where(eq(schema.expenseSplits.expenseId, input.id));
     } else {
       await tx.insert(schema.expenses).values({ ...row, id: input.id, createdBy: userId, createdAt: now });
     }
-    await tx.insert(schema.expenseSplits).values(
-      input.splits.map((s) => ({
-        expenseId: input.id,
-        userId: s.userId,
-        paidMinor: s.paidMinor,
-        owedMinor: s.owedMinor,
-      })),
-    );
     await logActivity(tx, {
       groupId: input.groupId,
       version,
       actorId: userId,
-      type: reviving ? 'expense.restored' : existing ? 'expense.updated' : 'expense.created',
+      type: existing ? 'expense.updated' : 'expense.created',
       entityType: 'expense',
       entityId: input.id,
-      payload: { snapshot: { ...input } },
+      // The snapshot of this version, sealed by the author under the group key
+      // (design §11). Storing it plainly is what the whole exercise avoids;
+      // storing it sealed is what keeps "revert to this version" working, and
+      // the server can read neither this nor the expense it describes.
+      id: input.snapshot?.activityId,
+      payload: input.snapshot
+        ? { keyEpoch: input.keyEpoch, iv: input.snapshot.iv, ct: input.snapshot.ct }
+        : { keyEpoch: input.keyEpoch },
     });
     if (mutationId) {
       await tx.insert(schema.processedMutations).values({ mutationId, userId, createdAt: now });
     }
   });
   if (!failure) {
-    const verb = opts.revive ? 'restored' : 'saved';
-    notifyGroup(
-      input.groupId,
-      userId,
-      `${verb} “${input.description}” (${formatMinor(input.amountMinor, input.currency)})`,
-      `/g/${input.groupId}/e/${input.id}`,
-    );
+    // Generic on purpose: composing the description and amount would put the
+    // very content this hides into a push payload (design §3.3).
+    notifyGroup(input.groupId, userId, 'added or changed an expense', `/g/${input.groupId}/e/${input.id}`);
   }
   return failure ?? { ok: true };
 }

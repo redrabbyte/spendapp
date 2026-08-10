@@ -22,13 +22,42 @@ const money = (name: string) => bigint(name, { mode: 'number' });
 
 export const users = mysqlTable('users', {
   id: id('id').primaryKey(),
-  // Login handle. Nullable because Google accounts never set one — the same
-  // shape `email` had, for the same reason.
   username: varchar('username', { length: 32 }).unique(),
+  /**
+   * argon2 of the client-derived `authKey` (design §4.1) — never of the
+   * password, which the server has not seen since keys arrived and could
+   * otherwise use to derive the KEK.
+   */
   passwordHash: varchar('password_hash', { length: 255 }),
-  googleSub: varchar('google_sub', { length: 64 }).unique(),
+  /** base64url. Per-account, so identical passwords derive different keys. */
+  kdfSalt: varchar('kdf_salt', { length: 64 }),
+  /** Argon2id cost this account was created with; raising it later is per-account. */
+  kdfParams: json('kdf_params'),
+  /** base64url X25519 public key — plainly readable, that is the point. */
+  publicKey: varchar('public_key', { length: 64 }),
+  /** {iv, ct} sealed under the KEK. Useless to the server. */
+  wrappedPrivateKey: text('wrapped_private_key'),
   displayName: varchar('display_name', { length: 80 }).notNull(),
   createdAt: ts('created_at').notNull(),
+  /**
+   * When this account accepted the privacy policy, and which wording it
+   * accepted. Null until they do — registration will not complete without it.
+   *
+   * The version matters as much as the timestamp: a bare "yes" cannot answer
+   * what someone actually agreed to once the text has been edited, which is
+   * the question a subject access request asks.
+   */
+  privacyAcceptedAt: ts('privacy_accepted_at'),
+  privacyVersion: varchar('privacy_version', { length: 64 }),
+  /**
+   * Set when the account is deleted. The row survives as a tombstone because
+   * this id is referenced from inside sealed splits, which nothing server-side
+   * can rewrite — dropping it would leave other members' ledgers pointing at
+   * nobody. Everything that identifies the person goes (username, credentials,
+   * keys, consent record); `displayName` stays, so an expense the others were
+   * party to still says who it was with.
+   */
+  deletedAt: ts('deleted_at'),
   // A member who has no account yet: created inside a group so expenses can
   // reference them, and claimed later by a real user following an invite.
   // Keeping them in `users` means splits, payments and activity all address
@@ -70,6 +99,16 @@ export const groupMembers = mysqlTable(
     // 'admin' | 'member'. Deliberately a string rather than an enum so more
     // roles can appear without a schema migration.
     role: varchar('role', { length: 16 }).notNull().default('member'),
+    /**
+     * Set on a *placeholder's* row when a real account takes it over: every
+     * reference to this id now means that user (design §3.4).
+     *
+     * Plaintext on purpose. The mapping says "placeholder X is now user Y",
+     * and the server already knows both ids and that both are members, so
+     * storing it openly leaks nothing it could not already see — and it is far
+     * simpler than putting an alias map inside encrypted group metadata.
+     */
+    aliasOf: id('alias_of'),
     version: version(),
   },
   (t) => [primaryKey({ columns: [t.groupId, t.userId] }), index('gm_user').on(t.userId)],
@@ -98,6 +137,34 @@ export const joinRequests = mysqlTable(
   (t) => [primaryKey({ columns: [t.groupId, t.userId] }), index('jr_group_status').on(t.groupId, t.status)],
 );
 
+/**
+ * A group's key for one epoch, wrapped to one member's public key. Every row
+ * is opaque to the server: it holds the ciphertext that lets a member decrypt
+ * a group and cannot open any of them itself.
+ *
+ * One row per (group, epoch, member), so a member's whole keyring is a query
+ * and rotation is an insert of N rows rather than a rewrite.
+ */
+export const groupKeys = mysqlTable(
+  'group_keys',
+  {
+    groupId: id('group_id').notNull(),
+    epoch: int('epoch').notNull(),
+    /** Recipient. The wrap only opens with this user's private key. */
+    userId: id('user_id').notNull(),
+    /** base64url ephemeral public key from the sealed box (design §4.2). */
+    epk: varchar('epk', { length: 64 }).notNull(),
+    iv: varchar('iv', { length: 32 }).notNull(),
+    ct: varchar('ct', { length: 255 }).notNull(),
+    createdAt: ts('created_at').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.groupId, t.epoch, t.userId] }),
+    // "everything I can decrypt", which is what sync asks on every pull
+    index('gk_user_group').on(t.userId, t.groupId),
+  ],
+);
+
 export const invites = mysqlTable('invites', {
   token: varchar('token', { length: 43 }).primaryKey(),
   groupId: id('group_id').notNull(),
@@ -105,6 +172,21 @@ export const invites = mysqlTable('invites', {
   createdAt: ts('created_at').notNull(),
   expiresAt: ts('expires_at'),
   revokedAt: ts('revoked_at'),
+  /**
+   * Default 1: a link admits one person and is then spent (design §4.4).
+   * Counted on *request*, not approval — otherwise a link a hundred strangers
+   * followed would still look unused, and the admin would face a hundred
+   * pending rows from one leak.
+   */
+  maxUses: int('max_uses').notNull().default(1),
+  useCount: int('use_count').notNull().default(0),
+  /**
+   * Whether approving this invite hands over the *whole* keyring (design
+   * §4.7). Default true, because a member who cannot read the ledger they are
+   * in is the exception, not the norm. False forces a rotation at approval:
+   * the cut has to be a key boundary, there is no other way to make it one.
+   */
+  shareHistory: boolean('share_history').notNull().default(true),
 });
 
 export const expenses = mysqlTable(
@@ -112,15 +194,14 @@ export const expenses = mysqlTable(
   {
     id: id('id').primaryKey(),
     groupId: id('group_id').notNull(),
-    description: varchar('description', { length: 200 }).notNull(),
-    category: varchar('category', { length: 40 }).notNull(),
-    note: text('note').notNull(),
-    // ISO date or date+time string (client wall-clock, e.g. 2026-07-24T14:30)
-    expenseDate: varchar('expense_date', { length: 32 }).notNull(),
-    currency: char('currency', { length: 3 }).notNull(),
-    amountMinor: money('amount_minor').notNull(),
-    rateToDefault: decimal('rate_to_default', { precision: 18, scale: 8 }),
-    splitMeta: json('split_meta').notNull(),
+    /**
+     * Sealed content, and the only way an expense is stored (design §4.2).
+     * Description, category, note, date, currency, amount and the whole split
+     * are inside `ct`; the server holds no readable copy of any of them.
+     */
+    keyEpoch: int('key_epoch').notNull(),
+    iv: varchar('iv', { length: 32 }).notNull(),
+    ct: text('ct').notNull(),
     createdBy: id('created_by').notNull(),
     createdAt: ts('created_at').notNull(),
     updatedBy: id('updated_by').notNull(),
@@ -131,32 +212,20 @@ export const expenses = mysqlTable(
   (t) => [index('e_group_version').on(t.groupId, t.version)],
 );
 
-export const expenseSplits = mysqlTable(
-  'expense_splits',
-  {
-    expenseId: id('expense_id').notNull(),
-    userId: id('user_id').notNull(),
-    paidMinor: money('paid_minor').notNull(),
-    owedMinor: money('owed_minor').notNull(),
-  },
-  (t) => [primaryKey({ columns: [t.expenseId, t.userId] })],
-);
-
 export const payments = mysqlTable(
   'payments',
   {
     id: id('id').primaryKey(),
     groupId: id('group_id').notNull(),
-    fromUser: id('from_user').notNull(),
-    toUser: id('to_user').notNull(),
-    currency: char('currency', { length: 3 }).notNull(),
-    amountMinor: money('amount_minor').notNull(),
-    // cross-currency settlement: which debt this clears and at what rate
-    settlesCurrency: char('settles_currency', { length: 3 }),
-    rate: decimal('rate', { precision: 18, scale: 8 }),
-    settledMinor: money('settled_minor'),
-    paidOn: date('paid_on', { mode: 'string' }).notNull(),
-    note: text('note').notNull(),
+    /**
+     * Sealed content (design §4.2). Who paid whom, how much, in what currency,
+     * on what day and any note are all inside `ct`. The endpoints are sealed
+     * too: "Sam paid Ada" is exactly the kind of thing this is meant to hide,
+     * and nothing server-side routes on them — payments are found by group.
+     */
+    keyEpoch: int('key_epoch').notNull(),
+    iv: varchar('iv', { length: 32 }).notNull(),
+    ct: text('ct').notNull(),
     createdBy: id('created_by').notNull(),
     createdAt: ts('created_at').notNull(),
     updatedAt: ts('updated_at').notNull(),
@@ -172,6 +241,12 @@ export const attachments = mysqlTable(
     id: id('id').primaryKey(),
     expenseId: id('expense_id').notNull(),
     groupId: id('group_id').notNull(),
+    /**
+     * Which epoch sealed the image file. The IV is the file's own first 12
+     * bytes rather than a column: it belongs to the bytes, and keeping them
+     * together means a file can never be paired with the wrong IV.
+     */
+    keyEpoch: int('key_epoch').notNull(),
     createdBy: id('created_by').notNull(),
     createdAt: ts('created_at').notNull(),
     version: version(),
