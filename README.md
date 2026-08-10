@@ -4,12 +4,6 @@ A self-hosted, offline-first PWA for shared group expenses — per-currency
 balances kept side by side, debt simplification, receipts, push
 notifications, and a full audit trail with revert.
 
-> **Breaking change from the unencrypted version.** Group data is now sealed
-> under keys derived from each member's password, which the server never sees,
-> so there is nothing that could read the old rows and re-seal them. There is
-> no migration: wipe the old install and start fresh. `deploy/README.md` has
-> the teardown.
-
 ## Features
 
 - **End-to-end encrypted** — expenses, payments, comments and receipt images
@@ -34,10 +28,10 @@ notifications, and a full audit trail with revert.
   the audit trail survives encryption without the server holding a readable
   copy of anything.
 - **Insight** — per-person spending, category breakdown, monthly trend
-  (per currency or display-converted); CSV export (formula-injection safe).
-- **Push notifications** — Web Push/VAPID on expense/payment/member events.
-- All money is integer minor units; split math is largest-remainder exact and
-  property-tested. The **client** re-validates every invariant on read and on
+  (per currency or display-converted); CSV export.
+- **Push notifications** — Web Push on expense/payment/member events.
+- All money is integer minor units; split math is largest-remainder exact.
+  The **client** re-validates every invariant on read and on
   write — the server cannot, because it cannot see inside an expense.
 
 ## Layout
@@ -120,13 +114,6 @@ pnpm --filter server db:migrate    # apply it
 `db:push --force` skips drizzle's data-loss confirmation and can drop and
 recreate a table for some column-type changes — **back up first**
 (`mysqldump spendapp > backup.sql`).
-
-There is no server-side recovery script any more. It used to rebuild lost
-expenses from the activity log, which held a full snapshot of every write;
-those snapshots are gone, because storing them meant storing the plaintext
-this design exists to keep off the server. A member's device holds a complete
-decrypted mirror, so restoring from a backup and letting clients re-sync is
-what recovery looks like now.
 
 ## Production
 
