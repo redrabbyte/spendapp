@@ -26,6 +26,16 @@ export const en = {
   'settings.timezone.hint': 'Times are stored in UTC and shown in this zone.',
   'settings.notifications': 'Notifications',
 
+  // --- account ------------------------------------------------------------
+  'account.title': 'Account',
+  'account.displayName': 'Your name',
+  'account.displayName.hint': 'This is what everyone in your groups sees.',
+  'account.username': 'Username',
+  'account.username.hint': 'What you log in with. Changing it does not affect your data.',
+  'account.save': 'Save changes',
+  'account.saving': 'Saving…',
+  'account.saved': 'Saved.',
+
   // --- push -------------------------------------------------------------
   // Written here rather than on the server, which has no idea who is reading.
   // Deliberately say nothing about the entry itself (design §3.3).

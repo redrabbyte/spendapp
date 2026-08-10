@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { api } from '../api';
 import { useAuth } from '../auth';
+import { useT } from '../i18n/useT';
 import type { Me } from '../types';
 
 /**
@@ -13,6 +14,7 @@ import type { Me } from '../types';
  */
 export function EditAccount() {
   const { user, setUser } = useAuth();
+  const t = useT();
   const [displayName, setDisplayName] = useState(user?.displayName ?? '');
   const [username, setUsername] = useState(user?.username ?? '');
   const [busy, setBusy] = useState(false);
@@ -49,10 +51,10 @@ export function EditAccount() {
 
   return (
     <form onSubmit={(e) => void save(e)} className="flex flex-col gap-2">
-      <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Account</span>
+      <span className="text-sm font-medium text-slate-500 dark:text-slate-400">{t('account.title')}</span>
 
       <label className="flex flex-col gap-1 text-xs text-slate-400">
-        Your name
+        {t('account.displayName')}
         <input
           className={input}
           value={displayName}
@@ -61,10 +63,10 @@ export function EditAccount() {
           required
         />
       </label>
-      <span className="text-xs text-slate-400">This is what everyone in your groups sees.</span>
+      <span className="text-xs text-slate-400">{t('account.displayName.hint')}</span>
 
       <label className="flex flex-col gap-1 text-xs text-slate-400">
-        Username
+        {t('account.username')}
         <input
           className={input}
           value={username}
@@ -77,16 +79,16 @@ export function EditAccount() {
           required
         />
       </label>
-      <span className="text-xs text-slate-400">What you log in with. Changing it does not affect your data.</span>
+      <span className="text-xs text-slate-400">{t('account.username.hint')}</span>
 
       {error && <span className="text-xs text-red-600">{error}</span>}
-      {saved && !dirty && <span className="text-xs text-teal-700 dark:text-teal-500">Saved.</span>}
+      {saved && !dirty && <span className="text-xs text-teal-700 dark:text-teal-500">{t('account.saved')}</span>}
 
       <button
         disabled={busy || !dirty}
         className="self-start rounded border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-slate-600"
       >
-        {busy ? 'Saving…' : 'Save changes'}
+        {busy ? t('account.saving') : t('account.save')}
       </button>
     </form>
   );

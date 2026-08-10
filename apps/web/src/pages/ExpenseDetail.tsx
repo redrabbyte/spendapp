@@ -13,6 +13,7 @@ import { ExpenseEditor } from '../components/ExpenseEditor';
 import { SyncPendingBadge } from '../components/SyncPendingBadge';
 import { usePendingExpenseIds } from '../pending';
 import { formatExpenseDate, useSettings } from '../settings';
+import { useMoney } from '../i18n/useMoney';
 
 export function ExpenseDetailPage() {
   const { groupId, expenseId } = useParams<{ groupId: string; expenseId: string }>();
@@ -52,7 +53,10 @@ export function ExpenseDetailPage() {
 
   const activeMembers = useMemo(() => (members ?? []).filter((m) => m.leftAt === null), [members]);
   const pending = usePendingExpenseIds();
-  const { settings: { displayTz } } = useSettings();
+  const {
+    settings: { displayTz, language },
+  } = useSettings();
+  const money = useMoney();
   const [fx, setFx] = useState<FxCacheRow | null>(null);
   const [convError, setConvError] = useState<string | null>(null);
   useEffect(() => {
@@ -142,11 +146,11 @@ export function ExpenseDetailPage() {
             {pending.has(expense.id) && <SyncPendingBadge />}
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            {formatExpenseDate(expense.expenseDate, displayTz)} · {expense.category}
+            {formatExpenseDate(expense.expenseDate, displayTz, language)} · {expense.category}
           </p>
         </div>
         <span className="flex flex-col items-end whitespace-nowrap">
-          <span className="text-lg font-medium">{formatMinor(expense.amountMinor, expense.currency)}</span>
+          <span className="text-lg font-medium">{money(expense.amountMinor, expense.currency)}</span>
           {expense.currency !== group.defaultCurrency && (
             <button onClick={() => void convertToDefault()} className="text-xs text-teal-700 underline">
               convert to {group.defaultCurrency}
@@ -174,10 +178,10 @@ export function ExpenseDetailPage() {
               <tr key={s.userId}>
                 <td className="pr-3">{nameOf(s.userId)}</td>
                 <td className="text-right tabular-nums text-slate-500 dark:text-slate-400">
-                  {s.paidMinor > 0 ? formatMinor(s.paidMinor, expense.currency) : '—'}
+                  {s.paidMinor > 0 ? money(s.paidMinor, expense.currency) : '—'}
                 </td>
                 <td className="text-right tabular-nums text-slate-700 dark:text-slate-200">
-                  {formatMinor(s.owedMinor, expense.currency)}
+                  {money(s.owedMinor, expense.currency)}
                 </td>
               </tr>
             ))}

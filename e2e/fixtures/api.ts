@@ -909,11 +909,16 @@ export async function installApi(context: BrowserContext, state: ApiState): Prom
  * something else, rather than incidentally by whatever locale CI happens to
  * run under.
  */
-async function pinLanguage(context: BrowserContext, language: 'en' | 'de'): Promise<void> {
+async function pinLanguage(context: BrowserContext, language: 'en'): Promise<void> {
   await context.addInitScript((lang) => {
     const key = 'settings';
     const stored = JSON.parse(localStorage.getItem(key) ?? '{}') as Record<string, unknown>;
-    localStorage.setItem(key, JSON.stringify({ ...stored, language: lang }));
+    // Only when nothing has been chosen. This runs on every navigation, so
+    // forcing the value would quietly undo a language a spec had just switched
+    // to — the app would look broken while the harness was the one resetting it.
+    if (stored.language === undefined) {
+      localStorage.setItem(key, JSON.stringify({ ...stored, language: lang }));
+    }
   }, language);
 }
 
@@ -929,11 +934,5 @@ export const test = base.extend<{ api: ApiState }>({
     }
   },
 });
-
-/**
- * Switch a spec to German. Call before the first navigation — the app reads
- * the setting once, at boot.
- */
-export const useGerman = (context: BrowserContext): Promise<void> => pinLanguage(context, 'de');
 
 export { expect } from '@playwright/test';

@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { formatMinor, parseImport, type MemberDto, type ParsedImport } from '@spendapp/shared';
+import { parseImport, type MemberDto, type ParsedImport } from '@spendapp/shared';
 import { applyImport, suggestAssignment, type Assignment } from '../import';
 import { addPlaceholderLocal, createGroupLocal, syncNow } from '../sync';
+import { useMoney } from '../i18n/useMoney';
 
 /**
  * Say which step failed. A bare server message ("Required") tells the user
@@ -42,6 +43,7 @@ export function ImportDialog({
   onClose: () => void;
   onDone: (groupId: string) => void;
 }) {
+  const money = useMoney();
   const [parsed, setParsed] = useState<ParsedImport | null>(null);
   const [assignment, setAssignment] = useState<Assignment>({});
   const [groupName, setGroupName] = useState('');
@@ -160,7 +162,7 @@ export function ImportDialog({
                 <>
                   {' '}
                   ({Object.entries(total)
-                    .map(([c, amount]) => formatMinor(amount, c))
+                    .map(([c, amount]) => money(amount, c))
                     .join(' + ')})
                 </>
               )}

@@ -1,0 +1,68 @@
+import { ME, expect, seedExpense, seedGroup, seedGroupKey, signIn, test } from '../fixtures/api';
+
+const GROUP = 'eeeeeeee-5555-4555-8555-eeeeeeeeeeee';
+
+/**
+ * Every other spec pins English so it can find things by their words. These
+ * are the deliberate counterpart: without them nothing would ever render the
+ * German catalogue, and a missing translation would surface to a user rather
+ * than to CI.
+ *
+ * The language is changed by clicking it, not by seeding storage — that is the
+ * path a person actually takes, and it keeps these specs from depending on
+ * which screens have been translated yet.
+ */
+async function switchToGerman(page: import('@playwright/test').Page): Promise<void> {
+  await page.getByRole('button', { name: 'Settings' }).click();
+  await page.getByRole('button', { name: 'Deutsch' }).click();
+  await expect(page.getByText('Einstellungen')).toBeVisible();
+}
+
+test('the interface follows the chosen language', async ({ page, api }) => {
+  seedGroup(api, GROUP, 'Trip', [
+    { userId: ME.id, displayName: ME.displayName, isPlaceholder: false, role: 'admin' },
+  ]);
+  await seedGroupKey(api, GROUP);
+
+  await signIn(page);
+  await switchToGerman(page);
+
+  await expect(page.getByText('Darstellung')).toBeVisible();
+  await expect(page.getByText('Meine Standardwährung')).toBeVisible();
+  // What screen readers and hyphenation key off.
+  expect(await page.evaluate(() => document.documentElement.lang)).toBe('de');
+
+  // And it survives a reload, because it is a stored choice rather than a
+  // guess at the browser's locale.
+  await page.reload();
+  await page.getByRole('button', { name: 'Settings' }).click();
+  await expect(page.getByText('Einstellungen')).toBeVisible();
+});
+
+test('errors from the API arrive in the reader’s language', async ({ page, api }) => {
+  api.takenUsernames = ['belegt'];
+
+  await signIn(page);
+  await switchToGerman(page);
+  await page.getByLabel('Benutzername').fill('belegt');
+  await page.getByRole('button', { name: 'Änderungen speichern' }).click();
+
+  // The server sent `username_taken`; every word on screen belongs to the
+  // client, which is the whole point of the code.
+  await expect(page.getByText('Dieser Benutzername ist schon vergeben.')).toBeVisible();
+});
+
+test('money is written the way the language writes it', async ({ page, api }) => {
+  seedGroup(api, GROUP, 'Trip', [
+    { userId: ME.id, displayName: ME.displayName, isPlaceholder: false, role: 'admin' },
+  ]);
+  await seedGroupKey(api, GROUP);
+  await seedExpense(api, GROUP, 'Fähre', ME.id, 123456);
+
+  await signIn(page);
+  await switchToGerman(page);
+  await page.goto(`/g/${GROUP}`);
+  await expect(page.getByText('Fähre')).toBeVisible({ timeout: 15_000 });
+  // 1.234,56 € — decimal comma, thousands point, symbol last.
+  await expect(page.getByText(/1\.234,56/)).toBeVisible();
+});

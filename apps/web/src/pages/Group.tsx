@@ -18,6 +18,7 @@ import { ImportDialog } from '../components/ImportDialog';
 import { InvalidEntries } from '../components/InvalidEntries';
 import { MembersTab } from '../components/MembersTab';
 import { SyncPendingBadge } from '../components/SyncPendingBadge';
+import { useMoney } from '../i18n/useMoney';
 
 const TABS = ['expenses', 'balances', 'charts', 'activity', 'members'] as const;
 type Tab = (typeof TABS)[number];
@@ -44,6 +45,7 @@ export function GroupPage() {
   const [query, setQuery] = useState('');
   const pending = usePendingExpenseIds();
   const { settings } = useSettings();
+  const money = useMoney();
 
   // undefined = still querying, null = definitely not in the local mirror
   const group = useLiveQuery(
@@ -249,10 +251,10 @@ export function GroupPage() {
                       {e.description}
                       {pending.has(e.id) && <SyncPendingBadge />}
                     </span>
-                    <span className="whitespace-nowrap">{formatMinor(e.amountMinor, e.currency)}</span>
+                    <span className="whitespace-nowrap">{money(e.amountMinor, e.currency)}</span>
                   </div>
                   <div className="text-sm text-slate-500 dark:text-slate-400">
-                    {formatExpenseDate(e.expenseDate, settings.displayTz)} · {e.category} · paid by{' '}
+                    {formatExpenseDate(e.expenseDate, settings.displayTz, settings.language)} · {e.category} · paid by{' '}
                     {e.splits
                       .filter((s) => s.paidMinor > 0)
                       .map((s) => nameOf(s.userId))

@@ -22,6 +22,7 @@ import { getRates, suggestRate } from '../fx';
 import type { FxCacheRow } from '../db';
 import { deletePaymentLocal, upsertExpenseLocal, upsertPaymentLocal } from '../sync';
 import { uuid } from '../uuid';
+import { useMoney } from '../i18n/useMoney';
 
 const toInput = (minor: number, ccy: string): string => formatMinor(minor, ccy).split(' ')[0]!;
 const trimRate = (r: number): string => r.toFixed(8).replace(/0+$/, '').replace(/\.$/, '');
@@ -91,6 +92,7 @@ export function BalancesTab({ group, members, expenses, payments, meId, nameOf }
     [resolvedExpenses, livePayments],
   );
   const [draft, setDraft] = useState<PaymentDraft | null>(null);
+  const money = useMoney();
   const [fx, setFx] = useState<FxCacheRow | null>(null);
 
   useEffect(() => {
@@ -111,7 +113,7 @@ export function BalancesTab({ group, members, expenses, payments, meId, nameOf }
               .map(([userId, v]) => (
                 <li key={userId} className={v >= 0 ? 'text-emerald-700' : 'text-red-600'}>
                   {nameOf(userId)}: {v > 0 ? '+' : ''}
-                  {formatMinor(v, ccy)}
+                  {money(v, ccy)}
                 </li>
               ))}
           </ul>
@@ -120,7 +122,7 @@ export function BalancesTab({ group, members, expenses, payments, meId, nameOf }
             {simplifyDebts(perUser).map((t, i) => (
               <li key={i} className="flex items-center gap-2">
                 <span>
-                  {nameOf(t.fromUser)} → {nameOf(t.toUser)}: {formatMinor(t.amountMinor, ccy)}
+                  {nameOf(t.fromUser)} → {nameOf(t.toUser)}: {money(t.amountMinor, ccy)}
                 </span>
                 <button
                   className="text-teal-700 underline"
@@ -165,11 +167,11 @@ export function BalancesTab({ group, members, expenses, payments, meId, nameOf }
                 <li key={p.id} className="flex items-center justify-between gap-2">
                   <span>
                     {p.paidOn}: {nameOf(p.fromUser)} paid {nameOf(p.toUser)}{' '}
-                    {formatMinor(p.amountMinor, p.currency)}
+                    {money(p.amountMinor, p.currency)}
                     {p.settlesCurrency && p.settledMinor != null && (
                       <span className="text-slate-500 dark:text-slate-400">
                         {' '}
-                        (settles {formatMinor(p.settledMinor, p.settlesCurrency)} @ {p.rate})
+                        (settles {money(p.settledMinor, p.settlesCurrency)} @ {p.rate})
                       </span>
                     )}
                     {p.note && <span className="text-slate-500 dark:text-slate-400"> · {p.note}</span>}

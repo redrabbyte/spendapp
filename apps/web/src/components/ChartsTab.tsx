@@ -15,12 +15,12 @@ import {
 import {
   COMMON_CURRENCIES,
   convertMinor,
-  formatMinor,
   minorUnitExponent,
   type ExpenseDto,
 } from '@spendapp/shared';
 import { getRates, suggestRate } from '../fx';
 import type { FxCacheRow } from '../db';
+import { useMoney } from '../i18n/useMoney';
 
 // Validated categorical palette (dataviz reference order, checked on #fff):
 // slots for the top-5 categories, green for the "Other" fold. Low-contrast
@@ -171,8 +171,11 @@ export function ChartsTab({ expenses, nameOf, defaultCurrency }: Props) {
     return { buckets: out, skipped: skippedCount };
   }, [expenses, range, convertTo, fx, nameOf]);
 
-  const money = (currency: string) => (v: number) =>
-    formatMinor(Math.round(v * 10 ** minorUnitExponent(currency)), currency);
+  // Charts work in major units; the axis and the list below must agree, so
+  // both go through the same localized formatter.
+  const money = useMoney();
+  const chartMoney = (currency: string) => (v: number) =>
+    money(Math.round(v * 10 ** minorUnitExponent(currency)), currency);
 
   return (
     <div className="flex flex-col gap-6">
@@ -227,14 +230,14 @@ export function ChartsTab({ expenses, nameOf, defaultCurrency }: Props) {
                         <Cell key={p.userId} fill={personColor(p.userId)} />
                       ))}
                     </Pie>
-                    <Tooltip formatter={(v) => money(b.currency)(Number(v))} />
+                    <Tooltip formatter={(v) => chartMoney(b.currency)(Number(v))} />
                   </PieChart>
                   <ul className="mt-1 flex flex-col gap-1 text-sm">
                     {rows.map((p) => (
                       <li key={p.userId} className="flex items-center gap-2">
                         <span className="inline-block h-3 w-3 rounded-sm" style={{ background: personColor(p.userId) }} />
                         <span className="text-slate-700 dark:text-slate-200">{p.name}</span>
-                        <span className="ml-auto pl-4 tabular-nums text-slate-500 dark:text-slate-400">{money(b.currency)(p[key])}</span>
+                        <span className="ml-auto pl-4 tabular-nums text-slate-500 dark:text-slate-400">{chartMoney(b.currency)(p[key])}</span>
                       </li>
                     ))}
                   </ul>
@@ -269,7 +272,7 @@ export function ChartsTab({ expenses, nameOf, defaultCurrency }: Props) {
                     <Cell key={c.name} fill={c.color} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(v) => money(b.currency)(Number(v))} />
+                <Tooltip formatter={(v) => chartMoney(b.currency)(Number(v))} />
               </PieChart>
             </div>
             <ul className="flex flex-col gap-1 text-sm">
@@ -278,7 +281,7 @@ export function ChartsTab({ expenses, nameOf, defaultCurrency }: Props) {
                   <span className="inline-block h-3 w-3 rounded-sm" style={{ background: c.color }} />
                   <span className="text-slate-700 dark:text-slate-200">{c.name}</span>
                   <span className="ml-auto pl-4 tabular-nums text-slate-500 dark:text-slate-400">
-                    {formatMinor(c.minor, b.currency)}
+                    {money(c.minor, b.currency)}
                   </span>
                 </li>
               ))}
@@ -293,7 +296,7 @@ export function ChartsTab({ expenses, nameOf, defaultCurrency }: Props) {
                   <CartesianGrid stroke={GRID} vertical={false} />
                   <XAxis dataKey="month" tick={{ fill: MUTED, fontSize: 12 }} stroke={GRID} />
                   <YAxis tick={{ fill: MUTED, fontSize: 12 }} stroke={GRID} />
-                  <Tooltip formatter={(v) => money(b.currency)(Number(v))} />
+                  <Tooltip formatter={(v) => chartMoney(b.currency)(Number(v))} />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
                   {b.categoryNames.map((c) => (
                     <Bar

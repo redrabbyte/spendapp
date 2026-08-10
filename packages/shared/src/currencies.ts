@@ -27,6 +27,32 @@ export function formatMinor(amountMinor: number, currency: string): string {
   return `${sign}${whole}.${frac} ${currency}`;
 }
 
+/**
+ * The same amount, written the way the reader's language writes money:
+ * "12.34 EUR" in English, "12,34 €" in German.
+ *
+ * Deliberately separate from `formatMinor` rather than replacing it.
+ * `formatMinor` is the machine format — it is what the CSV export writes, and
+ * what the editors split on to prefill a number field. Localising *that* would
+ * change the export people may already be parsing, and would break the split,
+ * because Intl puts a non-breaking space between the number and the symbol.
+ */
+export function formatMoney(amountMinor: number, currency: string, locale: string): string {
+  const exp = minorUnitExponent(currency);
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: exp,
+      maximumFractionDigits: exp,
+    }).format(amountMinor / 10 ** exp);
+  } catch {
+    // An ISO code Intl does not know: better a plain, correct number than an
+    // exception thrown while rendering a balance.
+    return formatMinor(amountMinor, currency);
+  }
+}
+
 /** Parse a user-typed decimal ("12.34" or "12,34") into minor units. Throws on junk. */
 export function parseToMinor(input: string, currency: string): number {
   const exp = minorUnitExponent(currency);

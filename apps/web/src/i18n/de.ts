@@ -23,6 +23,16 @@ export const de: Catalogue = {
   'settings.timezone.hint': 'Zeiten werden in UTC gespeichert und in dieser Zone angezeigt.',
   'settings.notifications': 'Benachrichtigungen',
 
+  // --- account ------------------------------------------------------------
+  'account.title': 'Konto',
+  'account.displayName': 'Dein Name',
+  'account.displayName.hint': 'Das sehen alle in deinen Gruppen.',
+  'account.username': 'Benutzername',
+  'account.username.hint': 'Damit meldest du dich an. Eine Änderung wirkt sich nicht auf deine Daten aus.',
+  'account.save': 'Änderungen speichern',
+  'account.saving': 'Wird gespeichert…',
+  'account.saved': 'Gespeichert.',
+
   // --- push -------------------------------------------------------------
   'push.expense.saved': '{actor} hat eine Ausgabe hinzugefügt oder geändert',
   'push.expense.deleted': '{actor} hat eine Ausgabe gelöscht',
