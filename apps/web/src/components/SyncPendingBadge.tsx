@@ -1,6 +1,5 @@
 import { useState } from 'react';
-
-const MESSAGE = 'Not synced yet — this change was made offline and will upload when you are back online.';
+import { useT } from '../i18n/useT';
 
 /**
  * Small "cloud-off" marker for an expense with unsynced local changes. Hover
@@ -9,13 +8,14 @@ const MESSAGE = 'Not synced yet — this change was made offline and will upload
  */
 export function SyncPendingBadge({ className }: { className?: string }) {
   const [open, setOpen] = useState(false);
+  const message = useT()('sync.pending');
   return (
     <span className={`relative inline-flex ${className ?? ''}`}>
       <span
         role="button"
         tabIndex={0}
-        aria-label={MESSAGE}
-        title={MESSAGE}
+        aria-label={message}
+        title={message}
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -46,7 +46,7 @@ export function SyncPendingBadge({ className }: { className?: string }) {
       </span>
       {open && (
         <span className="absolute left-1/2 top-full z-20 mt-1 w-52 -translate-x-1/2 rounded bg-slate-800 px-2 py-1 text-xs font-normal text-white shadow-lg">
-          {MESSAGE}
+          {message}
         </span>
       )}
     </span>

@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import type { MemberDto } from '@spendapp/shared';
 import { localDb } from '../db';
+import { useT } from '../i18n/useT';
 
 /**
  * Entries that opened but do not add up (design §3.1).
@@ -17,6 +18,7 @@ import { localDb } from '../db';
  * serve modified JavaScript anyway (§1), which no signature scheme survives.
  */
 export function InvalidEntries({ groupId, members }: { groupId: string; members: MemberDto[] }) {
+  const t = useT();
   const row = useLiveQuery(() => localDb.coverage.get(groupId), [groupId]);
   const bad = row?.invalid ?? [];
   if (bad.length === 0) return null;
@@ -25,21 +27,15 @@ export function InvalidEntries({ groupId, members }: { groupId: string; members:
 
   return (
     <div className="mb-3 rounded bg-red-50 p-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-300">
-      <p className="font-medium">
-        {bad.length} {bad.length === 1 ? 'entry does' : 'entries do'} not add up and {bad.length === 1 ? 'is' : 'are'}{' '}
-        left out of every total here.
-      </p>
+      <p className="font-medium">{t('invalid.summary', { count: bad.length })}</p>
       <ul className="mt-1 list-inside list-disc">
         {bad.map((e) => (
           <li key={e.id}>
-            last written by {nameOf(e.author)} — {e.reason}
+            {t('invalid.item', { author: nameOf(e.author), reason: e.reason })}
           </li>
         ))}
       </ul>
-      <p className="mt-1 text-xs">
-        Ask them to open it and save it again. Until then the group&apos;s totals are short by whatever it
-        held.
-      </p>
+      <p className="mt-1 text-xs">{t('invalid.hint')}</p>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { enablePush, getPushState } from '../push';
+import { useT } from '../i18n/useT';
 
 const ASKED_KEY = 'notifPromptDone';
 
@@ -9,6 +10,7 @@ const ASKED_KEY = 'notifPromptDone';
  * VAPID keys, permission not already granted/denied).
  */
 export function NotificationPrompt() {
+  const t = useT();
   const [show, setShow] = useState(false);
 
   useEffect(() => {
@@ -30,7 +32,7 @@ export function NotificationPrompt() {
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-teal-100 bg-teal-50 dark:bg-teal-950 px-4 py-2 text-sm dark:border-teal-900 dark:bg-teal-950">
-      <span>Get notified when someone adds an expense or pays you back?</span>
+      <span>{t('push.prompt')}</span>
       <span className="flex gap-2">
         <button
           onClick={() => {
@@ -38,10 +40,10 @@ export function NotificationPrompt() {
           }}
           className="rounded bg-teal-700 px-3 py-1 font-medium text-white"
         >
-          Enable
+          {t('push.prompt.enable')}
         </button>
         <button onClick={done} className="text-slate-500 dark:text-slate-400 underline dark:text-slate-400">
-          Not now
+          {t('push.prompt.later')}
         </button>
       </span>
     </div>

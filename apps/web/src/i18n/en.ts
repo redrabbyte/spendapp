@@ -36,6 +36,33 @@ export const en = {
   'account.saving': 'Saving…',
   'account.saved': 'Saved.',
 
+  // --- app shell ----------------------------------------------------------
+  'sync.pending': 'Not synced yet â this change was made offline and will upload when you are back online.',
+
+  'invalid.summary': {
+    one: '{count} entry does not add up and is left out of every total here.',
+    other: '{count} entries do not add up and are left out of every total here.',
+  },
+  'invalid.item': 'last written by {author} â {reason}',
+  'invalid.hint': 'Ask them to open it and save it again. Until then the group’s totals are short by whatever it held.',
+
+  'push.unavailable': 'Push is not configured on this server (no VAPID keys).',
+  'push.unsupported': 'Notifications need an installed app on iOS: share → “Add to Home Screen”.',
+  'push.label': 'Notifications:',
+  'push.blocked': 'blocked in browser settings',
+  'push.on': 'on — turn off',
+  'push.off': 'off — turn on',
+  'push.prompt': 'Get notified when someone adds an expense or pays you back?',
+  'push.prompt.enable': 'Enable',
+  'push.prompt.later': 'Not now',
+
+  'gap.title': 'Showing only part of this group.',
+  'gap.expenses': 'Entries written before you joined are not listed here.',
+  'gap.balances': 'These balances cover only what you can read. Your own position is exact — you were in none of the earlier splits — but debts between other people from before you joined are not included.',
+  'gap.charts': 'These charts cover only what you can read, so totals and categories start from when you joined.',
+  'gap.activity': 'The history starts when you joined. Earlier entries, comments and receipts are not shown.',
+  'gap.members': 'You joined partway through, so you cannot pass this group’s full history on to anyone new.',
+
   // --- push -------------------------------------------------------------
   // Written here rather than on the server, which has no idea who is reading.
   // Deliberately say nothing about the entry itself (design §3.3).

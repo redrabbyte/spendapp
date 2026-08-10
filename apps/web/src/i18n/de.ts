@@ -33,6 +33,33 @@ export const de: Catalogue = {
   'account.saving': 'Wird gespeichert…',
   'account.saved': 'Gespeichert.',
 
+  // --- app shell ----------------------------------------------------------
+  'sync.pending': 'Noch nicht synchronisiert — diese Änderung entstand offline und wird hochgeladen, sobald du wieder online bist.',
+
+  'invalid.summary': {
+    one: '{count} Eintrag geht nicht auf und bleibt aus allen Summen hier heraus.',
+    other: '{count} Einträge gehen nicht auf und bleiben aus allen Summen hier heraus.',
+  },
+  'invalid.item': 'zuletzt bearbeitet von {author} — {reason}',
+  'invalid.hint': 'Bitte sie, ihn zu öffnen und noch einmal zu speichern. Bis dahin fehlt den Summen der Gruppe genau dieser Betrag.',
+
+  'push.unavailable': 'Push ist auf diesem Server nicht eingerichtet (keine VAPID-Schlüssel).',
+  'push.unsupported': 'Auf iOS brauchen Benachrichtigungen eine installierte App: Teilen → „Zum Home-Bildschirm“.',
+  'push.label': 'Benachrichtigungen:',
+  'push.blocked': 'in den Browsereinstellungen blockiert',
+  'push.on': 'an — ausschalten',
+  'push.off': 'aus — einschalten',
+  'push.prompt': 'Benachrichtigt werden, wenn jemand eine Ausgabe einträgt oder dir Geld zurückzahlt?',
+  'push.prompt.enable': 'Einschalten',
+  'push.prompt.later': 'Jetzt nicht',
+
+  'gap.title': 'Es wird nur ein Teil dieser Gruppe angezeigt.',
+  'gap.expenses': 'Einträge von vor deinem Beitritt werden hier nicht aufgeführt.',
+  'gap.balances': 'Diese Salden umfassen nur, was du lesen kannst. Dein eigener Stand stimmt genau — du warst an keiner früheren Aufteilung beteiligt —, aber Schulden zwischen anderen von vor deinem Beitritt fehlen.',
+  'gap.charts': 'Diese Auswertungen umfassen nur, was du lesen kannst; Summen und Kategorien beginnen also mit deinem Beitritt.',
+  'gap.activity': 'Der Verlauf beginnt mit deinem Beitritt. Frühere Einträge, Kommentare und Belege werden nicht angezeigt.',
+  'gap.members': 'Du bist erst später dazugekommen und kannst den vollen Verlauf dieser Gruppe deshalb nicht an neue Mitglieder weitergeben.',
+
   // --- push -------------------------------------------------------------
   'push.expense.saved': '{actor} hat eine Ausgabe hinzugefügt oder geändert',
   'push.expense.deleted': '{actor} hat eine Ausgabe gelöscht',
