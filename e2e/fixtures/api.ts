@@ -91,7 +91,16 @@ export interface ApiState {
   /** Pending join requests per group — only admins ever see these. */
   joinRequests: Map<
     string,
-    { userId: string; displayName: string; claimMemberId: string | null; requestedAt: string; shareHistory?: boolean }[]
+    {
+      userId: string;
+      displayName: string;
+      claimMemberId: string | null;
+      requestedAt: string;
+      shareHistory?: boolean;
+      /** Recent declines stay in the queue so an admin can undo one. */
+      status?: 'pending' | 'rejected';
+      decidedAt?: string | null;
+    }[]
   >;
   expenses: Map<string, ExpenseWire[]>;
   payments: Map<string, PaymentWire[]>;
@@ -516,6 +525,10 @@ export async function installApi(context: BrowserContext, state: ApiState): Prom
           publicKey: TEST_PUBLIC_KEY,
           inviteToken: 'tok',
           shareHistory: true,
+          // Declines stay listed so they can be undone; the real handler drops
+          // them after 30 days, which nothing in a test run reaches.
+          status: 'pending',
+          decidedAt: null,
           ...r,
         })),
       });
@@ -546,11 +559,17 @@ export async function installApi(context: BrowserContext, state: ApiState): Prom
     if (decideMatch && method === 'POST') {
       const [, groupId, userId] = decideMatch as unknown as [string, string, string];
       const queue = state.joinRequests.get(groupId) ?? [];
+      const decision = (body() as { decision?: string } | null)?.decision;
+      // Declining marks the row rather than dropping it — the admin has to be
+      // able to see what they just did, and take it back.
       state.joinRequests.set(
         groupId,
-        queue.filter((r) => r.userId !== userId),
+        decision === 'reject'
+          ? queue.map((r) =>
+              r.userId === userId ? { ...r, status: 'rejected' as const, decidedAt: new Date(0).toISOString() } : r,
+            )
+          : queue.filter((r) => r.userId !== userId),
       );
-      const decision = (body() as { decision?: string } | null)?.decision;
       if (decision === 'approve') {
         const list = state.members.get(groupId) ?? [];
         const req = queue.find((r) => r.userId === userId);

@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { admitSchema, publishKeysSchema } from '@spendapp/shared';
@@ -9,6 +9,15 @@ import { claimPlaceholder, unclaimMember } from '../lib/members.js';
 import { notifyGroup, notifyUsers } from '../lib/notify.js';
 
 const decisionSchema = z.object({ decision: z.enum(['approve', 'reject']) });
+
+/**
+ * How long a declined request stays visible to admins so it can be undone.
+ * Long enough to cover "I did that yesterday and only just noticed"; short
+ * enough that the members tab does not become a standing register of everyone
+ * the group ever turned away.
+ */
+const DECLINE_WINDOW_DAYS = 30;
+const DECLINE_WINDOW = (): Date => new Date(Date.now() - DECLINE_WINDOW_DAYS * 86_400_000);
 const roleSchema = z.object({ role: z.enum(['admin', 'member']) });
 
 /**
@@ -39,17 +48,32 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
         // whole keyring or forces a rotation (design §4.7). The approving
         // client needs to know before it acts, not after.
         shareHistory: schema.invites.shareHistory,
+        status: schema.joinRequests.status,
+        decidedAt: schema.joinRequests.decidedAt,
       })
       .from(schema.joinRequests)
       .innerJoin(schema.users, eq(schema.users.id, schema.joinRequests.userId))
       // Left join: a revoked or deleted invite must not hide a pending row.
       .leftJoin(schema.invites, eq(schema.invites.token, schema.joinRequests.inviteToken))
-      .where(and(eq(schema.joinRequests.groupId, groupId), eq(schema.joinRequests.status, 'pending')));
+      .where(
+        and(
+          eq(schema.joinRequests.groupId, groupId),
+          // Recent declines come too, so a mis-click can be put right. A
+          // decline is otherwise invisible the instant it happens: the row
+          // leaves this list and the joiner cannot ask again, which left the
+          // one irreversible action here as the one with no feedback.
+          or(
+            eq(schema.joinRequests.status, 'pending'),
+            and(eq(schema.joinRequests.status, 'rejected'), gt(schema.joinRequests.decidedAt, DECLINE_WINDOW())),
+          ),
+        ),
+      );
 
     return {
       requests: rows.map((r) => ({
         ...r,
         requestedAt: r.requestedAt.toISOString(),
+        decidedAt: r.decidedAt?.toISOString() ?? null,
         shareHistory: r.shareHistory ?? true, // invite gone: fall back to the norm
       })),
     };
@@ -106,7 +130,11 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
       .where(and(eq(schema.joinRequests.groupId, groupId), eq(schema.joinRequests.userId, userId)))
       .limit(1);
     const request = rows[0];
-    if (!request || request.status !== 'pending') return reply.code(404).send({ error: 'no pending request' });
+    // A declined request can still be approved: declining is one click, it is
+    // final for the joiner, and until now it could not be taken back by the
+    // admin who did it either. Already-approved rows stay closed — they are a
+    // membership now, and re-running this would re-log the join.
+    if (!request || request.status === 'approved') return reply.code(404).send({ error: 'no pending request' });
 
     const now = new Date();
     const decided = { status: parsed.data.decision === 'approve' ? 'approved' : 'rejected', decidedBy: adminId, decidedAt: now };

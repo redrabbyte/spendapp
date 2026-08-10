@@ -47,6 +47,33 @@ test('admins see the pending queue and approving adds the member', async ({ page
   expect(published[0]!.wraps.map((w) => w.epoch)).toEqual([0]);
 });
 
+test('a decline can be taken back by the admin who made it', async ({ page, api }) => {
+  seedGroup(api, GROUP, 'Trip', [
+    { userId: ME.id, displayName: ME.displayName, isPlaceholder: false, role: 'admin' },
+  ]);
+  await seedGroupKey(api, GROUP);
+  api.joinRequests.set(GROUP, [
+    { userId: OTHER, displayName: 'Sam', claimMemberId: null, requestedAt: '2026-08-01T10:00:00.000Z' },
+  ]);
+
+  await signIn(page);
+  await openMembers(page);
+  await page.getByRole('button', { name: 'Decline' }).click();
+
+  // Declining used to be invisible the moment it happened: the row left the
+  // queue, and the joiner could not ask again with any link. One mis-click
+  // shut somebody out of the group permanently, with nothing on screen to say
+  // so and nothing to click.
+  await expect(page.getByText('Waiting for approval')).toHaveCount(0);
+  await expect(page.getByText('Declined (1)')).toBeVisible();
+  await expect(page.getByText('Sam')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Let them in' }).click();
+  await expect(page.getByText('Declined')).toHaveCount(0);
+  // Really a member now, not merely off the declined list.
+  expect(api.members.get(GROUP)?.some((m) => m.userId === OTHER && !m.leftAt)).toBe(true);
+});
+
 test('a member added without a keyring is reported, not silently broken', async ({ page, api }) => {
   seedGroup(api, GROUP, 'Trip', [
     { userId: ME.id, displayName: ME.displayName, isPlaceholder: false, role: 'admin' },

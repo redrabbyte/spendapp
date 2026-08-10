@@ -66,6 +66,9 @@ interface JoinRequest {
   inviteToken: string;
   /** False means approving must rotate instead of handing over the keyring. */
   shareHistory: boolean;
+  /** 'rejected' rows are recent declines, kept listed so they can be undone. */
+  status: 'pending' | 'rejected';
+  decidedAt: string | null;
 }
 
 /**
@@ -117,6 +120,10 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [requests, setRequests] = useState<JoinRequest[]>([]);
+  // The queue carries recent declines alongside the pending asks, so the two
+  // are split here rather than fetched twice.
+  const pendingRequests = requests.filter((r) => r.status !== 'rejected');
+  const declinedRequests = requests.filter((r) => r.status === 'rejected');
   const [deciding, setDeciding] = useState<string | null>(null);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
@@ -365,12 +372,12 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
           {keyHandoff}
         </p>
       )}
-      {meIsAdmin && requests.length > 0 && (
+      {meIsAdmin && pendingRequests.length > 0 && (
         <section className="flex flex-col gap-2">
           <h2 className="text-sm font-medium text-slate-500 dark:text-slate-400">
-            Waiting for approval ({requests.length})
+            Waiting for approval ({pendingRequests.length})
           </h2>
-          {requests.map((r) => (
+          {pendingRequests.map((r) => (
             <div key={r.userId} className={row}>
               <span className="flex flex-col">
                 <span>{r.displayName}</span>
@@ -400,9 +407,38 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
             </div>
           ))}
           <p className="text-xs text-slate-400">
-            The code is derived from their own key, so a stranger who intercepted the link reads out
-            different digits. Declining is final for that account — the same link will not let them ask
-            again.
+            The code is derived from their own device, so a stranger who intercepted the link reads out
+            different digits. Declining stops that account asking again — you can take it back here for
+            the next 30 days.
+          </p>
+        </section>
+      )}
+
+      {meIsAdmin && declinedRequests.length > 0 && (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-sm font-medium text-slate-500 dark:text-slate-400">
+            Declined ({declinedRequests.length})
+          </h2>
+          {declinedRequests.map((r) => (
+            <div key={r.userId} className={`${row} opacity-60`}>
+              <span className="flex flex-col">
+                <span className="line-through">{r.displayName}</span>
+                <span className="text-xs text-slate-400">
+                  declined {r.decidedAt ? new Date(r.decidedAt).toLocaleDateString() : ''}
+                </span>
+              </span>
+              <button
+                disabled={deciding === r.userId}
+                onClick={() => void decide(r.userId, 'approve')}
+                className={`${smallButton} shrink-0 border border-teal-700 text-teal-800 dark:border-teal-500 dark:text-teal-400`}
+              >
+                Let them in
+              </button>
+            </div>
+          ))}
+          <p className="text-xs text-slate-400">
+            They cannot ask again themselves, so this is the only way back in for them. Declines disappear
+            from here after 30 days.
           </p>
         </section>
       )}
