@@ -184,6 +184,26 @@ Changing the policy later asks everyone to accept it again, which is what the
 substantive change, leave it alone for a typo. Without a marker every edit
 counts, since the version becomes a hash of the file.
 
+## Deleting an account for someone
+
+People delete their own accounts from Settings, which asks for the password
+again. That is no help to the person most likely to be asking you: whoever lost
+their password, and with it the ability to decrypt anything. The privacy notice
+says such a request can be made by email, so there is a script:
+
+```sh
+cd /opt/spendapp/current/apps/server
+sudo -u spendapp pnpm --filter server delete-account <username>
+```
+
+It prints what will be destroyed — groups that die with them, admin succession,
+history that becomes unreadable for good — and waits for the username to be
+typed back. It runs the same erasure the app's own delete button does, so there
+is one implementation and no chance of the two drifting apart.
+
+Run it from the release directory: it reads `DATABASE_URL` from the shared
+`.env` the same way the service does.
+
 ## Every deploy
 
 ```sh
