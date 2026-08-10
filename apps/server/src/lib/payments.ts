@@ -73,7 +73,7 @@ export async function applyPaymentUpsert(
   });
   if (!failure) {
     // Generic: the amount is the thing being hidden (design §3.3).
-    notifyGroup(input.groupId, userId, 'recorded a payment', `/g/${input.groupId}?tab=balances`);
+    notifyGroup(input.groupId, userId, 'payment.recorded', `/g/${input.groupId}?tab=balances`);
   }
   return failure ?? { ok: true };
 }

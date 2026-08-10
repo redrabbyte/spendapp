@@ -3,10 +3,13 @@
 // it is type-checked against the webworker lib and bundled by vite-plugin-pwa.
 declare const self: ServiceWorkerGlobalScope;
 
+import { isNotificationKind, type PushPayload } from '@spendapp/shared';
 import { ExpirationPlugin } from 'workbox-expiration';
 import { createHandlerBoundToURL, precacheAndRoute } from 'workbox-precaching';
 import { NavigationRoute, registerRoute } from 'workbox-routing';
 import { CacheFirst } from 'workbox-strategies';
+import { isLanguage, translate, type Language } from './i18n';
+import { readLanguagePref } from './i18n/prefs';
 
 precacheAndRoute(self.__WB_MANIFEST);
 
@@ -29,24 +32,38 @@ self.addEventListener('message', (event) => {
   if ((event.data as { type?: string } | undefined)?.type === 'SKIP_WAITING') void self.skipWaiting();
 });
 
-interface PushPayload {
-  title?: string;
-  body?: string;
-  url?: string;
+/**
+ * The reader's language. Settings live in localStorage, which workers cannot
+ * touch, and a push usually arrives with no page open to ask — so the app
+ * mirrors the choice into a small IndexedDB store that both can reach. If it
+ * has never been written, the browser's own preference is closer than English.
+ */
+async function readerLanguage(): Promise<Language> {
+  const stored = await readLanguagePref();
+  if (stored) return stored;
+  const base = (self.navigator.language || 'en').split('-')[0];
+  return isLanguage(base) ? base : 'en';
 }
 
 self.addEventListener('push', (event) => {
   if (!event.data) return;
-  let payload: PushPayload = {};
+  let payload: Partial<PushPayload> = {};
   try {
-    payload = event.data.json() as PushPayload;
+    payload = event.data.json() as Partial<PushPayload>;
   } catch {
-    payload = { body: event.data.text() };
+    /* not JSON: nothing to say, and inventing a body would be worse */
   }
   event.waitUntil(
     (async () => {
-      await self.registration.showNotification(payload.title ?? 'SpendApp', {
-        body: payload.body ?? '',
+      // The server sends a kind and the names; the words are written here, in
+      // whatever language this device is set to. It cannot compose the sentence
+      // itself — it has no idea who is reading.
+      const language = await readerLanguage();
+      const body = isNotificationKind(payload.kind)
+        ? translate(language, `push.${payload.kind}`, { actor: payload.actor ?? '', group: payload.group ?? '' })
+        : '';
+      await self.registration.showNotification(payload.group ?? 'SpendApp', {
+        body,
         icon: '/icon.svg',
         badge: '/icon.svg',
         data: { url: payload.url ?? '/' },

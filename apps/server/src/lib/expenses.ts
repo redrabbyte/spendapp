@@ -82,7 +82,7 @@ export async function applyExpenseUpsert(
   if (!failure) {
     // Generic on purpose: composing the description and amount would put the
     // very content this hides into a push payload (design §3.3).
-    notifyGroup(input.groupId, userId, 'added or changed an expense', `/g/${input.groupId}/e/${input.id}`);
+    notifyGroup(input.groupId, userId, 'expense.saved', `/g/${input.groupId}/e/${input.id}`);
   }
   return failure ?? { ok: true };
 }
@@ -124,6 +124,6 @@ export async function applyExpenseDelete(
       await tx.insert(schema.processedMutations).values({ mutationId, userId, createdAt: now });
     }
   });
-  if (!expense.deletedAt) notifyGroup(expense.groupId, userId, 'deleted an expense');
+  if (!expense.deletedAt) notifyGroup(expense.groupId, userId, 'expense.deleted');
   return { ok: true }; // deleting twice is not an error
 }

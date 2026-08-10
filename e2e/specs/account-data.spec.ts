@@ -78,7 +78,7 @@ test('a username somebody else holds is refused, not silently kept', async ({ pa
   await page.getByLabel('Username').fill('taken');
   await page.getByRole('button', { name: 'Save changes' }).click();
 
-  await expect(page.getByText('that username is taken')).toBeVisible();
+  await expect(page.getByText('That username is taken.')).toBeVisible();
   expect(api.profile.username).toBeUndefined();
 });
 
@@ -108,7 +108,7 @@ test('deletion needs the password, not just a session', async ({ page, api }) =>
   await page.getByRole('button', { name: 'Delete my account', exact: true }).click();
 
   // An unlocked phone left on a table holds a session. It does not hold this.
-  await expect(page.getByText('wrong password')).toBeVisible();
+  await expect(page.getByText('Wrong password.')).toBeVisible();
   expect(api.deleted).toBe(false);
 });
 

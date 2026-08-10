@@ -79,7 +79,7 @@ export async function leaveGroup(userId: string, groupId: string): Promise<'left
     }
   });
 
-  notifyGroup(groupId, userId, 'left the group', `/g/${groupId}?tab=members`);
+  notifyGroup(groupId, userId, 'member.left', `/g/${groupId}?tab=members`);
   if (heir) {
     const groupRows = await db
       .select({ name: schema.groups.name })
@@ -89,7 +89,7 @@ export async function leaveGroup(userId: string, groupId: string): Promise<'left
     notifyUsers(
       [heir.userId],
       groupRows[0]?.name ?? 'your group',
-      'You are now an admin — the last one left the group',
+      'you.promoted.lastAdminLeft',
       `/g/${groupId}?tab=members`,
     );
   }

@@ -44,6 +44,6 @@ export async function applyCommentCreate(
       await tx.insert(schema.processedMutations).values({ mutationId, userId, createdAt: now });
     }
   });
-  notifyGroup(input.groupId, userId, 'commented on an expense', `/g/${input.groupId}/e/${input.expenseId}`);
+  notifyGroup(input.groupId, userId, 'comment.added', `/g/${input.groupId}/e/${input.expenseId}`);
   return { ok: true };
 }

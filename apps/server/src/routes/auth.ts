@@ -50,7 +50,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
    */
   app.post('/api/auth/params', { config: AUTH_RATE }, async (req, reply) => {
     const parsed = authParamsSchema.safeParse(req.body);
-    if (!parsed.success) return reply.code(400).send({ error: 'invalid input' });
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid_input' });
     const username = parsed.data.username;
     const rows = await db
       .select({ kdfSalt: schema.users.kdfSalt, kdfParams: schema.users.kdfParams })
@@ -86,10 +86,10 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
    */
   app.post('/api/privacy/accept', { preHandler: app.requireUser }, async (req, reply) => {
     const parsed = z.object({ version: z.string().min(1).max(64) }).safeParse(req.body);
-    if (!parsed.success) return reply.code(400).send({ error: 'invalid input' });
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid_input' });
     const policy = currentPolicy();
     if (parsed.data.version !== policy.version) {
-      return reply.code(409).send({ error: 'the policy changed while you were reading it — reload and try again' });
+      return reply.code(409).send({ error: 'policy_changed' });
     }
     await db
       .update(schema.users)
@@ -100,7 +100,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
 
   app.post('/api/auth/register', { config: AUTH_RATE }, async (req, reply) => {
     const parsed = registerSchema.safeParse(req.body);
-    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'invalid input' });
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid_input' });
     const { username, displayName, authKey, privacyVersion, ...keys } = parsed.data;
 
     // Consent is part of creating the account, not a step afterwards: an
@@ -108,7 +108,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     // to prevent. Refusing a stale version keeps the record meaning something.
     const policy = currentPolicy();
     if (privacyVersion !== policy.version) {
-      return reply.code(409).send({ error: 'the privacy policy changed — reload the page and read it again' });
+      return reply.code(409).send({ error: 'policy_changed' });
     }
 
     const passwordHash = await argon2.hash(authKey, ARGON_OPTS);
@@ -128,7 +128,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         privacyVersion: policy.version,
       });
     } catch (err) {
-      if (isDuplicate(err)) return reply.code(409).send({ error: 'that username is taken' });
+      if (isDuplicate(err)) return reply.code(409).send({ error: 'username_taken' });
       throw err;
     }
     await createSession(reply, userId, req.headers['user-agent']);
@@ -145,7 +145,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     // authKey, so accepting one would mean the server had seen the password
     // and could derive the KEK.
     const parsed = loginSchema.safeParse(req.body);
-    if (!parsed.success) return reply.code(400).send({ error: 'invalid input' });
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid_input' });
     const username = parsed.data.username.toLowerCase();
 
     const rows = await db.select().from(schema.users).where(eq(schema.users.username, username)).limit(1);
@@ -155,7 +155,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       ? await argon2.verify(user.passwordHash, parsed.data.authKey)
       : (await argon2.verify(await dummyHashPromise, parsed.data.authKey), false);
     if (!ok || !user) {
-      return reply.code(401).send({ error: 'invalid username or password' });
+      return reply.code(401).send({ error: 'invalid_credentials' });
     }
 
     await createSession(reply, user.id, req.headers['user-agent']); // fresh session id on every login
@@ -182,7 +182,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
    */
   app.post('/api/auth/rekey', { preHandler: app.requireUser, config: AUTH_RATE }, async (req, reply) => {
     const parsed = rekeySchema.safeParse(req.body);
-    if (!parsed.success) return reply.code(400).send({ error: 'invalid input' });
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid_input' });
 
     const rows = await db
       .select({ publicKey: schema.users.publicKey })
@@ -190,7 +190,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       .where(eq(schema.users.id, req.user!.id))
       .limit(1);
     if (rows[0]?.publicKey && rows[0].publicKey !== parsed.data.publicKey) {
-      return reply.code(400).send({ error: 'identity key cannot change — it would orphan every group key' });
+      return reply.code(400).send({ error: 'identity_key_immutable' });
     }
 
     await applyAccountKeys(req.user!.id, parsed.data);
@@ -231,7 +231,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       })
       .refine((v) => v.displayName !== undefined || v.username !== undefined, { message: 'nothing to change' })
       .safeParse(req.body);
-    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'invalid input' });
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid_input' });
 
     const username = parsed.data.username?.toLowerCase();
     try {
@@ -243,7 +243,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         })
         .where(eq(schema.users.id, req.user!.id));
     } catch (err) {
-      if (isDuplicate(err)) return reply.code(409).send({ error: 'that username is taken' });
+      if (isDuplicate(err)) return reply.code(409).send({ error: 'username_taken' });
       throw err;
     }
 

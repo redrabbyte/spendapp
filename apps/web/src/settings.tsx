@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { detectLanguage, isLanguage, type Language } from './i18n';
+import { detectLanguage, isLanguage, setActiveLanguage, type Language } from './i18n';
+import { writeLanguagePref } from './i18n/prefs';
 
 export type Theme = 'system' | 'light' | 'dark';
 /** 'device' = the browser's local zone; otherwise an IANA name like 'Europe/Berlin'. */
@@ -48,8 +49,14 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   // Screen readers announce in the wrong accent without this, and it is what
   // hyphenation and quotation marks key off.
+  //
+  // The mirror into IndexedDB is for the service worker: it composes push
+  // notifications and cannot read localStorage, so without this every one of
+  // them would arrive in the browser's language rather than the chosen one.
   useEffect(() => {
     document.documentElement.lang = settings.language;
+    setActiveLanguage(settings.language);
+    void writeLanguagePref(settings.language);
   }, [settings.language]);
 
   useEffect(() => {

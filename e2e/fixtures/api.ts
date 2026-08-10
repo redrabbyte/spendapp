@@ -424,8 +424,10 @@ export async function installApi(context: BrowserContext, state: ApiState): Prom
       const parsed = schema.safeParse(value);
       if (parsed.success) return parsed.data;
       const error = parsed.error.issues[0]?.message ?? 'invalid input';
+      // Recorded in full for the failure message, but sent as the code the
+      // real server sends — the client can only translate a code.
       state.rejected.push({ url: path, error });
-      void json(route, { error }, 400);
+      void json(route, { error: 'invalid_input' }, 400);
       return null;
     };
 
@@ -435,7 +437,7 @@ export async function installApi(context: BrowserContext, state: ApiState): Prom
     if (path === '/api/privacy/accept') {
       const version = (body() as { version?: string }).version;
       // The server refuses consent to wording other than what it is serving.
-      if (version !== state.policy.version) return json(route, { error: 'policy has changed' }, 409);
+      if (version !== state.policy.version) return json(route, { error: 'policy_changed' }, 409);
       state.acceptedPolicyVersion = version;
       return json(route, { version });
     }
@@ -445,7 +447,7 @@ export async function installApi(context: BrowserContext, state: ApiState): Prom
     // read handler looks like a successful deletion to the client and deletes
     // nothing, which is exactly how this was caught.
     if (path === '/api/me/export') {
-      if (!state.signedIn) return json(route, { error: 'authentication required' }, 401);
+      if (!state.signedIn) return json(route, { error: 'authentication_required' }, 401);
       return json(route, {
         format: 'spendapp-account-export/1',
         account: { id: ME.id, username: ME.username, displayName: ME.displayName },
@@ -453,18 +455,18 @@ export async function installApi(context: BrowserContext, state: ApiState): Prom
       });
     }
     if (path === '/api/me/deletion-preview') {
-      if (!state.signedIn) return json(route, { error: 'authentication required' }, 401);
+      if (!state.signedIn) return json(route, { error: 'authentication_required' }, 401);
       return json(route, { groups: state.deletionPreview });
     }
     if (path === '/api/me' && method === 'DELETE') {
-      if (!state.signedIn) return json(route, { error: 'authentication required' }, 401);
+      if (!state.signedIn) return json(route, { error: 'authentication_required' }, 401);
       if (!check(deleteAccountSchema, body())) return;
       // The real handler verifies the authKey against the stored hash; the mock
       // compares it to the one this password actually derives, so a spec that
       // stopped sending real key material would fail here rather than pass.
       const { authKey } = await testKeys();
       if ((body() as { authKey: string }).authKey !== authKey) {
-        return json(route, { error: 'wrong password' }, 401);
+        return json(route, { error: 'wrong_password' }, 401);
       }
       state.deleted = true;
       state.signedIn = false;
@@ -472,19 +474,19 @@ export async function installApi(context: BrowserContext, state: ApiState): Prom
     }
 
     if (path === '/api/me' && method === 'PATCH') {
-      if (!state.signedIn) return json(route, { error: 'authentication required' }, 401);
+      if (!state.signedIn) return json(route, { error: 'authentication_required' }, 401);
       const patch = body() as { displayName?: string; username?: string };
       // The one answer this endpoint must give differently, and the reason it
       // is rate-limited like the auth routes.
       if (patch.username && state.takenUsernames.includes(patch.username.toLowerCase())) {
-        return json(route, { error: 'that username is taken' }, 409);
+        return json(route, { error: 'username_taken' }, 409);
       }
       state.profile = { ...state.profile, ...patch };
       return json(route, { ...ME, ...state.profile, privacyVersion: state.acceptedPolicyVersion });
     }
 
     if (path === '/api/me') {
-      if (!state.signedIn) return json(route, { error: 'authentication required' }, 401);
+      if (!state.signedIn) return json(route, { error: 'authentication_required' }, 401);
       // Carries key material like the real handler: unlocking a second device
       // and changing a password both re-derive from exactly this.
       const { publicKey, wrappedPrivateKey } = await testKeys();
@@ -513,7 +515,7 @@ export async function installApi(context: BrowserContext, state: ApiState): Prom
       // Consent to wording the client never displayed is not consent, so the
       // real handler 409s here rather than storing a version it invented.
       if (parsed.privacyVersion !== state.policy.version) {
-        return json(route, { error: 'policy has changed' }, 409);
+        return json(route, { error: 'policy_changed' }, 409);
       }
       state.acceptedPolicyVersion = parsed.privacyVersion;
     }
@@ -737,12 +739,12 @@ export async function installApi(context: BrowserContext, state: ApiState): Prom
       const id = fileMatch[1]!;
       if (method === 'PUT') {
         const buf = req.postDataBuffer();
-        if (!buf) return json(route, { error: 'body required' }, 415);
+        if (!buf) return json(route, { error: 'body_required' }, 415);
         state.attachmentFiles.set(id, new Uint8Array(buf));
         return json(route, { ok: true });
       }
       const file = state.attachmentFiles.get(id);
-      if (!file) return json(route, { error: 'not uploaded yet' }, 404);
+      if (!file) return json(route, { error: 'attachment_missing' }, 404);
       return route.fulfill({
         status: 200,
         contentType: 'application/octet-stream',

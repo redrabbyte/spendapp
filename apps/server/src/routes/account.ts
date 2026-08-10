@@ -178,7 +178,7 @@ export async function accountRoutes(app: FastifyInstance): Promise<void> {
    */
   app.delete('/api/me', { preHandler: app.requireUser }, async (req, reply) => {
     const parsed = deleteAccountSchema.safeParse(req.body);
-    if (!parsed.success) return reply.code(400).send({ error: 'invalid input' });
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid_input' });
     const userId = req.user!.id;
 
     const [user] = await db
@@ -187,7 +187,7 @@ export async function accountRoutes(app: FastifyInstance): Promise<void> {
       .where(eq(schema.users.id, userId))
       .limit(1);
     if (!user?.passwordHash || !(await argon2.verify(user.passwordHash, parsed.data.authKey))) {
-      return reply.code(401).send({ error: 'wrong password' });
+      return reply.code(401).send({ error: 'wrong_password' });
     }
 
     await eraseAccount(userId);

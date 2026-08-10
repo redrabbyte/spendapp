@@ -20,10 +20,10 @@ import { applyPaymentDelete, applyPaymentUpsert } from '../lib/payments.js';
 export async function syncRoutes(app: FastifyInstance): Promise<void> {
   app.post('/api/sync', { preHandler: app.requireUser }, async (req, reply) => {
     const parsed = syncRequestSchema.safeParse(req.body);
-    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'invalid input' });
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid_input' });
     const { protocolVersion, cursors, mutations } = parsed.data;
     if (protocolVersion < SYNC_PROTOCOL.minSupported) {
-      return reply.code(426).send({ error: 'client update required', protocol: SYNC_PROTOCOL });
+      return reply.code(426).send({ error: 'client_update_required', protocol: SYNC_PROTOCOL });
     }
     const userId = req.user!.id;
 

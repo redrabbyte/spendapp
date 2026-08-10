@@ -45,7 +45,7 @@ async function securityPluginImpl(app: FastifyInstance): Promise<void> {
   // CSRF: SameSite=Lax cookie + required custom header on every non-GET.
   app.addHook('onRequest', async (req, reply) => {
     if (!SAFE_METHODS.has(req.method) && req.headers['x-requested-with'] !== 'spendapp') {
-      return reply.code(403).send({ error: 'missing X-Requested-With header' });
+      return reply.code(403).send({ error: 'csrf_header_missing' });
     }
   });
 
@@ -55,6 +55,6 @@ async function securityPluginImpl(app: FastifyInstance): Promise<void> {
     req.user = await resolveSession(req);
   });
   app.decorate('requireUser', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.user) return reply.code(401).send({ error: 'authentication required' });
+    if (!req.user) return reply.code(401).send({ error: 'authentication_required' });
   });
 }

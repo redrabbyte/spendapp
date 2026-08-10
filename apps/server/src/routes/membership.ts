@@ -30,7 +30,7 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/groups/:groupId/join-requests', { preHandler: app.requireUser }, async (req, reply) => {
     const { groupId } = req.params as { groupId: string };
     // 404 rather than 403 for non-members: existence is itself information.
-    if (!(await isMember(req.user!.id, groupId))) return reply.code(404).send({ error: 'not found' });
+    if (!(await isMember(req.user!.id, groupId))) return reply.code(404).send({ error: 'not_found' });
     if (!(await isAdmin(req.user!.id, groupId))) return { requests: [] };
 
     const rows = await db
@@ -89,7 +89,7 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/groups/:groupId/key-coverage', { preHandler: app.requireUser }, async (req, reply) => {
     const { groupId } = req.params as { groupId: string };
     const userId = req.user!.id;
-    if (!(await isMember(userId, groupId))) return reply.code(404).send({ error: 'not found' });
+    if (!(await isMember(userId, groupId))) return reply.code(404).send({ error: 'not_found' });
 
     const rows = await db
       .select({ epoch: schema.groupKeys.epoch, userId: schema.groupKeys.userId })
@@ -119,10 +119,10 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
   app.post('/api/groups/:groupId/join-requests/:userId', { preHandler: app.requireUser }, async (req, reply) => {
     const { groupId, userId } = req.params as { groupId: string; userId: string };
     const adminId = req.user!.id;
-    if (!(await isAdmin(adminId, groupId))) return reply.code(404).send({ error: 'not found' });
+    if (!(await isAdmin(adminId, groupId))) return reply.code(404).send({ error: 'not_found' });
 
     const parsed = decisionSchema.safeParse(req.body);
-    if (!parsed.success) return reply.code(400).send({ error: 'invalid decision' });
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid_input' });
 
     const rows = await db
       .select()
@@ -134,7 +134,7 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
     // final for the joiner, and until now it could not be taken back by the
     // admin who did it either. Already-approved rows stay closed — they are a
     // membership now, and re-running this would re-log the join.
-    if (!request || request.status === 'approved') return reply.code(404).send({ error: 'no pending request' });
+    if (!request || request.status === 'approved') return reply.code(404).send({ error: 'no_pending_request' });
 
     const now = new Date();
     const decided = { status: parsed.data.decision === 'approve' ? 'approved' : 'rejected', decidedBy: adminId, decidedAt: now };
@@ -185,8 +185,8 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
       .limit(1);
     const groupName = groupRows[0]?.name ?? 'your group';
     // The joiner has been waiting on this, so they are told directly.
-    notifyUsers([userId], groupName, 'Your request to join was approved', `/g/${groupId}`);
-    notifyGroup(groupId, userId, 'joined the group', `/g/${groupId}?tab=members`);
+    notifyUsers([userId], groupName, 'join.approved', `/g/${groupId}`);
+    notifyGroup(groupId, userId, 'member.joined', `/g/${groupId}?tab=members`);
 
     // Membership alone gets them ciphertext. The approving client has to
     // follow up by wrapping its keyring to this public key, which is why it
@@ -212,10 +212,10 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
   app.post('/api/groups/:groupId/admit', { preHandler: app.requireUser }, async (req, reply) => {
     const { groupId } = req.params as { groupId: string };
     const adminId = req.user!.id;
-    if (!(await isAdmin(adminId, groupId))) return reply.code(404).send({ error: 'not found' });
+    if (!(await isAdmin(adminId, groupId))) return reply.code(404).send({ error: 'not_found' });
 
     const parsed = admitSchema.safeParse(req.body);
-    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'invalid input' });
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid_input' });
     const { userId, publicKey, claimMemberId } = parsed.data;
 
     const rows = await db
@@ -228,7 +228,7 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
       .where(eq(schema.users.id, userId))
       .limit(1);
     const joiner = rows[0];
-    if (!joiner || joiner.isPlaceholder) return reply.code(404).send({ error: 'no such account' });
+    if (!joiner || joiner.isPlaceholder) return reply.code(404).send({ error: 'no_such_account' });
     if (await isMember(userId, groupId)) return { status: 'already a member' as const, keyMatches: true };
 
     const now = new Date();
@@ -266,7 +266,7 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
         ),
       );
 
-    notifyGroup(groupId, userId, 'joined the group', `/g/${groupId}?tab=members`);
+    notifyGroup(groupId, userId, 'member.joined', `/g/${groupId}?tab=members`);
     return { status: 'admitted' as const, keyMatches: joiner.publicKey === publicKey };
   });
 
@@ -280,10 +280,10 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
    */
   app.post('/api/groups/:groupId/keys', { preHandler: app.requireUser }, async (req, reply) => {
     const { groupId } = req.params as { groupId: string };
-    if (!(await isMember(req.user!.id, groupId))) return reply.code(404).send({ error: 'not found' });
+    if (!(await isMember(req.user!.id, groupId))) return reply.code(404).send({ error: 'not_found' });
 
     const parsed = publishKeysSchema.safeParse(req.body);
-    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'invalid input' });
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid_input' });
 
     // Only for people actually in the group: otherwise this would be a way to
     // hand a group's keys to an arbitrary account.
@@ -293,7 +293,7 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
       .where(and(eq(schema.groupMembers.groupId, groupId), isNull(schema.groupMembers.leftAt)));
     const allowed = new Set(members.map((m) => m.userId));
     const wraps = parsed.data.wraps.filter((w) => allowed.has(w.userId));
-    if (wraps.length === 0) return reply.code(400).send({ error: 'no wraps for current members' });
+    if (wraps.length === 0) return reply.code(400).send({ error: 'no_wraps_for_members' });
 
     const now = new Date();
     if (parsed.data.mint) {
@@ -332,7 +332,7 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
    */
   app.get('/api/groups/:groupId/member-keys', { preHandler: app.requireUser }, async (req, reply) => {
     const { groupId } = req.params as { groupId: string };
-    if (!(await isMember(req.user!.id, groupId))) return reply.code(404).send({ error: 'not found' });
+    if (!(await isMember(req.user!.id, groupId))) return reply.code(404).send({ error: 'not_found' });
 
     const rows = await db
       .select({
@@ -364,7 +364,7 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
    */
   app.post('/api/groups/:groupId/members/:userId/unclaim', { preHandler: app.requireUser }, async (req, reply) => {
     const { groupId, userId } = req.params as { groupId: string; userId: string };
-    if (!(await isAdmin(req.user!.id, groupId))) return reply.code(404).send({ error: 'not found' });
+    if (!(await isAdmin(req.user!.id, groupId))) return reply.code(404).send({ error: 'not_found' });
     try {
       await unclaimMember(req.user!.id, groupId, userId);
     } catch (err) {
@@ -387,8 +387,8 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
   app.delete('/api/groups/:groupId/members/:userId', { preHandler: app.requireUser }, async (req, reply) => {
     const { groupId, userId } = req.params as { groupId: string; userId: string };
     const adminId = req.user!.id;
-    if (!(await isAdmin(adminId, groupId))) return reply.code(404).send({ error: 'not found' });
-    if (userId === adminId) return reply.code(400).send({ error: 'use leave to remove yourself' });
+    if (!(await isAdmin(adminId, groupId))) return reply.code(404).send({ error: 'not_found' });
+    if (userId === adminId) return reply.code(400).send({ error: 'use_leave_to_remove_yourself' });
 
     const now = new Date();
     const removed = await db.transaction(async (tx) => {
@@ -415,7 +415,7 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
       });
       return true;
     });
-    if (!removed) return reply.code(404).send({ error: 'not a member of this group' });
+    if (!removed) return reply.code(404).send({ error: 'not_a_member' });
 
     const groupRows = await db
       .select({ name: schema.groups.name })
@@ -424,8 +424,8 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
       .limit(1);
     const groupName = groupRows[0]?.name ?? 'a group';
     // Being removed without being told is worse than the removal itself.
-    notifyUsers([userId], groupName, `You were removed from ${groupName}`, '/');
-    notifyGroup(groupId, adminId, 'removed a member', `/g/${groupId}?tab=members`);
+    notifyUsers([userId], groupName, 'you.removed', '/');
+    notifyGroup(groupId, adminId, 'member.removed', `/g/${groupId}?tab=members`);
     return { status: 'removed' as const };
   });
 
@@ -438,16 +438,16 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
   app.post('/api/groups/:groupId/leave', { preHandler: app.requireUser }, async (req, reply) => {
     const { groupId } = req.params as { groupId: string };
     const userId = req.user!.id;
-    if (!(await isMember(userId, groupId))) return reply.code(404).send({ error: 'not found' });
+    if (!(await isMember(userId, groupId))) return reply.code(404).send({ error: 'not_found' });
     return { status: await leaveGroup(userId, groupId) };
   });
 
   app.post('/api/groups/:groupId/members/:userId/role', { preHandler: app.requireUser }, async (req, reply) => {
     const { groupId, userId } = req.params as { groupId: string; userId: string };
-    if (!(await isAdmin(req.user!.id, groupId))) return reply.code(404).send({ error: 'not found' });
+    if (!(await isAdmin(req.user!.id, groupId))) return reply.code(404).send({ error: 'not_found' });
 
     const parsed = roleSchema.safeParse(req.body);
-    if (!parsed.success) return reply.code(400).send({ error: 'invalid role' });
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid_input' });
     const { role } = parsed.data;
 
     if (role === 'member') {
@@ -465,7 +465,7 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
           ),
         )
         .limit(1);
-      if (others.length === 0) return reply.code(400).send({ error: 'a group needs at least one admin' });
+      if (others.length === 0) return reply.code(400).send({ error: 'last_admin' });
     }
 
     const changed = await db.transaction(async (tx) => {
@@ -495,7 +495,7 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
       });
       return true;
     });
-    if (!changed) return reply.code(404).send({ error: 'not a member of this group' });
+    if (!changed) return reply.code(404).send({ error: 'not_a_member' });
 
     if (role === 'admin') {
       const groupRows = await db
@@ -503,7 +503,7 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
         .from(schema.groups)
         .where(eq(schema.groups.id, groupId))
         .limit(1);
-      notifyUsers([userId], groupRows[0]?.name ?? 'your group', 'You are now an admin', `/g/${groupId}?tab=members`);
+      notifyUsers([userId], groupRows[0]?.name ?? 'your group', 'you.promoted', `/g/${groupId}?tab=members`);
     }
     return { role };
   });

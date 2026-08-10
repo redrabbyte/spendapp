@@ -32,28 +32,28 @@ export async function attachmentRoutes(app: FastifyInstance): Promise<void> {
     const { id } = req.params as { id: string };
     const attachment = await findLiveAttachment(id);
     if (!attachment || !(await isMember(req.user!.id, attachment.groupId))) {
-      return reply.code(404).send({ error: 'not found' }); // metadata must sync first
+      return reply.code(404).send({ error: 'not_found' }); // metadata must sync first
     }
     const body = req.body;
-    if (!Buffer.isBuffer(body)) return reply.code(415).send({ error: 'body required' });
+    if (!Buffer.isBuffer(body)) return reply.code(415).send({ error: 'body_required' });
     // iv || ciphertext || GCM tag. Anything shorter cannot be either.
-    if (body.length <= IV_BYTES + 16) return reply.code(415).send({ error: 'body too short to be sealed' });
+    if (body.length <= IV_BYTES + 16) return reply.code(415).send({ error: 'attachment_too_short' });
     await fs.writeFile(attachmentPath(id), body);
     return { ok: true };
   });
 
   app.get('/api/attachments/:id', { preHandler: app.requireUser }, async (req, reply) => {
     const { id } = req.params as { id: string };
-    if (!/^[0-9a-f-]{36}$/.test(id)) return reply.code(404).send({ error: 'not found' });
+    if (!/^[0-9a-f-]{36}$/.test(id)) return reply.code(404).send({ error: 'not_found' });
     const attachment = await findLiveAttachment(id);
     if (!attachment || !(await isMember(req.user!.id, attachment.groupId))) {
-      return reply.code(404).send({ error: 'not found' });
+      return reply.code(404).send({ error: 'not_found' });
     }
     const filePath = attachmentPath(id);
     try {
       await fs.access(filePath);
     } catch {
-      return reply.code(404).send({ error: 'not uploaded yet' });
+      return reply.code(404).send({ error: 'attachment_missing' });
     }
     // uuid-addressed and immutable -> long-lived PRIVATE cache, never shared/public
     reply.header('cache-control', 'private, max-age=31536000, immutable');

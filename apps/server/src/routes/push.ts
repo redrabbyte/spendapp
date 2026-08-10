@@ -19,7 +19,7 @@ export async function pushRoutes(app: FastifyInstance): Promise<void> {
 
   app.post('/api/push/subscribe', { preHandler: app.requireUser }, async (req, reply) => {
     const parsed = subscribeSchema.safeParse(req.body);
-    if (!parsed.success) return reply.code(400).send({ error: 'invalid subscription' });
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid_subscription' });
     const { endpoint, keys } = parsed.data;
     const now = new Date();
     await db
@@ -42,7 +42,7 @@ export async function pushRoutes(app: FastifyInstance): Promise<void> {
 
   app.delete('/api/push/subscribe', { preHandler: app.requireUser }, async (req, reply) => {
     const parsed = z.object({ endpoint: z.string().max(1000) }).safeParse(req.body);
-    if (!parsed.success) return reply.code(400).send({ error: 'invalid input' });
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid_input' });
     await db
       .delete(schema.pushSubscriptions)
       .where(

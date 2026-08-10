@@ -79,3 +79,14 @@ export function translate(language: Language, key: MessageKey, options: Translat
 }
 
 export type Translator = (key: MessageKey, options?: TranslateOptions) => string;
+
+/**
+ * The chosen language, reachable from code that is not a component.
+ *
+ * `api.ts` needs it to turn an error code into a sentence, and the service
+ * worker needs it for notifications — neither can call a hook. The settings
+ * provider keeps this in step; it is a mirror, never the source of truth.
+ */
+let active: Language = 'en';
+export const setActiveLanguage = (language: Language): void => void (active = language);
+export const activeLanguage = (): Language => active;

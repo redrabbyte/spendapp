@@ -10,7 +10,7 @@ import { notifyUsers } from '../lib/notify.js';
 export async function inviteRoutes(app: FastifyInstance): Promise<void> {
   app.post('/api/groups/:groupId/invites', { preHandler: app.requireUser }, async (req, reply) => {
     const { groupId } = req.params as { groupId: string };
-    if (!(await isMember(req.user!.id, groupId))) return reply.code(404).send({ error: 'not found' });
+    if (!(await isMember(req.user!.id, groupId))) return reply.code(404).send({ error: 'not_found' });
 
     // Withholding history is opt-in and never inferred: the default has to be
     // the one that leaves a new member able to read the ledger they are in.
@@ -34,7 +34,7 @@ export async function inviteRoutes(app: FastifyInstance): Promise<void> {
     { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
     async (req, reply) => {
       const invite = await findValidInvite((req.params as { token: string }).token);
-      if (!invite) return reply.code(404).send({ error: 'invite not found or expired' });
+      if (!invite) return reply.code(404).send({ error: 'invite_invalid' });
       // The claimable list names every placeholder in the group and carries
       // their ids, so it is withheld until the caller has signed in. A link
       // forwarded to a stranger reveals nothing but the group and inviter,
@@ -68,7 +68,7 @@ export async function inviteRoutes(app: FastifyInstance): Promise<void> {
   app.post('/api/invites/:token/join', { preHandler: app.requireUser }, async (req, reply) => {
     const token = (req.params as { token: string }).token;
     const invite = await findValidInvite(token);
-    if (!invite) return reply.code(404).send({ error: 'invite not found or expired' });
+    if (!invite) return reply.code(404).send({ error: 'invite_invalid' });
     const userId = req.user!.id;
 
     if (await isMember(userId, invite.groupId)) return { status: 'joined' as const, groupId: invite.groupId };
@@ -85,7 +85,7 @@ export async function inviteRoutes(app: FastifyInstance): Promise<void> {
     if (status === 'pending') return { status: 'pending' as const, groupId: invite.groupId };
     // A decline is final for this account; otherwise the same link would let
     // someone re-ask on a loop.
-    if (status === 'rejected') return reply.code(403).send({ error: 'your request to join was declined' });
+    if (status === 'rejected') return reply.code(403).send({ error: 'join_declined' });
 
     // Spent links stop admitting people. The pending and rejected branches
     // above have already returned, so one person retrying cannot burn a use.
@@ -95,7 +95,7 @@ export async function inviteRoutes(app: FastifyInstance): Promise<void> {
       .where(eq(schema.invites.token, token))
       .limit(1);
     if (counts[0] && counts[0].useCount >= counts[0].maxUses) {
-      return reply.code(410).send({ error: 'this invite link has already been used' });
+      return reply.code(410).send({ error: 'invite_spent' });
     }
 
     const now = new Date();
@@ -128,8 +128,9 @@ export async function inviteRoutes(app: FastifyInstance): Promise<void> {
     notifyUsers(
       admins,
       invite.groupName,
-      `${actor[0]?.displayName ?? 'Someone'} asked to join`,
+      'join.requested',
       `/g/${invite.groupId}?tab=members`,
+      actor[0]?.displayName ?? undefined,
     );
     return { status: 'pending' as const, groupId: invite.groupId };
   });
@@ -139,7 +140,7 @@ export async function inviteRoutes(app: FastifyInstance): Promise<void> {
     const rows = await db.select().from(schema.invites).where(eq(schema.invites.token, token)).limit(1);
     const invite = rows[0];
     if (!invite || !(await isMember(req.user!.id, invite.groupId))) {
-      return reply.code(404).send({ error: 'not found' });
+      return reply.code(404).send({ error: 'not_found' });
     }
     await db.update(schema.invites).set({ revokedAt: new Date() }).where(eq(schema.invites.token, token));
     return { ok: true };
