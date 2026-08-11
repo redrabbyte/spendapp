@@ -2,14 +2,18 @@ import { useState } from 'react';
 import { useT } from '../i18n/useT';
 import { PrivacyNotice, usePolicy } from './PrivacyNotice';
 
-/**
- * Whose notice this is. One line to change if you would rather it carried a
- * full name, a handle, or an organisation.
- */
-const OWNER = 'Lukas';
+const OWNER = 'Lukas Giner';
 
-/** The current year, so the notice does not go stale on 1 January. */
-const year = (): number => new Date().getFullYear();
+/**
+ * The year of first publication, not the current one.
+ *
+ * A copyright notice dates the work, so this is a constant and not
+ * `getFullYear()` — a notice that follows the clock claims a later date every
+ * January and says something untrue about when the work existed. If you ever
+ * want it to cover substantial later revisions, the convention is a range
+ * (`2026–2029`) rather than a moving single year.
+ */
+const FIRST_PUBLISHED = 2026;
 
 /**
  * The policy, reachable from anywhere.
@@ -58,7 +62,7 @@ export function SiteFooter() {
   return (
     <>
       <footer className="mt-auto flex items-center justify-center gap-2 px-4 pb-6 pt-8 text-xs text-slate-400">
-        <span>{t('footer.copyright', { owner: OWNER, year: year() })}</span>
+        <span>{t('footer.copyright', { owner: OWNER, year: FIRST_PUBLISHED })}</span>
         <span aria-hidden="true">·</span>
         <button onClick={() => setOpen(true)} className="underline underline-offset-2 hover:text-slate-600 dark:hover:text-slate-200">
           {t('login.policy')}

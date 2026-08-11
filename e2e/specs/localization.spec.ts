@@ -135,7 +135,9 @@ test('the footer reaches the policy from a signed-out page', async ({ page, api 
   };
   await page.goto('/login');
 
-  await expect(page.getByText(`© ${new Date().getFullYear()} Lukas`)).toBeVisible();
+  // The year of first publication, so it is a literal here too — asserting
+  // against the clock would have hidden exactly the bug this fixes.
+  await expect(page.getByText('© 2026 Lukas Giner')).toBeVisible();
   await page.getByRole('button', { name: 'Privacy policy' }).click();
 
   // Rendered: the heading marks are gone and the emphasis is real.
