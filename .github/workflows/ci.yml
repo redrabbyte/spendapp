@@ -9,9 +9,9 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           # config.ts uses process.loadEnvFile(), which needs >= 20.12.
           node-version: 22
@@ -26,9 +26,13 @@ jobs:
       - run: pnpm --filter e2e exec playwright install --with-deps chromium
       - run: pnpm test:e2e
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report
           path: e2e/playwright-report
           retention-days: 7
+          # A red run with no report is how the path silently rotted before:
+          # upload-artifact only warns by default, and a warning inside an
+          # already-failing job is a warning nobody reads.
+          if-no-files-found: error
