@@ -160,6 +160,27 @@ describe('German receipts', () => {
   });
 });
 
+/**
+ * A second real-world string, German this time, and it happens to carry the
+ * trap the shape-sniffing exists for: the format field declares `unixTime`
+ * while the two time fields are printed as ISO 8601. Trusting the declaration
+ * would read `2022-01-03T11:50:26.000Z` as a second count.
+ */
+const REAL_GERMAN =
+  'V0;47f330cc-628a-49e9-8436-41db53ca6205;Kassenbeleg-V1;Beleg^5.00_0.00_0.00_0.00_0.00^5.00:Bar;225;749;' +
+  '2022-01-03T11:50:25.000Z;2022-01-03T11:50:26.000Z;ecdsa-plain-SHA256;unixTime;' +
+  'ZNXpxvUOuotvCTLqZBDoY6MxIcOqhOCXIIatwjPiHHsTnSL9hqjiWH0ufGp0emRC4JuOa8LLen9p0w5xR8oaiw==;' +
+  'BEQhcWTPqDm5mY1i8fyl48bJDA6YABY8R0nJiTV3gyKIPScTsLAbeSSIlwA8hkq7LxAlC63tEwXeBEfDrO+lWPQ=';
+
+describe('a real German receipt', () => {
+  it('reads the total and the time despite the declared format disagreeing', () => {
+    const r = parseFiscalCode(REAL_GERMAN)!;
+    expect(r.totalMinor).toBe(500);
+    expect(r.currency).toBe('EUR');
+    expect(r.occurredAt).toBe('2022-01-03T11:50:26.000Z');
+  });
+});
+
 describe('anything else', () => {
   it.each([
     ['a join code', '{"v":1,"u":"abc","k":"key","n":"Sam"}'],
