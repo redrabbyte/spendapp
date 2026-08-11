@@ -15,10 +15,21 @@ const isoDateTime = z
 // Login handle. There is no confirmation flow, so an address bought nothing
 // over a plain name. Stored lower-cased, which is what makes the unique index
 // case-insensitive rather than relying on collation.
+//
+// `@` is allowed as an ordinary character, so somebody who wants to log in
+// with their email address can. It is still just a handle — nothing is sent
+// to it and nothing about it is verified.
+//
+// The message names the field: it is the only thing the API can say about a
+// rejected registration, and "3–32 characters…" on its own leaves the reader
+// guessing which of three inputs it is about.
 export const usernameSchema = z
   .string()
   .trim()
-  .regex(/^[a-z0-9][a-z0-9._-]{1,30}[a-z0-9]$/i, '3–32 characters: letters or digits, with . _ - inside');
+  .regex(
+    /^[a-z0-9][a-z0-9._@-]{1,30}[a-z0-9]$/i,
+    'Username: 3–32 characters, starting and ending with a letter or digit. Allowed special characters: . _ - @',
+  );
 
 /** base64url, as everything binary crosses the wire (design §4.1). */
 const b64url = (max: number) => z.string().regex(/^[A-Za-z0-9_-]+$/, 'base64url').max(max);
