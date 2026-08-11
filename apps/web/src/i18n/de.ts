@@ -215,7 +215,7 @@ export const de: Catalogue = {
   'charts.perMonth': 'Pro Monat ({currency})',
 
   // --- the expense editor --------------------------------------------------
-  'editor.what': 'Was wars?',
+  'editor.what': 'Was war’s?',
   'editor.amount': '0,00',
   'editor.totalIsSum': 'Gesamt = Summe der Zahlerbeträge',
   'editor.rate': 'Kurs',
@@ -248,7 +248,7 @@ export const de: Catalogue = {
   'editor.cancel': 'abbrechen',
 
   // --- balances, payments and bulk conversion ------------------------------
-  'balances.settled': 'Alles ausgeglichen.',
+  'balances.settled': 'Alles beglichen.',
   'balances.suggested': 'Vorgeschlagene Ausgleiche',
   'balances.record': 'eintragen',
   'balances.recordPayment': 'Zahlung eintragen',
