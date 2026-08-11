@@ -565,6 +565,7 @@ export const de: Catalogue = {
   'scan.noCamera': 'Dieser Browser kann keine Kamera öffnen. Schick stattdessen einen Einladungslink.',
   'scan.refused': 'Der Kamerazugriff wurde abgelehnt. Erlaub ihn oder schick stattdessen einen Einladungslink.',
   'scan.failed': 'Die Kamera konnte nicht geöffnet werden: {reason}',
+  'scan.decoderFailed': 'Der Scanner konnte nicht geladen werden. Prüf deine Verbindung und versuch es noch einmal.',
   'scan.cancel': 'Abbrechen',
 
   // --- push -------------------------------------------------------------

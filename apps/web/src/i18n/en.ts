@@ -570,6 +570,7 @@ export const en = {
   'scan.noCamera': 'This browser cannot open a camera. Send them an invite link instead.',
   'scan.refused': 'Camera access was refused. Allow it, or send them an invite link instead.',
   'scan.failed': 'Could not open the camera: {reason}',
+  'scan.decoderFailed': 'The scanner could not load. Check your connection and try again.',
   'scan.cancel': 'Cancel',
 
   // --- push -------------------------------------------------------------

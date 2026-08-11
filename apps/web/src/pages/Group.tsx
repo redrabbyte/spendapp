@@ -192,7 +192,11 @@ export function GroupPage() {
             key={name}
             onClick={() => setTab(name)}
             className={`shrink-0 whitespace-nowrap px-2.5 py-2 text-sm font-medium ${
-              tab === name ? 'border-b-2 border-teal-700 text-teal-700' : 'text-slate-500 dark:text-slate-400'
+              // Both halves need a dark step, the underline as much as the
+              // label: teal-700 is 3.44:1 on the dark ground, teal-300 is 12.7.
+              tab === name
+                ? 'border-b-2 border-teal-700 text-teal-700 dark:border-teal-300 dark:text-teal-300'
+                : 'text-slate-500 dark:text-slate-400'
             }`}
           >
             {t(tabLabel(name))}

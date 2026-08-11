@@ -14,6 +14,18 @@ export default defineConfig({
       srcDir: 'src',
       filename: 'sw.ts',
       registerType: 'prompt',
+      injectManifest: {
+        // The QR decoder is 128 KiB and lazily imported so that only an admin
+        // who opens the scanner pays for it — but precaching it handed that
+        // cost straight back, to everyone, on every service-worker install.
+        // That install is what stands between a deploy and the update prompt,
+        // so it is worth keeping lean.
+        //
+        // Nothing is lost offline: scanning someone in needs `/admit` to
+        // reach the server, so a decoder cached for an offline device could
+        // never finish the job it was cached for.
+        globIgnores: ['**/jsQR-*.js'],
+      },
       manifest: {
         name: 'SpendApp',
         short_name: 'SpendApp',

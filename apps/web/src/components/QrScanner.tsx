@@ -81,7 +81,18 @@ export function QrScanner({ onScan, onCancel }: { onScan: (text: string) => void
       await video.play().catch(() => {});
 
       const native = nativeDetector();
-      const fallback = native ? null : await jsqrDetector();
+      // Fetched on demand, and deliberately not precached, so this import is
+      // the one step here that can fail on a bad connection. Silently ending
+      // the loop would leave a live camera that never finds anything.
+      let fallback: ((canvas: HTMLCanvasElement) => string | null) | null = null;
+      if (!native) {
+        try {
+          fallback = await jsqrDetector();
+        } catch {
+          setError({ key: 'scan.decoderFailed' });
+          return;
+        }
+      }
       const canvas = document.createElement('canvas');
 
       const tick = async (): Promise<void> => {
