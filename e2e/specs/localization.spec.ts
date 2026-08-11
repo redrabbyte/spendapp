@@ -79,7 +79,7 @@ test('a translated category label still stores the untranslated category', async
   await switchToGerman(page);
   await page.goto(`/g/${GROUP}`);
 
-  await expect(page.getByPlaceholder('Wofür war das?')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByPlaceholder('Was wars?')).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole('button', { name: 'gleichmäßig' })).toBeVisible();
 
   // The label is German and the value is not: categories are a stable key
