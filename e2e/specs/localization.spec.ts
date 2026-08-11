@@ -15,7 +15,12 @@ const GROUP = 'eeeeeeee-5555-4555-8555-eeeeeeeeeeee';
 async function switchToGerman(page: import('@playwright/test').Page): Promise<void> {
   await page.getByRole('button', { name: 'Settings' }).click();
   await page.getByRole('button', { name: 'Deutsch' }).click();
-  await expect(page.getByText('Einstellungen')).toBeVisible();
+  // The heading, by role — not getByText, which matches on substring and so
+  // also caught "in den Browser·einstellungen· blockiert" from the push toggle.
+  // That string only appears where notifications are denied, which is the
+  // default in CI's Chromium and not on a developer's machine: exactly the
+  // shape of bug that passes locally and fails on the runner.
+  await expect(page.getByRole('heading', { name: 'Einstellungen' })).toBeVisible();
 }
 
 test('the interface follows the chosen language', async ({ page, api }) => {
@@ -56,6 +61,21 @@ test('errors from the API arrive in the reader’s language', async ({ page, api
 
 // `api` is unused here but must be declared: the fixture is lazy, and without
 // it no mock is installed and the sign-in below has no server to talk to.
+test('the settings heading is found even beside the blocked-notifications line', async ({ page, context, api }) => {
+  // CI's Chromium refuses notifications by default, so the push toggle reads
+  // "in den Browsereinstellungen blockiert" — which contains "einstellungen",
+  // and `getByText` matches substrings. Five specs failed on the runner and
+  // none locally. Pinned here so the runner's condition is always tested.
+  api.vapidPublicKey = 'BFakeVapidKeyForTests0000000000000000000000';
+  await context.addInitScript(() => {
+    Object.defineProperty(Notification, 'permission', { configurable: true, get: () => 'denied' });
+  });
+
+  await signIn(page);
+  await switchToGerman(page);
+  await expect(page.getByText('in den Browsereinstellungen blockiert')).toBeVisible();
+});
+
 test('a rejected username explains the rule in the reader’s language', async ({ page, api }) => {
   expect(api.profile.username).toBeUndefined();
   await signIn(page);

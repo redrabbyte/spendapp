@@ -1,3 +1,4 @@
+import type { BrowserContext } from '@playwright/test';
 import { expect, signIn, test } from '../fixtures/api';
 
 /**
@@ -11,21 +12,43 @@ import { expect, signIn, test } from '../fixtures/api';
  * offer has to come back, because a subscription that silently does not happen
  * means no notifications at all and nothing to notice.
  *
- * Chromium under Playwright has no push service, so `pushManager.subscribe()`
- * genuinely fails here. That is not a limitation of these tests: it *is* the
- * failure path, exercised for real rather than stubbed.
+ * Every case pins `Notification.permission` rather than trusting the browser's
+ * default. That default is not the same everywhere: a developer's Chromium
+ * reports 'default', CI's reports 'denied', and these specs quietly tested
+ * different things in the two places until CI said so.
  */
 
 const PROMPT = /Get notified when someone adds an expense/;
+const VAPID = 'BFakeVapidKeyForTests0000000000000000000000';
 
-test('no offer while the server has no VAPID keys', async ({ page, api }) => {
+/** Must be called before the first navigation. */
+async function pinPermission(context: BrowserContext, value: 'default' | 'granted' | 'denied'): Promise<void> {
+  await context.addInitScript((v) => {
+    Object.defineProperty(Notification, 'permission', { configurable: true, get: () => v });
+    // Asking must not raise real UI either, and must agree with the above.
+    Notification.requestPermission = () => Promise.resolve(v as NotificationPermission);
+  }, value);
+}
+
+test('no offer while the server has no VAPID keys', async ({ page, context, api }) => {
   api.vapidPublicKey = null; // push not configured — nothing to offer
+  await pinPermission(context, 'default');
   await signIn(page);
   await expect(page.getByText(PROMPT)).toHaveCount(0);
 });
 
-test('the offer appears when the permission has never been given', async ({ page, api }) => {
-  api.vapidPublicKey = 'BFakeVapidKeyForTests0000000000000000000000';
+test('no offer once the browser has refused', async ({ page, context, api }) => {
+  api.vapidPublicKey = VAPID;
+  await pinPermission(context, 'denied');
+  await signIn(page);
+  // Nothing the app can do from here, so it asks for nothing.
+  await expect(page.getByText(PROMPT)).toHaveCount(0);
+  expect(api.pushSubscribed).toEqual([]);
+});
+
+test('the offer appears when the permission has never been given', async ({ page, context, api }) => {
+  api.vapidPublicKey = VAPID;
+  await pinPermission(context, 'default');
   await signIn(page);
 
   // Permission is 'default', so nothing may be attempted silently: subscribe()
@@ -35,14 +58,13 @@ test('the offer appears when the permission has never been given', async ({ page
 });
 
 test('a quiet re-subscribe that fails still asks', async ({ page, context, api }) => {
-  api.vapidPublicKey = 'BFakeVapidKeyForTests0000000000000000000000';
-  await context.grantPermissions(['notifications']);
-
+  api.vapidPublicKey = VAPID;
+  await pinPermission(context, 'granted');
   await signIn(page);
 
-  // Granted, so the silent path runs — and loses, there being no push service.
-  // The banner is the whole point: without it this device would sit there
-  // believing notifications were on.
+  // Granted, so the silent path runs — and loses, there being no push service
+  // behind this browser. The banner is the whole point: without it the device
+  // would sit there believing notifications were on.
   await expect(page.getByText(PROMPT)).toBeVisible();
   expect(api.pushSubscribed).toEqual([]);
 });
