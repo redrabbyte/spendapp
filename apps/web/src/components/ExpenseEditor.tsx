@@ -433,12 +433,12 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
             <option key={c}>{c}</option>
           ))}
         </select>
+        {/* Beside the currency, since a scan sets both it and the amount.
+            Not offered while editing: the receipt that produced an existing
+            entry is not the one in your hand, and overwriting a saved total
+            from a scan is a surprise nobody asked for. */}
+        {!existing && <ReceiptScan onRead={applyReceipt} />}
       </div>
-
-      {/* Not offered while editing: the receipt that produced an existing
-          entry is not the one in your hand, and overwriting a saved total
-          from a scan is a surprise nobody asked for. */}
-      {!existing && <ReceiptScan onRead={applyReceipt} />}
 
       {currency !== def && (
         <label className="flex flex-wrap items-center gap-2 text-sm text-slate-600 dark:text-slate-300">

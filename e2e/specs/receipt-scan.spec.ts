@@ -17,9 +17,13 @@ const AUSTRIAN =
  * Stand in for a camera and a decoder, exactly as the join scanner's spec does:
  * a canvas stream so the component sees real frames, and a detector that always
  * finds the same code.
+ *
+ * Pass null for a detector that never finds anything — the only way to observe
+ * the camera view at all, since a detector that succeeds closes it on the very
+ * first frame.
  */
-async function stubScanner(page: import('@playwright/test').Page, raw: string): Promise<void> {
-  await page.addInitScript((code: string) => {
+async function stubScanner(page: import('@playwright/test').Page, raw: string | null): Promise<void> {
+  await page.addInitScript((code: string | null) => {
     Object.defineProperty(navigator, 'mediaDevices', {
       configurable: true,
       value: {
@@ -40,7 +44,7 @@ async function stubScanner(page: import('@playwright/test').Page, raw: string): 
     });
     class FakeDetector {
       async detect() {
-        return [{ rawValue: code }];
+        return code === null ? [] : [{ rawValue: code }];
       }
     }
     (window as unknown as { BarcodeDetector: unknown }).BarcodeDetector = FakeDetector;
@@ -69,7 +73,7 @@ test('a scanned receipt fills in the total, the date and the currency', async ({
   const unit = page.getByRole('combobox').filter({ hasText: 'EUR' });
   await expect(unit).toHaveValue('CHF');
 
-  await page.getByRole('button', { name: /scan receipt code/i }).click();
+  await page.getByRole('button', { name: /^Scan/ }).click();
 
   // The sum across tax rates, not just the first one.
   await expect(page.getByPlaceholder('0.00')).toHaveValue('15.50');
@@ -91,18 +95,28 @@ test('a code of the wrong kind changes nothing', async ({ page, api }) => {
   await openGroup(page, api);
 
   await page.getByPlaceholder('0.00').fill('9.99');
-  await page.getByRole('button', { name: /scan receipt code/i }).click();
+  await page.getByRole('button', { name: /^Scan/ }).click();
 
   await expect(page.getByText('That is not an Austrian or German receipt code.')).toBeVisible();
   // Refused, not half-applied.
   await expect(page.getByPlaceholder('0.00')).toHaveValue('9.99');
 });
 
-test('the scanner says what it does, and that it is beta', async ({ page, api }) => {
-  await stubScanner(page, AUSTRIAN);
+test('the small print appears with the camera, not before it', async ({ page, api }) => {
+  // A detector that finds nothing, so the camera view stays open to be looked
+  // at. With a code to find it would close on the first frame.
+  await stubScanner(page, null);
   await openGroup(page, api);
 
+  // Marked beta from the start — that belongs on the button itself, since it
+  // is what someone decides against before pressing anything.
   await expect(page.getByText('beta')).toBeVisible();
+  // The explanation is not: beside the currency it was permanent clutter on a
+  // form that is already busy.
+  await expect(page.getByText(/Fills in the total and the date/)).toHaveCount(0);
+
+  await page.getByRole('button', { name: /^Scan/ }).click();
+
   await expect(page.getByText(/Fills in the total and the date/)).toBeVisible();
   // The limit belongs next to the promise: most of the world's receipts carry
   // no such code, and someone holding a phone over one deserves to know why

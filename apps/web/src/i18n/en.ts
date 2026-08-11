@@ -453,7 +453,9 @@ export const en = {
   'import.warning.split_totals_mismatch': '{row}: split totals do not match the amount — check after importing',
 
   // --- receipts ------------------------------------------------------------
-  'receiptScan.start': 'Scan receipt code',
+  // Deliberately just the verb: it sits beside the currency, and the icon and
+  // the small print over the camera say what is being scanned.
+  'receiptScan.start': 'Scan',
   'receiptScan.beta': 'beta',
   'receiptScan.explain':
     'Fills in the total and the date from the code printed on Austrian and German till receipts. The camera image is read on this device and never uploaded.',

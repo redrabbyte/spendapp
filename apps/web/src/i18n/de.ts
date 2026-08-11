@@ -444,7 +444,7 @@ export const de: Catalogue = {
     '{row}: die Aufteilung passt nicht zum Betrag — nach dem Import prüfen',
 
   // --- receipts ------------------------------------------------------------
-  'receiptScan.start': 'Beleg-Code scannen',
+  'receiptScan.start': 'Scannen',
   'receiptScan.beta': 'Beta',
   'receiptScan.explain':
     'Übernimmt Summe und Datum aus dem Code auf österreichischen und deutschen Kassenbelegen. Das Kamerabild wird auf diesem Gerät ausgewertet und nie hochgeladen.',
