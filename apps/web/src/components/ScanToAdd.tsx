@@ -148,7 +148,7 @@ export function ScanToAdd({
             {t('scan.cancel')}
           </button>
         </div>
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
       </div>
     );
   }
@@ -169,7 +169,7 @@ export function ScanToAdd({
       {result && (
         <p className="rounded bg-teal-50 p-2 text-sm text-teal-900 dark:bg-teal-950 dark:text-teal-100">{result}</p>
       )}
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
     </div>
   );
 }

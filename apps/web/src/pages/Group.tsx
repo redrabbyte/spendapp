@@ -124,7 +124,7 @@ export function GroupPage() {
   if (group === undefined || !expenses || !allMembers || !payments || !activity) {
     return <p className="text-slate-500 dark:text-slate-400">{t('group.loading')}</p>;
   }
-  if (group === null) return <p className="text-red-600">{t('group.notFound')}</p>;
+  if (group === null) return <p className="text-red-600 dark:text-red-400">{t('group.notFound')}</p>;
 
   return (
     <div className="flex flex-col gap-4">
@@ -142,7 +142,7 @@ export function GroupPage() {
           <button onClick={() => setImportOpen(true)} className="text-slate-500 underline dark:text-slate-400">
             {t('group.import')}
           </button>
-          <button onClick={() => setInviteOpen((o) => !o)} className="text-teal-700 underline">
+          <button onClick={() => setInviteOpen((o) => !o)} className="text-teal-700 dark:text-teal-300 underline">
             {t('group.inviteLink')}
           </button>
         </span>
@@ -184,7 +184,7 @@ export function GroupPage() {
           )}
         </div>
       )}
-      {inviteError && <p className="text-sm text-red-600">{inviteError}</p>}
+      {inviteError && <p className="text-sm text-red-600 dark:text-red-400">{inviteError}</p>}
       {/* Scrolls rather than wrapping: five tabs do not fit a phone width. */}
       <nav className="flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-700">
         {TABS.map((name) => (

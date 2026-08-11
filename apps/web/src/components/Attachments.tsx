@@ -139,7 +139,7 @@ export function AttachmentRow({ expense, meId }: { expense: ExpenseDto; meId: st
           onChange={(e) => void onFiles(e.target.files)}
         />
       </label>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       {viewing && (
         <div
@@ -148,6 +148,8 @@ export function AttachmentRow({ expense, meId }: { expense: ExpenseDto; meId: st
         >
           <AttachmentImg attachment={viewing} className="max-h-[80vh] max-w-full rounded object-contain" />
           <button
+            // No dark step: the viewer overlay is always dark and this chip is
+            // deliberately white in both themes, so the text stays the dark red.
             className="rounded bg-white/90 px-3 py-1 text-sm text-red-600"
             onClick={(e) => {
               e.stopPropagation();

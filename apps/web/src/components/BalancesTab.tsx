@@ -116,7 +116,15 @@ export function BalancesTab({ group, members, expenses, payments, meId, nameOf }
             {[...perUser.entries()]
               .sort((a, b) => b[1] - a[1])
               .map(([userId, v]) => (
-                <li key={userId} className={v >= 0 ? 'text-emerald-700' : 'text-red-600'}>
+                // Blue owed-to-you / orange owed-by-you rather than green/red:
+                // the classic pair is the one deuteranopes cannot separate, and
+                // these clear AA on both grounds. The sign stays printed too.
+                <li
+                  key={userId}
+                  className={
+                    v >= 0 ? 'text-blue-700 dark:text-blue-400' : 'text-orange-700 dark:text-orange-400'
+                  }
+                >
                   {nameOf(userId)}: {v > 0 ? '+' : ''}
                   {money(v, ccy)}
                 </li>
@@ -130,7 +138,7 @@ export function BalancesTab({ group, members, expenses, payments, meId, nameOf }
                   {nameOf(transfer.fromUser)} → {nameOf(transfer.toUser)}: {money(transfer.amountMinor, ccy)}
                 </span>
                 <button
-                  className="text-teal-700 underline"
+                  className="text-teal-700 dark:text-teal-300 underline"
                   onClick={() =>
                     setDraft({
                       fromUser: transfer.fromUser,
@@ -152,7 +160,7 @@ export function BalancesTab({ group, members, expenses, payments, meId, nameOf }
         <PaymentForm group={group} members={members} meId={meId} draft={draft} fx={fx} onDone={() => setDraft(null)} />
       ) : (
         <button
-          className="self-start text-sm text-teal-700 underline"
+          className="self-start text-sm text-teal-700 dark:text-teal-300 underline"
           onClick={() =>
             setDraft({ fromUser: meId, toUser: otherMember, currency: group.defaultCurrency, amount: '' })
           }
@@ -190,7 +198,7 @@ export function BalancesTab({ group, members, expenses, payments, meId, nameOf }
                     )}
                     {p.note && <span className="text-slate-500 dark:text-slate-400"> · {p.note}</span>}
                   </span>
-                  <button onClick={() => void deletePaymentLocal(p)} className="text-red-500 underline">
+                  <button onClick={() => void deletePaymentLocal(p)} className="text-red-500 dark:text-red-400 underline">
                     {t('balances.delete')}
                   </button>
                 </li>
@@ -356,7 +364,7 @@ function PaymentForm({
         onChange={(e) => setNote(e.target.value)}
         maxLength={2000}
       />
-      {error && <p className="text-red-600">{error}</p>}
+      {error && <p className="text-red-600 dark:text-red-400">{error}</p>}
       <div className="flex gap-2">
         <button className="self-start rounded bg-teal-700 px-3 py-1.5 font-medium text-white">
           {t('balances.submitPayment')}
@@ -506,8 +514,8 @@ function ConvertSection({
           {t('balances.savedRateNote', { currency: group.defaultCurrency })}
         </p>
       )}
-      {error && <p className="mt-1 text-red-600">{error}</p>}
-      {done && <p className="mt-1 text-emerald-700">{done}</p>}
+      {error && <p className="mt-1 text-red-600 dark:text-red-400">{error}</p>}
+      {done && <p className="mt-1 text-emerald-700 dark:text-emerald-400">{done}</p>}
     </section>
   );
 }

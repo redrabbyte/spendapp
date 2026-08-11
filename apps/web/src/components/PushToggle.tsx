@@ -43,11 +43,11 @@ export function PushToggle() {
       {state === 'denied' ? (
         <span className="text-slate-400">{t('push.blocked')}</span>
       ) : (
-        <button onClick={() => void toggle()} className="text-teal-700 underline">
+        <button onClick={() => void toggle()} className="text-teal-700 dark:text-teal-300 underline">
           {t(state === 'subscribed' ? 'push.on' : 'push.off')}
         </button>
       )}
-      {error && <span className="text-red-600">{error}</span>}
+      {error && <span className="text-red-600 dark:text-red-400">{error}</span>}
     </div>
   );
 }

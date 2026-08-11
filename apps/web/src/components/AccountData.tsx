@@ -104,7 +104,7 @@ export function DownloadMyData() {
       </button>
       <span className="text-xs text-slate-400">{t('data.explain')}</span>
       {!busy && status && <span className="text-xs text-teal-700 dark:text-teal-500">{status}</span>}
-      {error && <span className="text-xs text-red-600">{error}</span>}
+      {error && <span className="text-xs text-red-600 dark:text-red-400">{error}</span>}
     </div>
   );
 }
@@ -159,7 +159,7 @@ export function DeleteAccount() {
         <button onClick={() => void openDialog()} className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-700 dark:border-red-800 dark:text-red-400">
           {t('delete.open')}
         </button>
-        {error && <span className="text-xs text-red-600">{error}</span>}
+        {error && <span className="text-xs text-red-600 dark:text-red-400">{error}</span>}
       </div>
     );
   }
@@ -215,7 +215,7 @@ export function DeleteAccount() {
           />
         </label>
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
         <div className="flex gap-2">
           <button

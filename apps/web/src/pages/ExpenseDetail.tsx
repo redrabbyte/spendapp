@@ -130,7 +130,7 @@ export function ExpenseDetailPage() {
     return (
       <div className="flex flex-col gap-3">
         <p className="text-slate-500 dark:text-slate-400">{t('expense.gone')}</p>
-        <Link to={groupId ? `/g/${groupId}` : '/'} className="text-teal-700 underline">
+        <Link to={groupId ? `/g/${groupId}` : '/'} className="text-teal-700 dark:text-teal-300 underline">
           {t('expense.backToGroup')}
         </Link>
       </div>
@@ -139,7 +139,7 @@ export function ExpenseDetailPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <Link to={`/g/${group.id}`} className="text-sm text-teal-700 underline">
+      <Link to={`/g/${group.id}`} className="text-sm text-teal-700 dark:text-teal-300 underline">
         ← {group.name}
       </Link>
 
@@ -159,7 +159,7 @@ export function ExpenseDetailPage() {
         <span className="flex flex-col items-end whitespace-nowrap">
           <span className="text-lg font-medium">{money(expense.amountMinor, expense.currency)}</span>
           {expense.currency !== group.defaultCurrency && (
-            <button onClick={() => void convertToDefault()} className="text-xs text-teal-700 underline">
+            <button onClick={() => void convertToDefault()} className="text-xs text-teal-700 dark:text-teal-300 underline">
               {expense.rateToDefault
                 ? t('expense.convertToAt', {
                     currency: group.defaultCurrency,
@@ -171,7 +171,7 @@ export function ExpenseDetailPage() {
         </span>
       </header>
 
-      {convError && <p className="text-sm text-red-600">{convError}</p>}
+      {convError && <p className="text-sm text-red-600 dark:text-red-400">{convError}</p>}
       {expense.note && <p className="rounded bg-slate-50 dark:bg-slate-800/60 p-2 text-sm text-slate-700 dark:text-slate-200">{expense.note}</p>}
 
       <section>
@@ -207,7 +207,7 @@ export function ExpenseDetailPage() {
 
       <section>
         <div className="flex items-center gap-3">
-          <button onClick={() => setEditing((v) => !v)} className="text-sm text-teal-700 underline">
+          <button onClick={() => setEditing((v) => !v)} className="text-sm text-teal-700 dark:text-teal-300 underline">
             {editing ? t('expense.closeEditor') : t('expense.edit')}
           </button>
           <button
@@ -215,7 +215,7 @@ export function ExpenseDetailPage() {
               void deleteExpenseLocal(expense);
               navigate(`/g/${group.id}`, { replace: true });
             }}
-            className="text-sm text-red-500 underline"
+            className="text-sm text-red-500 dark:text-red-400 underline"
           >
             {t('expense.delete')}
           </button>
@@ -307,7 +307,7 @@ function CommentForm({ expenseId, meId }: { expenseId: string; meId: string }) {
         maxLength={2000}
       />
       <button className="rounded bg-teal-700 px-3 py-1.5 text-sm font-medium text-white">{t('expense.post')}</button>
-      {error && <span className="text-sm text-red-600">{error}</span>}
+      {error && <span className="text-sm text-red-600 dark:text-red-400">{error}</span>}
     </form>
   );
 }

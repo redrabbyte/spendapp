@@ -560,7 +560,7 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
             {t('members.add')}
           </button>
         </form>
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
         <p className="text-xs text-slate-400">{t('members.inviteNote')}</p>
       </section>
 

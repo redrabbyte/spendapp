@@ -111,7 +111,7 @@ export function App() {
       <header className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 px-4 py-3">
         <span className="flex items-center gap-2">
           <span className="flex flex-col leading-tight">
-            <Link to="/" className="text-lg font-semibold text-teal-700">
+            <Link to="/" className="text-lg font-semibold text-teal-700 dark:text-teal-300">
               SpendApp
             </Link>
             <span className="text-[10px] text-slate-400">{t('shell.build', { date: __BUILD_DATE__ })}</span>

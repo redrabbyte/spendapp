@@ -98,7 +98,7 @@ export function LoginPage() {
           {policy?.installed === false && <PlaceholderWarning />}
           <span className="text-left text-sm font-medium text-slate-500 dark:text-slate-400">{t('login.policy')}</span>
           {policyError ? (
-            <p className="text-sm text-red-600">
+            <p className="text-sm text-red-600 dark:text-red-400">
               {t('login.policy.failed', { reason: policyError })}
             </p>
           ) : policy ? (
@@ -125,7 +125,7 @@ export function LoginPage() {
         </p>
       )}
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       {/* Consent is a precondition of the account existing, so the button that
           creates one is unavailable without it. */}

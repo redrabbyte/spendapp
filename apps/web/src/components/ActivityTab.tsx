@@ -192,18 +192,18 @@ export function ActivityTab({ activity, expenses, payments, meId, groupId, nameO
             </span>
             <span className="flex items-center gap-2 whitespace-nowrap text-slate-400">
               {restorable && (
-                <button className="text-teal-700 underline" onClick={() => void restore(restorable)}>
+                <button className="text-teal-700 dark:text-teal-300 underline" onClick={() => void restore(restorable)}>
                   {t('activity.restore')}
                 </button>
               )}
               {revertable && (
-                <button className="text-teal-700 underline" onClick={() => void restore(revertable)}>
+                <button className="text-teal-700 dark:text-teal-300 underline" onClick={() => void restore(revertable)}>
                   {t('activity.revertTo')}
                 </button>
               )}
               {importPayload && (
                 <button
-                  className="text-teal-700 underline"
+                  className="text-teal-700 dark:text-teal-300 underline"
                   onClick={() => {
                     const count = importPayload.count ?? 0;
                     if (!confirm(t('activity.confirmRevertImport', { count }))) return;
@@ -266,7 +266,7 @@ export function VersionLog({
             <span className="flex items-center gap-2 whitespace-nowrap text-slate-400">
               {i > 0 && snap && isExpenseSnapshot(snap) && (
                 <button
-                  className="text-teal-700 underline"
+                  className="text-teal-700 dark:text-teal-300 underline"
                   onClick={() => void restoreExpenseLocal(snap, meId)}
                 >
                   {t('activity.revertTo')}

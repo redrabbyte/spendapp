@@ -81,7 +81,7 @@ export function EditAccount() {
       </label>
       <span className="text-xs text-slate-400">{t('account.username.hint')}</span>
 
-      {error && <span className="text-xs text-red-600">{error}</span>}
+      {error && <span className="text-xs text-red-600 dark:text-red-400">{error}</span>}
       {saved && !dirty && <span className="text-xs text-teal-700 dark:text-teal-500">{t('account.saved')}</span>}
 
       <button

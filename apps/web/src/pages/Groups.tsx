@@ -84,7 +84,7 @@ export function GroupsPage() {
           </select>
         </label>
         <button className="rounded bg-teal-700 px-4 py-2 font-medium text-white">{t('groups.create')}</button>
-        {error && <p className="w-full text-sm text-red-600">{error}</p>}
+        {error && <p className="w-full text-sm text-red-600 dark:text-red-400">{error}</p>}
       </form>
       <div className="flex flex-col items-start gap-2">
         {/* The joiner's side of an in-person add: no link to send, nothing to

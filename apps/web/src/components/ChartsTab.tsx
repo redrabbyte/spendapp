@@ -24,16 +24,54 @@ import { categoryLabel } from '../i18n/categories';
 import type { MessageKey } from '../i18n';
 import { useT } from '../i18n/useT';
 import { useMoney } from '../i18n/useMoney';
+import { useIsDark } from '../theme';
 
-// Validated categorical palette (dataviz reference order, checked on #fff):
-// slots for the top-5 categories, green for the "Other" fold. Low-contrast
-// slots are relieved by the always-visible totals list next to the donut.
-const SLOTS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4'] as const;
-// Validated 8-hue categorical set (palette.md light column) for per-person slices.
-const PEOPLE = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948'] as const;
-const OTHER_COLOR = '#008300';
-const MUTED = '#898781';
-const GRID = '#e1e0d9';
+/**
+ * Chart colours, per theme.
+ *
+ * Built on IBM's colour-blind-safe five, with two departures the validator
+ * forced. Their published order puts the blue next to the purple, which are
+ * ΔE 11.4 apart under *normal* vision — under the 15 floor, so hard to tell
+ * apart for everyone, not only colour-blind readers; the order here never
+ * makes two weak neighbours. And their gold sits at L 0.812, too light for
+ * either mode's band, so it is stepped down.
+ *
+ * Every set below passes lightness band, chroma floor, protan/deutan
+ * separation, normal-vision separation and contrast against the mode's real
+ * body colour (#f8fafc / #0b1120). The worst neighbouring pair is ΔE 14.3
+ * against a target of 8. Re-check with the dataviz validator before editing a
+ * value: these are not free-hand choices, and a nudge can break a pair.
+ *
+ * The two light-mode slots under 3:1 are legal because the totals list beside
+ * the donut names every slice — remove that and the palette needs re-stepping.
+ */
+interface Palette {
+  /** Top-5 categories. */
+  slots: readonly string[];
+  /** Everyone in a group; eight is the ceiling, past which slices fold. */
+  people: readonly string[];
+  /** The "other (folded)" bucket — a muted teal, deliberately outside the ramp. */
+  other: string;
+  /** Axis text and gridlines, which are chrome rather than data. */
+  muted: string;
+  grid: string;
+}
+
+const LIGHT: Palette = {
+  slots: ['#FE6100', '#648FFF', '#DC267F', '#785EF0', '#ed9f00'],
+  people: ['#DC267F', '#ed9f00', '#00539a', '#FE6100', '#785EF0', '#009e73', '#648FFF', '#a30f5e'],
+  other: '#008b7e',
+  muted: '#64748b',
+  grid: '#e2e8f0',
+};
+
+const DARK: Palette = {
+  slots: ['#f45700', '#608bfb', '#DC267F', '#785EF0', '#c48400'],
+  people: ['#DC267F', '#c48400', '#1861aa', '#f45700', '#785EF0', '#009e73', '#608bfb', '#a91963'],
+  other: '#00a99b',
+  muted: '#94a3b8',
+  grid: '#1e293b',
+};
 
 type Range = 'all' | '30' | '90' | 'ytd';
 const RANGES: { key: Range; label: MessageKey }[] = [
@@ -71,6 +109,9 @@ interface Props {
 
 export function ChartsTab({ expenses, nameOf, defaultCurrency }: Props) {
   const t = useT();
+  // Recharts takes colours as literal values, so the palette has to follow the
+  // resolved theme rather than a `dark:` class.
+  const palette = useIsDark() ? DARK : LIGHT;
   const [range, setRange] = useState<Range>('all');
   const [convertTo, setConvertTo] = useState<string>(''); // '' = one section per currency
   const [fx, setFx] = useState<FxCacheRow | null>(null);
@@ -121,10 +162,10 @@ export function ChartsTab({ expenses, nameOf, defaultCurrency }: Props) {
       // never repaints a category's color (color follows the entity).
       const allTimeTotals = new Map<string, number>();
       for (const e of all) allTimeTotals.set(e.category, (allTimeTotals.get(e.category) ?? 0) + e.amountMinor);
-      const top = [...allTimeTotals.entries()].sort((a, b) => b[1] - a[1]).slice(0, SLOTS.length).map(([c]) => c);
+      const top = [...allTimeTotals.entries()].sort((a, b) => b[1] - a[1]).slice(0, palette.slots.length).map(([c]) => c);
       const colorOf = (cat: string): string => {
         const i = top.indexOf(cat);
-        return i >= 0 ? SLOTS[i]! : OTHER_COLOR;
+        return i >= 0 ? palette.slots[i]! : palette.other;
       };
       const foldCat = (cat: string): string => (top.includes(cat) ? cat : 'other*');
 
@@ -164,7 +205,7 @@ export function ChartsTab({ expenses, nameOf, defaultCurrency }: Props) {
           name: labelOf(c),
           value: toMajor(catTotals.get(c)!, currency),
           minor: catTotals.get(c)!,
-          color: c === 'other*' ? OTHER_COLOR : colorOf(c),
+          color: c === 'other*' ? palette.other : colorOf(c),
         })),
         monthly: [...months.entries()]
           .sort()
@@ -175,12 +216,12 @@ export function ChartsTab({ expenses, nameOf, defaultCurrency }: Props) {
             return row;
           }),
         categoryNames,
-        colorOf: (c: string) => (c === 'other*' ? OTHER_COLOR : colorOf(c)),
+        colorOf: (c: string) => (c === 'other*' ? palette.other : colorOf(c)),
         labelOf,
       };
     });
     return { buckets: out, skipped: skippedCount };
-  }, [expenses, range, convertTo, fx, nameOf, t]);
+  }, [expenses, range, convertTo, fx, nameOf, t, palette]);
 
   // Charts work in major units; the axis and the list below must agree, so
   // both go through the same localized formatter.
@@ -215,7 +256,7 @@ export function ChartsTab({ expenses, nameOf, defaultCurrency }: Props) {
         </select>
       </div>
       {skipped > 0 && (
-        <p className="text-sm text-amber-700">{t('charts.skipped', { count: skipped })}</p>
+        <p className="text-sm text-amber-700 dark:text-amber-400">{t('charts.skipped', { count: skipped })}</p>
       )}
       {buckets.length === 0 && <p className="text-slate-500 dark:text-slate-400">{t('charts.empty')}</p>}
 
@@ -225,7 +266,7 @@ export function ChartsTab({ expenses, nameOf, defaultCurrency }: Props) {
 
           {(() => {
             const ids = [...b.perPerson.map((p) => p.userId)].sort();
-            const personColor = (userId: string) => PEOPLE[ids.indexOf(userId) % PEOPLE.length]!;
+            const personColor = (userId: string) => palette.people[ids.indexOf(userId) % palette.people.length]!;
             const pie = (title: string, key: 'paid' | 'share', hint: string) => {
               const rows = [...b.perPerson].sort((x, y) => y[key] - x[key]);
               return (
@@ -305,9 +346,9 @@ export function ChartsTab({ expenses, nameOf, defaultCurrency }: Props) {
               </h3>
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart data={b.monthly} margin={{ right: 16 }}>
-                  <CartesianGrid stroke={GRID} vertical={false} />
-                  <XAxis dataKey="month" tick={{ fill: MUTED, fontSize: 12 }} stroke={GRID} />
-                  <YAxis tick={{ fill: MUTED, fontSize: 12 }} stroke={GRID} />
+                  <CartesianGrid stroke={palette.grid} vertical={false} />
+                  <XAxis dataKey="month" tick={{ fill: palette.muted, fontSize: 12 }} stroke={palette.grid} />
+                  <YAxis tick={{ fill: palette.muted, fontSize: 12 }} stroke={palette.grid} />
                   <Tooltip formatter={(v) => chartMoney(b.currency)(Number(v))} />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
                   {b.categoryNames.map((c) => (

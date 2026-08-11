@@ -64,7 +64,7 @@ export function PrivacyGate() {
           {t(user?.privacyVersion ? 'privacy.changed.again' : 'privacy.changed.never')}
         </p>
         {policy && <PrivacyNotice text={policy.text} />}
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
         <button
           disabled={busy}
           className="rounded bg-teal-700 px-3 py-2 font-medium text-white disabled:opacity-50"

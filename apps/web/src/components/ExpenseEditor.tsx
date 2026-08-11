@@ -474,7 +474,7 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
           {t('editor.paidBy')}{' '}
           <button
             type="button"
-            className="text-teal-700 underline"
+            className="text-teal-700 dark:text-teal-300 underline"
             onClick={() => setMultiPayer(!multiPayer)}
           >
             {multiPayer ? t('editor.singlePayer') : t('editor.multiplePayers')}
@@ -532,9 +532,9 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
             <span
               className={`ml-2 ${
                 percentRemaining === 0
-                  ? 'text-emerald-700'
+                  ? 'text-emerald-700 dark:text-emerald-400'
                   : percentRemaining < 0
-                    ? 'text-red-600'
+                    ? 'text-red-600 dark:text-red-400'
                     : 'text-slate-500 dark:text-slate-400'
               }`}
             >
@@ -548,9 +548,9 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
               <span
                 className={`ml-2 ${
                   exactRemaining === 0
-                    ? 'text-emerald-700'
+                    ? 'text-emerald-700 dark:text-emerald-400'
                     : exactRemaining < 0
-                      ? 'text-red-600'
+                      ? 'text-red-600 dark:text-red-400'
                       : 'text-slate-500 dark:text-slate-400'
                 }`}
               >
@@ -646,7 +646,7 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
         rows={note ? 2 : 1}
         maxLength={2000}
       />
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
       <div className="flex gap-2">
         <button className="rounded bg-teal-700 px-4 py-2 font-medium text-white">
           {existing ? t('editor.save') : t('editor.add')}

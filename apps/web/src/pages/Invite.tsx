@@ -109,7 +109,7 @@ export function InvitePage() {
     }
   }
 
-  if (error && !info) return <p className="mt-8 text-center text-red-600">{error}</p>;
+  if (error && !info) return <p className="mt-8 text-center text-red-600 dark:text-red-400">{error}</p>;
   if (!info || loading)
     return <p className="mt-8 text-center text-slate-500 dark:text-slate-400">{t('group.loading')}</p>;
 
@@ -202,7 +202,7 @@ export function InvitePage() {
                 ? t('invitePage.rejoin')
                 : t('invitePage.join')}
           </button>
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
         </>
       ) : (
         <Link

@@ -70,7 +70,7 @@ export function ChangePassword() {
             minLength={10}
             autoComplete="new-password"
           />
-          {error && <p className="text-xs text-red-600">{error}</p>}
+          {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
           <div className="flex gap-2">
             <button
               disabled={busy}
