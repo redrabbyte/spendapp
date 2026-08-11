@@ -290,6 +290,8 @@ export const de: Catalogue = {
   'shell.build': 'Build {date} UTC',
   'shell.installAsApp': 'Als App installieren',
 
+  'footer.copyright': '© {year} {owner}',
+
   // --- taking your data with you, and leaving -------------------------------
   'data.title': 'Meine Daten',
   'data.download': 'Meine Daten herunterladen',

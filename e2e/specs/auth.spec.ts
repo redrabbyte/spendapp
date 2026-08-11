@@ -23,7 +23,9 @@ test('the password never leaves the device', async ({ page, api }) => {
   await page.goto('/login');
   await fillLogin(page);
   await page.getByRole('button', { name: 'Log in', exact: true }).click();
-  await page.getByText('Lukas').waitFor();
+  // Scoped to the header: the footer's copyright carries the owner's name, and
+  // the signed-in user may well have the same one — as in this fixture.
+  await page.getByRole('banner').getByText('Lukas').waitFor();
 
   expect(sent.length).toBeGreaterThan(0);
   for (const body of sent) expect(body).not.toContain(TEST_PASSWORD);
@@ -34,7 +36,7 @@ test('logging in unwraps the stored private key', async ({ page, api }) => {
   await page.goto('/login');
   await fillLogin(page);
   await page.getByRole('button', { name: 'Log in', exact: true }).click();
-  await page.getByText('Lukas').waitFor();
+  await page.getByRole('banner').getByText('Lukas').waitFor();
 
   // The key is only in the mirror if the derived KEK actually opened the blob
   // the server sent — a wrong KEK throws rather than caching something useless.
@@ -83,7 +85,7 @@ test('the registration payload carries keys, not a password', async ({ page, api
   await page.getByPlaceholder(/Password \(min/).fill(TEST_PASSWORD);
   await page.getByRole('checkbox').check();
   await page.getByRole('button', { name: 'Create account', exact: true }).click();
-  await page.getByText('Lukas').waitFor();
+  await page.getByRole('banner').getByText('Lukas').waitFor();
 
   // The mock validates this against the server's own registerSchema, so a
   // malformed payload would already have 400'd. This pins the shape.
@@ -149,7 +151,7 @@ test('the placeholder never interrupts anyone', async ({ page, api }) => {
   api.acceptedPolicyVersion = null;
 
   await page.goto('/');
-  await page.getByText('Lukas').waitFor();
+  await page.getByRole('banner').getByText('Lukas').waitFor();
   await expect(page.getByText('The privacy policy has changed')).toBeHidden();
 });
 

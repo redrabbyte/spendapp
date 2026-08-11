@@ -4,6 +4,7 @@ import { useAuth } from './auth';
 import { InstallPrompt } from './components/InstallPrompt';
 import { NotificationPrompt } from './components/NotificationPrompt';
 import { SettingsModal } from './components/SettingsModal';
+import { SiteFooter } from './components/SiteFooter';
 import { PrivacyGate } from './components/PrivacyGate';
 import { UnlockPrompt } from './components/UnlockPrompt';
 import { promptInstall, useInstallState } from './install';
@@ -107,7 +108,7 @@ export function App() {
   const online = useSyncExternalStore(subscribeOnline, () => navigator.onLine);
   const [settingsOpen, setSettingsOpen] = useState(false);
   return (
-    <div className="mx-auto min-h-dvh max-w-2xl">
+    <div className="mx-auto flex min-h-dvh max-w-2xl flex-col">
       <header className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 px-4 py-3">
         <span className="flex items-center gap-2">
           <span className="flex flex-col leading-tight">
@@ -188,6 +189,7 @@ export function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
+      <SiteFooter />
     </div>
   );
 }

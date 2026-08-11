@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { useT } from '../i18n/useT';
+import { Markdown } from './Markdown';
 
 export interface Policy {
   version: string;
@@ -18,16 +19,20 @@ export const fetchPolicy = (): Promise<Policy> => (cached ??= api<Policy>('/api/
  * than linked at the point of consent: a checkbox next to a link records that
  * somebody clicked a checkbox.
  *
- * The markdown is rendered as plain text with its heading and list marks kept.
- * Adding a markdown renderer for one document would be a dependency and an
- * injection surface for a file that is, by design, edited outside review.
+ * This used to print the markdown raw, on the reasoning that a renderer would
+ * be both a dependency and an injection surface for a file edited outside
+ * review. The first half stands and is answered by writing the sixty lines
+ * (`Markdown.tsx`); the second was only ever true of `dangerouslySetInnerHTML`.
+ * Rendering to React elements escapes every text node, so the file cannot
+ * inject anything — and a policy whose headings and emphasis survive is one
+ * more person will actually read before agreeing to it.
  */
 export function PrivacyNotice({ text, className = '' }: { text: string; className?: string }) {
   return (
     <div
-      className={`max-h-56 overflow-y-auto whitespace-pre-wrap rounded border border-slate-300 bg-slate-50 p-3 text-left text-xs leading-relaxed text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 ${className}`}
+      className={`max-h-56 overflow-y-auto rounded border border-slate-300 bg-slate-50 p-3 text-left text-xs leading-relaxed text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 ${className}`}
     >
-      {text}
+      <Markdown text={text} />
     </div>
   );
 }

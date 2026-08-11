@@ -297,6 +297,8 @@ export const en = {
   'shell.build': 'build {date} UTC',
   'shell.installAsApp': 'Install as an app',
 
+  'footer.copyright': '© {year} {owner}',
+
   // --- taking your data with you, and leaving -------------------------------
   'data.title': 'My data',
   'data.download': 'Download my data',

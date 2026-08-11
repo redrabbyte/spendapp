@@ -23,7 +23,9 @@ async function signIn(page: Page): Promise<void> {
   await page.getByPlaceholder('Username').fill('lukas');
   await page.getByPlaceholder('Password', { exact: true }).fill('password12');
   await page.getByRole('button', { name: 'Log in', exact: true }).click();
-  await page.getByText('Lukas').waitFor();
+  // Scoped to the header: the footer's copyright carries the owner's name, and
+  // the signed-in user may well have the same one — as in this fixture.
+  await page.getByRole('banner').getByText('Lukas').waitFor();
 }
 
 test('nothing is offered while signed out', async ({ page, api }) => {
@@ -68,7 +70,7 @@ test('reopening a session is not a sign-in; signing in again is', async ({ page,
   await page.getByRole('button', { name: 'Not now' }).click();
 
   await page.reload();
-  await page.getByText('Lukas').waitFor();
+  await page.getByRole('banner').getByText('Lukas').waitFor();
   await page.evaluate(FIRE_PROMPT);
   await expect(page.getByText('Install SpendApp?')).toBeHidden();
   await expect(page.getByRole('button', { name: INSTALL })).toHaveCount(1);
@@ -91,7 +93,7 @@ test('an installed app offers nothing', async ({ page, context, api }) => {
       : real(q);
   })()`);
   await page.goto('/');
-  await page.getByText('Lukas').waitFor();
+  await page.getByRole('banner').getByText('Lukas').waitFor();
   await page.evaluate(FIRE_PROMPT);
   await expect(page.getByRole('button', { name: INSTALL })).toHaveCount(0);
   await expect(page.getByText('Install SpendApp?')).toBeHidden();

@@ -124,3 +124,22 @@ test('money is written the way the language writes it', async ({ page, api }) =>
   // 1.234,56 € — decimal comma, thousands point, symbol last.
   await expect(page.getByText(/1\.234,56/)).toBeVisible();
 });
+
+test('the footer reaches the policy from a signed-out page', async ({ page, api }) => {
+  api.signedIn = false;
+  api.policy = {
+    version: 'v1',
+    // Markdown, to prove the reader gets prose rather than the source of it.
+    text: '## What we keep\n\nAs **little** as we can.',
+    installed: true,
+  };
+  await page.goto('/login');
+
+  await expect(page.getByText(`© ${new Date().getFullYear()} Lukas`)).toBeVisible();
+  await page.getByRole('button', { name: 'Privacy policy' }).click();
+
+  // Rendered: the heading marks are gone and the emphasis is real.
+  await expect(page.getByText('## What we keep')).toHaveCount(0);
+  await expect(page.getByText('What we keep')).toBeVisible();
+  await expect(page.locator('strong', { hasText: 'little' })).toBeVisible();
+});
