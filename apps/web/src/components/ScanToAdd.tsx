@@ -4,6 +4,7 @@ import { api } from '../api';
 import { shareKeyring } from '../groupKeys';
 import { syncNow } from '../sync';
 import { QrScanner } from './QrScanner';
+import { useT } from '../i18n/useT';
 
 /**
  * The inviter's half of an in-person join (design §4.2). Scanning somebody's
@@ -23,6 +24,7 @@ export function ScanToAdd({
   members: MemberDto[];
   onDone: () => void;
 }) {
+  const t = useT();
   const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState<JoinCode | null>(null);
   const [claim, setClaim] = useState('');
@@ -49,8 +51,13 @@ export function ScanToAdd({
    */
   function label(m: MemberDto): string {
     const merged = members.filter((o) => o.aliasOf === m.userId).map((o) => o.displayName);
-    const also = merged.length > 0 ? ` (also ${merged.join(', ')})` : '';
-    return `${m.displayName}${also}${m.isPlaceholder ? '' : ' — left this group'}`;
+    // Nested whole templates rather than glued-on suffixes, so a language can
+    // put "(also …)" and "left this group" wherever they belong.
+    const base =
+      merged.length > 0
+        ? t('scan.labelAlso', { name: m.displayName, names: merged.join(', ') })
+        : m.displayName;
+    return m.isPlaceholder ? base : t('scan.labelLeft', { name: base });
   }
 
   function onScan(text: string) {
@@ -60,12 +67,12 @@ export function ScanToAdd({
     try {
       value = JSON.parse(text);
     } catch {
-      return setError('That code is not a SpendApp join code.');
+      return setError(t('scan.notAJoinCode'));
     }
     const parsed = joinCodeSchema.safeParse(value);
-    if (!parsed.success) return setError('That code is not a SpendApp join code.');
+    if (!parsed.success) return setError(t('scan.notAJoinCode'));
     if (members.some((m) => m.userId === parsed.data.u && m.leftAt === null)) {
-      return setError(`${parsed.data.n} is already in this group.`);
+      return setError(t('scan.alreadyMember', { name: parsed.data.n }));
     }
     // Their own departed row: rejoining on the same account restores it, so
     // offering it as something to claim would alias a row to itself.
@@ -87,11 +94,7 @@ export function ScanToAdd({
       // there is no honest reason for a key to change between the two.
       await shareKeyring(groupId, code.u, code.k);
       setScanned(null);
-      setResult(
-        res.keyMatches
-          ? `${code.n} is in, and can read the group's history.`
-          : `${code.n} is in, but the key on the server does not match the one you scanned. They can read the group because you wrapped it to the scanned key — but ask them to check their account.`,
-      );
+      setResult(t(res.keyMatches ? 'scan.admitted' : 'scan.admittedKeyMismatch', { name: code.n }));
       await syncNow();
       onDone();
     } catch (err) {
@@ -108,22 +111,20 @@ export function ScanToAdd({
   if (scanned) {
     return (
       <div className="flex flex-col gap-2 rounded border border-teal-300 p-3 dark:border-teal-800">
-        <p className="text-sm">
-          Add <span className="font-medium">{scanned.n}</span> to this group?
-        </p>
+        <p className="text-sm">{t('scan.addPrompt', { name: scanned.n })}</p>
         {/* Always shown, whether or not there is anyone else to pick: the
             admin should be able to see what pressing Add will do, and before
             this the choice simply vanished when the group had no placeholders
             and no other departed members. */}
         <label className="flex flex-col gap-1 text-left text-xs text-slate-500 dark:text-slate-400">
-          {selfReturn ? 'They have been here before — add them as:' : 'Are they one of the people already listed?'}
+          {selfReturn ? t('scan.returning') : t('scan.pickExisting')}
           <select
             value={claim}
             onChange={(e) => setClaim(e.target.value)}
             className="rounded border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-800"
           >
             <option value="">
-              {selfReturn ? `${selfReturn}, as before — with their old entries` : 'Someone new'}
+              {selfReturn ? t('scan.asBefore', { name: selfReturn }) : t('scan.someoneNew')}
             </option>
             {others.map((m) => (
               <option key={m.userId} value={m.userId}>
@@ -133,22 +134,18 @@ export function ScanToAdd({
           </select>
         </label>
         {selfReturn && (
-          <p className="text-left text-xs text-slate-400">
-            There is no way to bring this account back as a stranger to its own entries: those entries are
-            addressed by the account itself, so returning always reunites them. Only a different account can
-            start clean here.
-          </p>
+          <p className="text-left text-xs text-slate-400">{t('scan.ownEntriesNote')}</p>
         )}
         <div className="flex gap-2">
           <button disabled={busy} onClick={() => void admit(scanned)} className={`${button} bg-teal-700 text-white`}>
-            Add {scanned.n}
+            {t('scan.add', { name: scanned.n })}
           </button>
           <button
             disabled={busy}
             onClick={() => setScanned(null)}
             className={`${button} border border-slate-300 text-slate-600 dark:border-slate-600 dark:text-slate-300`}
           >
-            Cancel
+            {t('scan.cancel')}
           </button>
         </div>
         {error && <p className="text-sm text-red-600">{error}</p>}
@@ -166,12 +163,9 @@ export function ScanToAdd({
         }}
         className={`${button} self-start border border-slate-300 text-slate-600 dark:border-slate-600 dark:text-slate-300`}
       >
-        Scan someone&apos;s code
+        {t('scan.start')}
       </button>
-      <p className="text-xs text-slate-400">
-        They open <em>Join a group in person</em> on their phone and show you the code. Adding them this way
-        needs no link and no approval — you have already checked who they are.
-      </p>
+      <p className="text-xs text-slate-400">{t('scan.explain', { screen: t('join.title') })}</p>
       {result && (
         <p className="rounded bg-teal-50 p-2 text-sm text-teal-900 dark:bg-teal-950 dark:text-teal-100">{result}</p>
       )}

@@ -143,7 +143,9 @@ export const de: Catalogue = {
   'app.paymentAmount': 'Eine Zahlung muss ein positiver Betrag sein.',
   'app.paymentSelf': 'Eine Zahlung kann nicht an einen selbst gehen.',
   'app.settledAmount': 'Der ausgeglichene Betrag ist keine gültige Zahl.',
-  'app.importFailed': '{step} nicht möglich: {reason}',
+  // {step} arrives as a zu-infinitive ("die Gruppe anzulegen"), so the clause
+  // has to open the sentence rather than sit in front of a colon.
+  'app.importFailed': 'Es war nicht möglich, {step}: {reason}',
 
   'split.no_participants': 'niemand ist beteiligt',
   'split.invalid_weight': 'ein Anteil ist keine gültige Zahl',
@@ -357,12 +359,106 @@ export const de: Catalogue = {
   'activity.import.csv': 'einer CSV-Datei',
   'activity.import.reverted': 'hat einen Import rückgängig gemacht',
 
+  // --- CSV import ----------------------------------------------------------
+  'import.title': 'Aus CSV importieren',
+  'import.close': 'Schließen',
+  'import.explain':
+    'Ein SpendApp-Export oder ein Splitwise-Gruppenexport — was davon es ist, wird automatisch erkannt.',
+  'import.unrecognised': 'Das ist weder ein SpendApp- noch ein Splitwise-Export.',
+  'import.summary': {
+    one: '{format} — {count} Ausgabe',
+    other: '{format} — {count} Ausgaben',
+  },
+  'import.summaryPayments': {
+    one: ', {count} Zahlung',
+    other: ', {count} Zahlungen',
+  },
+  'import.summaryTotal': '({total})',
+  'import.formatSplitwise': 'Splitwise-Export',
+  'import.formatSpendapp': 'SpendApp-Export',
+  'import.groupName': 'Gruppenname',
+  'import.defaultGroupName': 'Importierte Gruppe',
+  'import.whichAreYou': 'Welche Person bist du?',
+  'import.choose': 'Auswählen …',
+  'import.othersArePlaceholders':
+    'Die anderen werden als Mitglieder ohne Konto angelegt. Schick ihnen einen Einladungslink, dann können sie ihren Namen übernehmen.',
+  'import.whoIsWho': 'Wer ist wer?',
+  'import.skip': 'Überspringen',
+  'import.willBeSkipped': 'Einträge mit {names} werden übersprungen.',
+  'import.warnings': {
+    one: '{count} Zeile sollte geprüft werden',
+    other: '{count} Zeilen sollten geprüft werden',
+  },
+  'import.run': {
+    one: '{count} Eintrag importieren',
+    other: '{count} Einträge importieren',
+  },
+  'import.running': 'Wird importiert …',
+  'import.partial': '{imported} importiert, {skipped} übersprungen.',
+  'import.step.createGroup': 'die Gruppe anzulegen',
+  'import.step.addMember': '„{name}“ hinzuzufügen',
+  'import.warning.unrecognised_currency': '{row}: unbekannte Währung „{currency}“ — übersprungen',
+  'import.warning.amounts_do_not_cancel': '{row}: die Beträge pro Person heben sich nicht auf — übersprungen',
+  'import.warning.payment_too_many_people': '{row}: Zahlung mit mehr als zwei Personen — übersprungen',
+  'import.warning.nobody_paid': '{row}: niemand hat gezahlt — übersprungen',
+  'import.warning.several_payers': '{row}: mehrere Zahlende — Aufteilung anteilig rekonstruiert',
+  'import.warning.split_totals_mismatch':
+    '{row}: die Aufteilung passt nicht zum Betrag — nach dem Import prüfen',
+
   // --- receipts ------------------------------------------------------------
   'receipt.alt': 'Beleg',
   'receipt.undecryptable': 'nicht entschlüsselbar',
   'receipt.camera': 'Kamera',
   'receipt.upload': 'hochladen',
   'receipt.delete': 'Foto löschen',
+
+  // --- following an invite link --------------------------------------------
+  'invitePage.invitedBy': '{name} lädt dich in eine Gruppe ein',
+  'invitePage.wasMember':
+    'Du warst schon einmal als {name} in dieser Gruppe. Beim Wiedereintritt bekommst du diesen Namen zurück, mit allem, was darunter eingetragen ist — unten gibt es nichts auszuwählen.',
+  'invitePage.fromToday':
+    'Diese Einladung teilt die Gruppe ab heute. Alles bisher Eingetragene bleibt verschlüsselt — du siehst diese Beträge nicht, und Salden zwischen anderen sind für dich unvollständig. Dein eigener Saldo stimmt trotzdem genau, weil du an keiner dieser Aufteilungen beteiligt warst.',
+  'invitePage.requestSent':
+    'Anfrage gesendet. Eine Administratorin oder ein Administrator dieser Gruppe muss sie freigeben, bevor du etwas sehen kannst.',
+  'invitePage.sasIntro': 'Falls nach einem Code gefragt wird, lautet er',
+  'invitePage.sasHint': 'Lies ihn vor — per Anruf, nicht über denselben Chat, aus dem der Link kam.',
+  'invitePage.willOpen':
+    'Diese Seite öffnet die Gruppe von selbst, sobald freigegeben wurde. Du bekommst außerdem eine Benachrichtigung, du kannst sie also gefahrlos schließen.',
+  'invitePage.backToGroups': 'Zurück zu deinen Gruppen',
+  'invitePage.takeOverInstead': 'Stattdessen den Namen von jemand anderem übernehmen?',
+  'invitePage.areYouOne': 'Bist du eine dieser Personen?',
+  'invitePage.rejoinAs': 'Nein — wieder als {name} beitreten',
+  'invitePage.joinAsNew': 'Nein — als jemand Neues beitreten',
+  'invitePage.claimAlso': '{name} (auch {names})',
+  'invitePage.claimLeft': '{name} — hat die Gruppe verlassen',
+  'invitePage.nameClash':
+    'Hier heißt schon jemand {name}. Wenn das du sein solltest, wähl den Namen oben aus — sonst tritt als jemand Neues bei und wirst getrennt aufgeführt.',
+  'invitePage.claimNote':
+    'Wer einen Namen auswählt, übernimmt die Ausgaben, die darunter schon eingetragen sind. Namen mit „hat die Gruppe verlassen“ gehörten einem echten Konto — übernimm so einen nur, wenn er deiner war und du nicht mehr hineinkommst. Als jemand Neues beizutreten geht immer, auch wenn noch Namen frei sind.',
+  'invitePage.joinAsThisPerson': 'Als diese Person beitreten',
+  'invitePage.rejoin': 'Gruppe wieder beitreten',
+  'invitePage.join': 'Gruppe beitreten',
+  'invitePage.logInToJoin': 'Zum Beitreten anmelden oder registrieren',
+
+  // --- scanning somebody in ------------------------------------------------
+  'scan.start': 'Code von jemandem scannen',
+  'scan.explain':
+    'Sie öffnen auf ihrem Handy „{screen}“ und zeigen dir den Code. So hinzugefügt braucht es weder Link noch Freigabe — du hast ja schon geprüft, wer da steht.',
+  'scan.notAJoinCode': 'Das ist kein SpendApp-Beitrittscode.',
+  'scan.alreadyMember': '{name} ist schon in dieser Gruppe.',
+  'scan.addPrompt': '{name} zu dieser Gruppe hinzufügen?',
+  'scan.returning': 'Diese Person war schon einmal hier — hinzufügen als:',
+  'scan.pickExisting': 'Ist das eine der schon aufgeführten Personen?',
+  'scan.asBefore': '{name}, wie vorher — mit den alten Einträgen',
+  'scan.someoneNew': 'Jemand Neues',
+  'scan.labelAlso': '{name} (auch {names})',
+  'scan.labelLeft': '{name} — hat die Gruppe verlassen',
+  'scan.ownEntriesNote':
+    'Dieses Konto kann nicht als Fremder zu seinen eigenen Einträgen zurückkommen: die Einträge hängen am Konto selbst, eine Rückkehr führt sie also immer wieder zusammen. Nur ein anderes Konto kann hier neu anfangen.',
+  'scan.add': '{name} hinzufügen',
+  'scan.admitted': '{name} ist dabei und kann den Verlauf der Gruppe lesen.',
+  'scan.admittedKeyMismatch':
+    '{name} ist dabei, aber der Schlüssel auf dem Server stimmt nicht mit dem gescannten überein. Die Gruppe ist lesbar, weil du sie auf den gescannten Schlüssel verpackt hast — bitte sie trotzdem, ihr Konto zu prüfen.',
 
   // --- camera scanner ------------------------------------------------------
   'scan.noCamera': 'Dieser Browser kann keine Kamera öffnen. Schick stattdessen einen Einladungslink.',

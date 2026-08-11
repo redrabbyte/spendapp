@@ -1,3 +1,4 @@
+import { ImportFormatError, type ImportWarning } from './errors.js';
 import { allocateByWeights } from './split.js';
 import { minorUnitExponent } from './currencies.js';
 
@@ -47,7 +48,7 @@ export interface ParsedImport {
   members: string[];
   entries: ImportedEntry[];
   /** Rows that could not be imported, or were imported with a caveat. */
-  warnings: string[];
+  warnings: ImportWarning[];
 }
 
 /** RFC 4180: quoted fields may contain commas, newlines and doubled quotes. */
@@ -110,7 +111,7 @@ export function detectFormat(rows: string[][]): 'spendapp' | 'splitwise' | null 
 export function parseImport(text: string): ParsedImport {
   const rows = parseCsv(text);
   const format = detectFormat(rows);
-  if (!format) throw new Error('Unrecognised CSV: expected a SpendApp or Splitwise export.');
+  if (!format) throw new ImportFormatError();
   return format === 'spendapp' ? parseSpendApp(rows) : parseSplitwise(rows);
 }
 
@@ -131,7 +132,7 @@ function parseSplitwise(rows: string[][]): ParsedImport {
   const headerIndex = rows.indexOf(header);
   const members = header.slice(5).map((m) => m.trim());
   const entries: ImportedEntry[] = [];
-  const warnings: string[] = [];
+  const warnings: ImportWarning[] = [];
 
   for (const row of rows.slice(headerIndex + 1)) {
     if (isBlank(row) || row.length < 6) continue;
@@ -143,13 +144,13 @@ function parseSplitwise(rows: string[][]): ParsedImport {
     const amountMinor = toMinor(cost, ccy || 'EUR');
     if (amountMinor === null || amountMinor <= 0) continue;
     if (!/^[A-Z]{3}$/.test(ccy)) {
-      warnings.push(`${description || date}: unrecognised currency "${currency}" — skipped`);
+      warnings.push({ row: description || date, code: 'unrecognised_currency', currency });
       continue;
     }
 
     const nets = members.map((_, i) => toMinor(row[5 + i] ?? '', ccy) ?? 0);
     if (nets.reduce((a, b) => a + b, 0) !== 0) {
-      warnings.push(`${description}: the per-person amounts do not cancel out — skipped`);
+      warnings.push({ row: description, code: 'amounts_do_not_cancel' });
       continue;
     }
 
@@ -160,7 +161,7 @@ function parseSplitwise(rows: string[][]): ParsedImport {
       const from = nets.findIndex((n) => n > 0);
       const to = nets.findIndex((n) => n < 0);
       if (from === -1 || to === -1 || nets.filter((n) => n !== 0).length !== 2) {
-        warnings.push(`${description}: payment with more than two people — skipped`);
+        warnings.push({ row: description, code: 'payment_too_many_people' });
         continue;
       }
       entries.push({
@@ -178,7 +179,7 @@ function parseSplitwise(rows: string[][]): ParsedImport {
     const positives = nets.map((n) => Math.max(n, 0));
     const totalPositive = positives.reduce((a, b) => a + b, 0);
     if (totalPositive === 0) {
-      warnings.push(`${description}: nobody paid — skipped`);
+      warnings.push({ row: description, code: 'nobody_paid' });
       continue;
     }
     // Largest-remainder so the reconstructed payments still sum to the cost.
@@ -194,7 +195,7 @@ function parseSplitwise(rows: string[][]): ParsedImport {
     }
     const multiPayer = positives.filter((p) => p > 0).length > 1;
     if (multiPayer) {
-      warnings.push(`${description}: several payers — split reconstructed proportionally`);
+      warnings.push({ row: description, code: 'several_payers' });
     }
     entries.push({
       kind: 'expense',
@@ -220,7 +221,7 @@ function parseSpendApp(rows: string[][]): ParsedImport {
   const col = new Map(header.map((h, i) => [h.trim().toLowerCase(), i]));
   const at = (row: string[], name: string): string => row[col.get(name) ?? -1]?.trim() ?? '';
   const entries: ImportedEntry[] = [];
-  const warnings: string[] = [];
+  const warnings: ImportWarning[] = [];
   const members: string[] = [];
   const seeMember = (n: string): void => {
     if (n && !members.includes(n)) members.push(n);
@@ -288,7 +289,7 @@ function parseSpendApp(rows: string[][]): ParsedImport {
     const owed = e.splits.reduce((a, s) => a + s.owedMinor, 0);
     const paid = e.splits.reduce((a, s) => a + s.paidMinor, 0);
     if (owed !== e.amountMinor || paid !== e.amountMinor) {
-      warnings.push(`${e.description}: split totals do not match the amount — check after importing`);
+      warnings.push({ row: e.description, code: 'split_totals_mismatch' });
     }
   }
 

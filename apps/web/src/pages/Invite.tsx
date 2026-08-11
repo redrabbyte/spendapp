@@ -7,6 +7,8 @@ import { useAuth } from '../auth';
 import { localDb } from '../db';
 import { loadKeys } from '../keys';
 import { syncNow } from '../sync';
+import type { Translator } from '../i18n';
+import { useT } from '../i18n/useT';
 
 interface Claimable {
   userId: string;
@@ -28,9 +30,21 @@ interface InviteInfo {
 /** '' means "join as a new member" rather than taking over a placeholder. */
 const AS_NEW = '';
 
+/**
+ * Whole templates nested rather than suffixes glued on, so a language decides
+ * for itself where "(also …)" and "left this group" go.
+ */
+function claimLabel(t: Translator, c: Claimable): string {
+  const base = c.alsoKnownAs?.length
+    ? t('invitePage.claimAlso', { name: c.displayName, names: c.alsoKnownAs.join(', ') })
+    : c.displayName;
+  return c.kind === 'departed' ? t('invitePage.claimLeft', { name: base }) : base;
+}
+
 export function InvitePage() {
   const { token } = useParams<{ token: string }>();
   const { user, loading } = useAuth();
+  const t = useT();
   const navigate = useNavigate();
   const [info, setInfo] = useState<InviteInfo | null>(null);
   const [claim, setClaim] = useState<string>(AS_NEW);
@@ -96,13 +110,12 @@ export function InvitePage() {
   }
 
   if (error && !info) return <p className="mt-8 text-center text-red-600">{error}</p>;
-  if (!info || loading) return <p className="mt-8 text-center text-slate-500 dark:text-slate-400">Loading…</p>;
+  if (!info || loading)
+    return <p className="mt-8 text-center text-slate-500 dark:text-slate-400">{t('group.loading')}</p>;
 
   return (
     <div className="mx-auto mt-10 flex max-w-sm flex-col items-center gap-4 text-center">
-      <p>
-        <span className="font-medium">{info.inviterName}</span> invited you to join
-      </p>
+      <p>{t('invitePage.invitedBy', { name: info.inviterName })}</p>
       <h1 className="text-2xl font-semibold">{info.groupName}</h1>
 
       {/* Rejoining on the same account restores the old membership row by
@@ -111,43 +124,39 @@ export function InvitePage() {
           new", which reads like abandoning your own history. */}
       {info.wasMember && (
         <p className="rounded bg-teal-50 p-3 text-left text-sm text-teal-900 dark:bg-teal-950 dark:text-teal-100">
-          You were in this group before as <strong>{info.wasMember.displayName}</strong>. Rejoining puts you
-          back under that name with everything already recorded against it — there is nothing to pick below.
+          {t('invitePage.wasMember', { name: info.wasMember.displayName })}
         </p>
       )}
 
       {info.shareHistory === false && (
         <p className="rounded bg-amber-50 p-3 text-left text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
-          This invite shares the group from today onwards. Whatever has been recorded so far stays sealed —
-          you will not see those amounts, and balances between other people will be incomplete for you. Your
-          own balance will still be exact, because you were in none of those splits.
+          {t('invitePage.fromToday')}
         </p>
       )}
 
       {user && pending ? (
         <div className="flex flex-col gap-2">
           <p className="rounded bg-teal-50 px-4 py-3 text-teal-900 dark:bg-teal-950 dark:text-teal-100">
-            Request sent. An admin of this group has to approve it before you can see anything.
+            {t('invitePage.requestSent')}
           </p>
           {sas && (
             <div className="flex flex-col gap-1 rounded border border-slate-200 px-4 py-3 dark:border-slate-700">
               <span className="text-sm text-slate-500 dark:text-slate-400">
-                If they ask you to confirm a code, it is
+                {t('invitePage.sasIntro')}
               </span>
               <span className="font-mono text-2xl font-medium tracking-widest">
                 {sas.slice(0, 3)} {sas.slice(3)}
               </span>
               <span className="text-xs text-slate-400">
-                Read it out to them — over a call, not over the same chat the link came from.
+                {t('invitePage.sasHint')}
               </span>
             </div>
           )}
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            This page opens the group by itself the moment they approve. You will get a notification too, so
-            it is safe to close.
+            {t('invitePage.willOpen')}
           </p>
           <Link to="/" className="text-sm text-teal-700 underline dark:text-teal-300">
-            Back to your groups
+            {t('invitePage.backToGroups')}
           </Link>
         </div>
       ) : user ? (
@@ -155,7 +164,7 @@ export function InvitePage() {
           {info.claimable.length > 0 && (
             <div className="flex w-full flex-col gap-1 text-left">
               <label htmlFor="claim" className="text-sm font-medium text-slate-500 dark:text-slate-400">
-                {info.wasMember ? 'Taking over somebody else’s name instead?' : 'Are you one of these people?'}
+                {info.wasMember ? t('invitePage.takeOverInstead') : t('invitePage.areYouOne')}
               </label>
               <select
                 id="claim"
@@ -164,28 +173,22 @@ export function InvitePage() {
                 className="rounded border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-800"
               >
                 <option value={AS_NEW}>
-                  {info.wasMember ? `No — rejoin as ${info.wasMember.displayName}` : 'No — join as someone new'}
+                  {info.wasMember
+                    ? t('invitePage.rejoinAs', { name: info.wasMember.displayName })
+                    : t('invitePage.joinAsNew')}
                 </option>
                 {info.claimable.map((c) => (
                   <option key={c.userId} value={c.userId}>
-                    {c.displayName}
-                    {c.alsoKnownAs?.length ? ` (also ${c.alsoKnownAs.join(', ')})` : ''}
-                    {c.kind === 'departed' ? ' — left this group' : ''}
+                    {claimLabel(t, c)}
                   </option>
                 ))}
               </select>
               {nameMatch && claim === AS_NEW && (
                 <p className="text-xs text-amber-700 dark:text-amber-500">
-                  Somebody here is already called {nameMatch.displayName}. If that was meant to be you, pick
-                  the name above — otherwise join as someone new and you will be listed separately.
+                  {t('invitePage.nameClash', { name: nameMatch.displayName })}
                 </p>
               )}
-              <p className="text-xs text-slate-400">
-                Picking a name takes over the expenses already recorded against it. Names marked{' '}
-                <em>left this group</em> belonged to a real account — take one over only if it was yours and
-                you cannot get back into it. Joining as someone new is always available, even while other
-                names are still unclaimed.
-              </p>
+              <p className="text-xs text-slate-400">{t('invitePage.claimNote')}</p>
             </div>
           )}
           <button
@@ -193,7 +196,11 @@ export function InvitePage() {
             disabled={busy}
             className="rounded bg-teal-700 px-6 py-2 font-medium text-white disabled:opacity-50"
           >
-            {claim !== AS_NEW ? 'Join as this person' : info.wasMember ? 'Rejoin group' : 'Join group'}
+            {claim !== AS_NEW
+              ? t('invitePage.joinAsThisPerson')
+              : info.wasMember
+                ? t('invitePage.rejoin')
+                : t('invitePage.join')}
           </button>
           {error && <p className="text-sm text-red-600">{error}</p>}
         </>
@@ -202,7 +209,7 @@ export function InvitePage() {
           to={`/login?next=${encodeURIComponent(`/invite/${token}`)}`}
           className="rounded bg-teal-700 px-6 py-2 font-medium text-white"
         >
-          Log in or register to join
+          {t('invitePage.logInToJoin')}
         </Link>
       )}
     </div>

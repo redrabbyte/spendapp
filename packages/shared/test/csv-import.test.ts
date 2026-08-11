@@ -79,7 +79,7 @@ describe('splitwise import', () => {
   it('reconstructs a multi-payer row and flags it', () => {
     const gal = expenses(SPLITWISE).find((e) => e.description === 'gal essen 2')!;
     expect(gal.note).toMatch(/several payers/);
-    expect(parseImport(SPLITWISE).warnings.some((w) => w.includes('gal essen 2'))).toBe(true);
+    expect(parseImport(SPLITWISE).warnings).toContainEqual({ row: 'gal essen 2', code: 'several_payers' });
     // 90.00 shared out in proportion to the two positive nets (7.50 / 17.50).
     expect(gal.splits).toEqual([
       { member: 'Ines Giner', paidMinor: 2700, owedMinor: 1950 },

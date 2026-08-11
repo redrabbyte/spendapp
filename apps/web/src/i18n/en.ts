@@ -368,12 +368,106 @@ export const en = {
   'activity.import.csv': 'a CSV',
   'activity.import.reverted': 'reverted an import',
 
+  // --- CSV import ----------------------------------------------------------
+  'import.title': 'Import from CSV',
+  'import.close': 'Close',
+  'import.explain': 'A SpendApp export or a Splitwise group export — whichever it is gets detected automatically.',
+  'import.unrecognised': 'This is neither a SpendApp export nor a Splitwise one.',
+  'import.summary': {
+    one: '{format} — {count} expense',
+    other: '{format} — {count} expenses',
+  },
+  'import.summaryPayments': {
+    one: ', {count} payment',
+    other: ', {count} payments',
+  },
+  'import.summaryTotal': '({total})',
+  'import.formatSplitwise': 'Splitwise export',
+  'import.formatSpendapp': 'SpendApp export',
+  'import.groupName': 'Group name',
+  // The name a group gets when the file gives nothing to go on.
+  'import.defaultGroupName': 'Imported group',
+  'import.whichAreYou': 'Which one are you?',
+  'import.choose': 'Choose…',
+  'import.othersArePlaceholders':
+    'The others are added as members without accounts. Send them an invite link and they can claim their name.',
+  'import.whoIsWho': 'Who is who?',
+  'import.skip': 'Skip',
+  'import.willBeSkipped': 'Entries involving {names} will be skipped.',
+  'import.warnings': {
+    one: '{count} row needs a second look',
+    other: '{count} rows need a second look',
+  },
+  'import.run': {
+    one: 'Import {count} entry',
+    other: 'Import {count} entries',
+  },
+  'import.running': 'Importing…',
+  'import.partial': 'Imported {imported}, skipped {skipped}.',
+  // The two steps an import can fail at, read back as "Could not <step>: …".
+  'import.step.createGroup': 'create the group',
+  'import.step.addMember': 'add “{name}”',
+  // Why a row could not be taken as written.
+  'import.warning.unrecognised_currency': '{row}: unrecognised currency “{currency}” — skipped',
+  'import.warning.amounts_do_not_cancel': '{row}: the per-person amounts do not cancel out — skipped',
+  'import.warning.payment_too_many_people': '{row}: payment with more than two people — skipped',
+  'import.warning.nobody_paid': '{row}: nobody paid — skipped',
+  'import.warning.several_payers': '{row}: several payers — split reconstructed proportionally',
+  'import.warning.split_totals_mismatch': '{row}: split totals do not match the amount — check after importing',
+
   // --- receipts ------------------------------------------------------------
   'receipt.alt': 'receipt',
   'receipt.undecryptable': 'can’t decrypt',
   'receipt.camera': 'camera',
   'receipt.upload': 'upload',
   'receipt.delete': 'Delete photo',
+
+  // --- following an invite link --------------------------------------------
+  'invitePage.invitedBy': '{name} invited you to join',
+  'invitePage.wasMember':
+    'You were in this group before as {name}. Rejoining puts you back under that name with everything already recorded against it — there is nothing to pick below.',
+  'invitePage.fromToday':
+    'This invite shares the group from today onwards. Whatever has been recorded so far stays sealed — you will not see those amounts, and balances between other people will be incomplete for you. Your own balance will still be exact, because you were in none of those splits.',
+  'invitePage.requestSent': 'Request sent. An admin of this group has to approve it before you can see anything.',
+  'invitePage.sasIntro': 'If they ask you to confirm a code, it is',
+  'invitePage.sasHint': 'Read it out to them — over a call, not over the same chat the link came from.',
+  'invitePage.willOpen':
+    'This page opens the group by itself the moment they approve. You will get a notification too, so it is safe to close.',
+  'invitePage.backToGroups': 'Back to your groups',
+  'invitePage.takeOverInstead': 'Taking over somebody else’s name instead?',
+  'invitePage.areYouOne': 'Are you one of these people?',
+  'invitePage.rejoinAs': 'No — rejoin as {name}',
+  'invitePage.joinAsNew': 'No — join as someone new',
+  'invitePage.claimAlso': '{name} (also {names})',
+  'invitePage.claimLeft': '{name} — left this group',
+  'invitePage.nameClash':
+    'Somebody here is already called {name}. If that was meant to be you, pick the name above — otherwise join as someone new and you will be listed separately.',
+  'invitePage.claimNote':
+    'Picking a name takes over the expenses already recorded against it. Names marked “left this group” belonged to a real account — take one over only if it was yours and you cannot get back into it. Joining as someone new is always available, even while other names are still unclaimed.',
+  'invitePage.joinAsThisPerson': 'Join as this person',
+  'invitePage.rejoin': 'Rejoin group',
+  'invitePage.join': 'Join group',
+  'invitePage.logInToJoin': 'Log in or register to join',
+
+  // --- scanning somebody in ------------------------------------------------
+  'scan.start': 'Scan someone’s code',
+  'scan.explain':
+    'They open “{screen}” on their phone and show you the code. Adding them this way needs no link and no approval — you have already checked who they are.',
+  'scan.notAJoinCode': 'That code is not a SpendApp join code.',
+  'scan.alreadyMember': '{name} is already in this group.',
+  'scan.addPrompt': 'Add {name} to this group?',
+  'scan.returning': 'They have been here before — add them as:',
+  'scan.pickExisting': 'Are they one of the people already listed?',
+  'scan.asBefore': '{name}, as before — with their old entries',
+  'scan.someoneNew': 'Someone new',
+  'scan.labelAlso': '{name} (also {names})',
+  'scan.labelLeft': '{name} — left this group',
+  'scan.ownEntriesNote':
+    'There is no way to bring this account back as a stranger to its own entries: those entries are addressed by the account itself, so returning always reunites them. Only a different account can start clean here.',
+  'scan.add': 'Add {name}',
+  'scan.admitted': '{name} is in, and can read the group’s history.',
+  'scan.admittedKeyMismatch':
+    '{name} is in, but the key on the server does not match the one you scanned. They can read the group because you wrapped it to the scanned key — but ask them to check their account.',
 
   // --- camera scanner ------------------------------------------------------
   'scan.noCamera': 'This browser cannot open a camera. Send them an invite link instead.',

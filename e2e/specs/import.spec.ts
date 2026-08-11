@@ -19,7 +19,7 @@ test('imports a Splitwise export into a new group', async ({ page, api }) => {
   // Detection is by shape, so the localized German headings do not matter.
   await expect(page.getByText(/Splitwise export/)).toContainText('9 expenses');
   await expect(page.getByText(/Splitwise export/)).toContainText('2 payments');
-  await expect(page.getByText(/1 row\(s\) need a second look/)).toBeVisible();
+  await expect(page.getByText(/1 row needs a second look/)).toBeVisible();
 
   const who = page.locator('label:has-text("Which one are you?") select');
   await expect(who.locator('option')).toHaveText(['Choose…', 'Ada', 'Ben', 'Cleo', 'Dan']);

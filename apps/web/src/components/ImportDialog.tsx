@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { parseImport, type MemberDto, type ParsedImport } from '@spendapp/shared';
+import { ImportFormatError, parseImport, type MemberDto, type ParsedImport } from '@spendapp/shared';
 import { applyImport, suggestAssignment, type Assignment } from '../import';
 import { addPlaceholderLocal, createGroupLocal, syncNow } from '../sync';
 import { useMoney } from '../i18n/useMoney';
+import type { MessageKey } from '../i18n';
+import { useT } from '../i18n/useT';
 import { AppError } from '../i18n/errors';
 
 /**
@@ -45,6 +47,7 @@ export function ImportDialog({
   onDone: (groupId: string) => void;
 }) {
   const money = useMoney();
+  const t = useT();
   const [parsed, setParsed] = useState<ParsedImport | null>(null);
   const [assignment, setAssignment] = useState<Assignment>({});
   const [groupName, setGroupName] = useState('');
@@ -67,7 +70,9 @@ export function ImportDialog({
         setMeIs(mine ?? UNASSIGNED);
       }
     } catch (err) {
-      setError((err as Error).message);
+      // "not one of our formats" is worth saying plainly; anything else is a
+      // failure to read the file, and its own message is the useful one.
+      setError(err instanceof ImportFormatError ? t('import.unrecognised') : (err as Error).message);
     }
   }
 
@@ -87,8 +92,11 @@ export function ImportDialog({
         // Both of these are local writes now (design §3.6), so an import needs
         // no network at all — which matters most on the first run, when
         // somebody is moving years of history in from another app.
-        groupId = await step('create the group', () =>
-          createGroupLocal(groupName.trim() || 'Imported group', currency, { id: meId, displayName: meName }),
+        groupId = await step(t('import.step.createGroup'), () =>
+          createGroupLocal(groupName.trim() || t('import.defaultGroupName'), currency, {
+            id: meId,
+            displayName: meName,
+          }),
         );
         map = {};
         // Everyone in the file becomes a member: the chosen one is me, the
@@ -98,14 +106,21 @@ export function ImportDialog({
             map[name] = meId;
             continue;
           }
-          map[name] = await step(`add “${name}”`, () => addPlaceholderLocal(groupId, name));
+          map[name] = await step(t('import.step.addMember', { name }), () =>
+            addPlaceholderLocal(groupId, name),
+          );
         }
       }
 
       const outcome = await applyImport(parsed, groupId, map, meId);
       await syncNow();
       if (outcome.skipped.length > 0) {
-        setError(`Imported ${outcome.expenses + outcome.payments}, skipped ${outcome.skipped.length}.`);
+        setError(
+          t('import.partial', {
+            imported: outcome.expenses + outcome.payments,
+            skipped: outcome.skipped.length,
+          }),
+        );
       }
       onDone(groupId);
     } catch (err) {
@@ -134,17 +149,19 @@ export function ImportDialog({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Import from CSV</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:text-slate-300">
+          <h2 className="text-lg font-semibold">{t('import.title')}</h2>
+          <button
+            onClick={onClose}
+            aria-label={t('import.close')}
+            className="text-slate-400 hover:text-slate-600 dark:text-slate-300"
+          >
             ✕
           </button>
         </div>
 
         {!parsed && (
           <>
-            <p className="text-sm text-slate-600 dark:text-slate-300">
-              A SpendApp export or a Splitwise group export — whichever it is gets detected automatically.
-            </p>
+            <p className="text-sm text-slate-600 dark:text-slate-300">{t('import.explain')}</p>
             <input
               type="file"
               accept=".csv,text/csv"
@@ -157,14 +174,19 @@ export function ImportDialog({
         {parsed && (
           <>
             <p className="text-sm text-slate-600 dark:text-slate-300">
-              {parsed.format === 'splitwise' ? 'Splitwise export' : 'SpendApp export'} — {expenses.length} expenses
-              {payments.length > 0 && `, ${payments.length} payments`}
+              {t('import.summary', {
+                count: expenses.length,
+                format: t(parsed.format === 'splitwise' ? 'import.formatSplitwise' : 'import.formatSpendapp'),
+              })}
+              {payments.length > 0 && t('import.summaryPayments', { count: payments.length })}
               {total && (
                 <>
                   {' '}
-                  ({Object.entries(total)
-                    .map(([c, amount]) => money(amount, c))
-                    .join(' + ')})
+                  {t('import.summaryTotal', {
+                    total: Object.entries(total)
+                      .map(([c, amount]) => money(amount, c))
+                      .join(' + '),
+                  })}
                 </>
               )}
             </p>
@@ -172,28 +194,25 @@ export function ImportDialog({
             {mode.kind === 'new' ? (
               <>
                 <label className="flex flex-col gap-1 text-sm">
-                  <span className="font-medium text-slate-500 dark:text-slate-400">Group name</span>
+                  <span className="font-medium text-slate-500 dark:text-slate-400">{t('import.groupName')}</span>
                   <input className={input} value={groupName} onChange={(e) => setGroupName(e.target.value)} maxLength={120} />
                 </label>
                 <label className="flex flex-col gap-1 text-sm">
-                  <span className="font-medium text-slate-500 dark:text-slate-400">Which one are you?</span>
+                  <span className="font-medium text-slate-500 dark:text-slate-400">{t('import.whichAreYou')}</span>
                   <select className={input} value={meIs} onChange={(e) => setMeIs(e.target.value)}>
-                    <option value={UNASSIGNED}>Choose…</option>
+                    <option value={UNASSIGNED}>{t('import.choose')}</option>
                     {parsed.members.map((m) => (
                       <option key={m} value={m}>
                         {m}
                       </option>
                     ))}
                   </select>
-                  <span className="text-xs text-slate-400">
-                    The others are added as members without accounts. Send them an invite link and they can claim
-                    their name.
-                  </span>
+                  <span className="text-xs text-slate-400">{t('import.othersArePlaceholders')}</span>
                 </label>
               </>
             ) : (
               <div className="flex flex-col gap-2">
-                <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Who is who?</span>
+                <span className="text-sm font-medium text-slate-500 dark:text-slate-400">{t('import.whoIsWho')}</span>
                 {parsed.members.map((name) => (
                   <label key={name} className="flex items-center justify-between gap-2 text-sm">
                     <span className="truncate">{name}</span>
@@ -202,7 +221,7 @@ export function ImportDialog({
                       value={assignment[name] ?? UNASSIGNED}
                       onChange={(e) => setAssignment({ ...assignment, [name]: e.target.value })}
                     >
-                      <option value={UNASSIGNED}>Skip</option>
+                      <option value={UNASSIGNED}>{t('import.skip')}</option>
                       {mode.members
                         .filter((m) => m.leftAt === null)
                         .map((m) => (
@@ -215,7 +234,7 @@ export function ImportDialog({
                 ))}
                 {unassigned.length > 0 && (
                   <p className="text-xs text-amber-700 dark:text-amber-500">
-                    Entries involving {unassigned.join(', ')} will be skipped.
+                    {t('import.willBeSkipped', { names: unassigned.join(', ') })}
                   </p>
                 )}
               </div>
@@ -223,10 +242,12 @@ export function ImportDialog({
 
             {parsed.warnings.length > 0 && (
               <details className="text-xs text-slate-500 dark:text-slate-400">
-                <summary>{parsed.warnings.length} row(s) need a second look</summary>
+                <summary>{t('import.warnings', { count: parsed.warnings.length })}</summary>
                 <ul className="mt-1 flex flex-col gap-0.5">
-                  {parsed.warnings.map((w) => (
-                    <li key={w}>{w}</li>
+                  {parsed.warnings.map((w, i) => (
+                    <li key={i}>
+                      {t(`import.warning.${w.code}` as MessageKey, { row: w.row, currency: w.currency ?? '' })}
+                    </li>
                   ))}
                 </ul>
               </details>
@@ -237,7 +258,7 @@ export function ImportDialog({
               disabled={!ready || busy}
               className="rounded bg-teal-700 px-3 py-2 font-medium text-white disabled:opacity-50"
             >
-              {busy ? 'Importing…' : `Import ${parsed.entries.length} entries`}
+              {busy ? t('import.running') : t('import.run', { count: parsed.entries.length })}
             </button>
           </>
         )}

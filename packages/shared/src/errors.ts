@@ -93,3 +93,45 @@ export class SplitError extends Error {
     this.name = 'SplitError';
   }
 }
+
+/**
+ * What was wrong with a row of an imported CSV.
+ *
+ * Codes again, and for a plain reason: the parser is shared, runs before
+ * anything knows who is reading, and its findings are shown in a list next to
+ * the row they are about. A sentence built here would be English in a German
+ * dialog.
+ */
+export const IMPORT_WARNINGS = [
+  'unrecognised_currency',
+  'amounts_do_not_cancel',
+  'payment_too_many_people',
+  'nobody_paid',
+  'several_payers',
+  'split_totals_mismatch',
+] as const;
+
+export type ImportWarningCode = (typeof IMPORT_WARNINGS)[number];
+
+export const isImportWarningCode = (v: unknown): v is ImportWarningCode =>
+  typeof v === 'string' && (IMPORT_WARNINGS as readonly string[]).includes(v);
+
+/**
+ * A file that is neither of the two formats. Its own class so the dialog can
+ * tell "this is not a CSV we know" apart from "reading the file failed", which
+ * are different things to say to somebody.
+ */
+export class ImportFormatError extends Error {
+  constructor() {
+    super('unrecognised_csv');
+    this.name = 'ImportFormatError';
+  }
+}
+
+/** The row it is about — its description, or its date when it has no name. */
+export interface ImportWarning {
+  row: string;
+  code: ImportWarningCode;
+  /** Only for `unrecognised_currency`: what the file actually said. */
+  currency?: string;
+}
