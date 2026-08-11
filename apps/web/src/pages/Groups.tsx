@@ -7,10 +7,12 @@ import { createGroupLocal } from '../sync';
 import { useSettings } from '../settings';
 import { useAuth } from '../auth';
 import { ImportDialog } from '../components/ImportDialog';
+import { useT } from '../i18n/useT';
 
 export function GroupsPage() {
   const groups = useLiveQuery(() => localDb.groups.toArray(), []);
   const members = useLiveQuery(() => localDb.members.filter((m) => m.leftAt === null).toArray(), []);
+  const t = useT();
   const { settings } = useSettings();
   const [name, setName] = useState('');
   const [currency, setCurrency] = useState(settings.defaultCurrency);
@@ -38,9 +40,9 @@ export function GroupsPage() {
   return (
     <div className="flex flex-col gap-6">
       <section>
-        <h1 className="mb-3 text-xl font-semibold">Your groups</h1>
-        {groups === undefined && <p className="text-slate-500 dark:text-slate-400">Loading…</p>}
-        {groups?.length === 0 && <p className="text-slate-500 dark:text-slate-400">No groups yet — create one below.</p>}
+        <h1 className="mb-3 text-xl font-semibold">{t('groups.title')}</h1>
+        {groups === undefined && <p className="text-slate-500 dark:text-slate-400">{t('groups.loading')}</p>}
+        {groups?.length === 0 && <p className="text-slate-500 dark:text-slate-400">{t('groups.empty')}</p>}
         <ul className="flex flex-col gap-2">
           {groups?.map((g) => (
             <li key={g.id}>
@@ -50,7 +52,7 @@ export function GroupsPage() {
               >
                 <span className="font-medium">{g.name}</span>
                 <span className="ml-2 text-sm text-slate-500 dark:text-slate-400">
-                  {memberCount(g.id)} member{memberCount(g.id) === 1 ? '' : 's'} · {g.defaultCurrency}
+                  {t('groups.memberCount', { count: memberCount(g.id) })} · {g.defaultCurrency}
                 </span>
               </Link>
             </li>
@@ -59,18 +61,18 @@ export function GroupsPage() {
       </section>
       <form onSubmit={(e) => void createGroup(e)} className="flex flex-wrap items-end gap-2">
         <label className="flex grow flex-col text-sm">
-          New group
+          {t('groups.new')}
           <input
             className="rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-3 py-2"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Flat 12b"
+            placeholder={t('groups.new.placeholder')}
             required
             maxLength={120}
           />
         </label>
         <label className="flex flex-col text-sm">
-          Currency
+          {t('groups.currency')}
           <select
             className="rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-2 py-2"
             value={currency}
@@ -81,20 +83,20 @@ export function GroupsPage() {
             ))}
           </select>
         </label>
-        <button className="rounded bg-teal-700 px-4 py-2 font-medium text-white">Create</button>
+        <button className="rounded bg-teal-700 px-4 py-2 font-medium text-white">{t('groups.create')}</button>
         {error && <p className="w-full text-sm text-red-600">{error}</p>}
       </form>
       <div className="flex flex-col items-start gap-2">
         {/* The joiner's side of an in-person add: no link to send, nothing to
             type, and a member scans them on the spot (design §4.2). */}
         <Link to="/join" className="text-sm text-teal-700 underline dark:text-teal-500">
-          Join a group in person
+          {t('groups.joinInPerson')}
         </Link>
         <button
           onClick={() => setImportOpen(true)}
           className="text-sm text-teal-700 underline dark:text-teal-500"
         >
-          Import from CSV
+          {t('groups.import')}
         </button>
       </div>
       {importOpen && user && (

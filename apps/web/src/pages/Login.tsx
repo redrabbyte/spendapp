@@ -4,6 +4,7 @@ import { useAuth } from '../auth';
 import { login, register } from '../keys';
 import { PlaceholderWarning, PrivacyNotice, usePolicy } from '../components/PrivacyNotice';
 import type { Me } from '../types';
+import { useT } from '../i18n/useT';
 
 /**
  * The password is stretched here and never sent. What reaches the server is a
@@ -15,6 +16,7 @@ import type { Me } from '../types';
  * only member of does not.
  */
 export function LoginPage() {
+  const t = useT();
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [accepted, setAccepted] = useState(false);
   const { policy, error: policyError } = usePolicy();
@@ -46,7 +48,7 @@ export function LoginPage() {
   }
 
   const input = 'w-full rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-3 py-2';
-  const title = mode === 'login' ? 'Log in' : 'Create account';
+  const title = mode === 'login' ? t('login.title') : t('login.register');
 
   return (
     <form onSubmit={(e) => void submit(e)} className="mx-auto mt-8 flex max-w-sm flex-col gap-3">
@@ -55,7 +57,7 @@ export function LoginPage() {
       {mode === 'register' && (
         <input
           className={input}
-          placeholder="Your name"
+          placeholder={t('login.displayName')}
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
           required
@@ -66,7 +68,7 @@ export function LoginPage() {
       <input
         className={input}
         type="text"
-        placeholder="Username"
+        placeholder={t('login.username')}
         value={username}
         onChange={(e) => setUsername(e.target.value)}
         required
@@ -83,7 +85,7 @@ export function LoginPage() {
       <input
         className={input}
         type="password"
-        placeholder={mode === 'register' ? 'Password (min. 10 characters)' : 'Password'}
+        placeholder={mode === 'register' ? t('login.password.new') : t('login.password')}
         value={password}
         onChange={(e) => setPassword(e.target.value)}
         required
@@ -94,15 +96,15 @@ export function LoginPage() {
       {mode === 'register' && (
         <div className="flex flex-col gap-2">
           {policy?.installed === false && <PlaceholderWarning />}
-          <span className="text-left text-sm font-medium text-slate-500 dark:text-slate-400">Privacy policy</span>
+          <span className="text-left text-sm font-medium text-slate-500 dark:text-slate-400">{t('login.policy')}</span>
           {policyError ? (
             <p className="text-sm text-red-600">
-              Could not load the privacy policy ({policyError}) — registration needs it, so try again.
+              {t('login.policy.failed', { reason: policyError })}
             </p>
           ) : policy ? (
             <PrivacyNotice text={policy.text} />
           ) : (
-            <p className="text-xs text-slate-400">Loading the privacy policy…</p>
+            <p className="text-xs text-slate-400">{t('login.policy.loading')}</p>
           )}
           <label className="flex items-start gap-2 text-left text-sm">
             <input
@@ -112,16 +114,14 @@ export function LoginPage() {
               disabled={!policy}
               onChange={(e) => setAccepted(e.target.checked)}
             />
-            <span>I have read and accept the privacy policy.</span>
+            <span>{t('login.policy.accept')}</span>
           </label>
         </div>
       )}
 
       {mode === 'register' && (
         <p className="rounded bg-amber-50 p-2 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-100">
-          Your data is encrypted with this password and the server cannot read it, so there is no reset. Use a
-          password manager. If you forget it, someone else in your groups can let a new account back in — but
-          anything you are the only member of is gone.
+          {t('login.noReset')}
         </p>
       )}
 
@@ -133,11 +133,11 @@ export function LoginPage() {
         disabled={busy || (mode === 'register' && (!accepted || !policy))}
         className="rounded bg-teal-700 px-3 py-2 font-medium text-white disabled:opacity-50"
       >
-        {busy ? 'Working…' : title}
+        {busy ? t('login.working') : title}
       </button>
       {busy && (
         // Argon2id is deliberately slow; without this the pause reads as a hang.
-        <p className="text-center text-xs text-slate-400">Securing your account — this takes a moment on a phone.</p>
+        <p className="text-center text-xs text-slate-400">{t('login.deriving')}</p>
       )}
 
       <button
@@ -149,7 +149,7 @@ export function LoginPage() {
           setError(null);
         }}
       >
-        {mode === 'login' ? 'New here? Create an account' : 'Have an account? Log in'}
+        {t(mode === 'login' ? 'login.toRegister' : 'login.toLogin')}
       </button>
     </form>
   );

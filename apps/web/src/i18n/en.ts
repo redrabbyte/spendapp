@@ -89,6 +89,42 @@ export const en = {
   'install.install': 'Install',
   'install.later': 'Not now',
 
+  // --- groups list --------------------------------------------------------
+  'groups.title': 'Your groups',
+  'groups.loading': 'Loading…',
+  'groups.empty': 'No groups yet — create one below.',
+  'groups.memberCount': { one: '{count} member', other: '{count} members' },
+  'groups.new': 'New group',
+  'groups.new.placeholder': 'e.g. Flat 12b',
+  'groups.currency': 'Currency',
+  'groups.create': 'Create',
+  'groups.joinInPerson': 'Join a group in person',
+  'groups.import': 'Import from CSV',
+
+  // --- login and registration ---------------------------------------------
+  'login.title': 'Log in',
+  'login.register': 'Create account',
+  'login.displayName': 'Your name',
+  'login.username': 'Username',
+  'login.password': 'Password',
+  'login.password.new': 'Password (min. 10 characters)',
+  'login.working': 'Working…',
+  'login.deriving': 'Securing your account — this takes a moment on a phone.',
+  'login.toRegister': 'New here? Create an account',
+  'login.toLogin': 'Have an account? Log in',
+  'login.policy': 'Privacy policy',
+  'login.policy.loading': 'Loading the privacy policy…',
+  'login.policy.failed': 'Could not load the privacy policy ({reason}) — registration needs it, so try again.',
+  'login.policy.accept': 'I have read and accept the privacy policy.',
+  'login.policy.placeholder': 'This server has no privacy policy installed, so the text below is a placeholder. Whoever runs it needs to put the real one in place before inviting anyone.',
+  'login.noReset': 'Your data is encrypted with this password and the server cannot read it, so there is no reset. Use a password manager. If you forget it, someone else in your groups can let a new account back in — but anything you are the only member of is gone.',
+  'privacy.changed.title': 'The privacy policy has changed',
+  'privacy.changed.again': 'Please read the current version and accept it to carry on.',
+  'privacy.changed.never': 'Please read it and accept it to carry on — your account predates this step.',
+  'privacy.accept': 'I accept',
+  'privacy.accepting': 'Saving…',
+  'privacy.logout': 'Log out instead',
+
   // --- push -------------------------------------------------------------
   // Written here rather than on the server, which has no idea who is reading.
   // Deliberately say nothing about the entry itself (design §3.3).

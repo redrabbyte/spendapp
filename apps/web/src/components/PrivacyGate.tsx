@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import { PrivacyNotice, usePolicy } from './PrivacyNotice';
+import { useT } from '../i18n/useT';
 
 /**
  * Asks an existing account to accept the policy again when its wording has
@@ -21,6 +22,7 @@ export function PrivacyGate() {
   const { user, setUser, logout } = useAuth();
   const { pathname } = useLocation();
   const { policy } = usePolicy();
+  const t = useT();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -57,11 +59,9 @@ export function PrivacyGate() {
         onSubmit={(e) => void accept(e)}
         className="flex w-full max-w-md flex-col gap-3 rounded bg-white p-5 dark:bg-slate-900"
       >
-        <h2 className="text-lg font-semibold">The privacy policy has changed</h2>
+        <h2 className="text-lg font-semibold">{t('privacy.changed.title')}</h2>
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          {user?.privacyVersion
-            ? 'Please read the current version and accept it to carry on.'
-            : 'Please read it and accept it to carry on — your account predates this step.'}
+          {t(user?.privacyVersion ? 'privacy.changed.again' : 'privacy.changed.never')}
         </p>
         {policy && <PrivacyNotice text={policy.text} />}
         {error && <p className="text-sm text-red-600">{error}</p>}
@@ -69,14 +69,14 @@ export function PrivacyGate() {
           disabled={busy}
           className="rounded bg-teal-700 px-3 py-2 font-medium text-white disabled:opacity-50"
         >
-          {busy ? 'Saving…' : 'I accept'}
+          {busy ? t('privacy.accepting') : t('privacy.accept')}
         </button>
         <button
           type="button"
           onClick={() => void logout()}
           className="text-sm text-slate-500 underline dark:text-slate-400"
         >
-          Log out instead
+          {t('privacy.logout')}
         </button>
       </form>
     </div>

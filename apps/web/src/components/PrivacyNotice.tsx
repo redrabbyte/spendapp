@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
+import { useT } from '../i18n/useT';
 
 export interface Policy {
   version: string;
@@ -52,10 +53,10 @@ export function usePolicy(): { policy: Policy | null; error: string | null } {
 
 /** Shown when the placeholder is being served — a deployment mistake, not a policy. */
 export function PlaceholderWarning() {
+  const t = useT();
   return (
     <p className="rounded bg-amber-50 p-2 text-left text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-100">
-      This server has no privacy policy installed, so the text below is a placeholder. Whoever runs it needs
-      to put the real one in place before inviting anyone.
+      {t('login.policy.placeholder')}
     </p>
   );
 }
