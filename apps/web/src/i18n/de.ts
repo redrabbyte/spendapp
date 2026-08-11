@@ -43,7 +43,7 @@ export const de: Catalogue = {
   'invalid.item': 'zuletzt bearbeitet von {author} — {reason}',
   'invalid.hint': 'Bitte sie, ihn zu öffnen und noch einmal zu speichern. Bis dahin fehlt den Summen der Gruppe genau dieser Betrag.',
 
-  'push.unavailable': 'Push ist auf diesem Server nicht eingerichtet (keine VAPID-Schlüssel).',
+  'push.unavailable': 'Push ist auf diesem Server nicht eingerichtet.',
   'push.unsupported': 'Auf iOS brauchen Benachrichtigungen eine installierte App: Teilen → „Zum Home-Bildschirm“.',
   'push.label': 'Benachrichtigungen:',
   'push.blocked': 'in den Browsereinstellungen blockiert',
@@ -55,7 +55,7 @@ export const de: Catalogue = {
 
   'gap.title': 'Es wird nur ein Teil dieser Gruppe angezeigt.',
   'gap.expenses': 'Einträge von vor deinem Beitritt werden hier nicht aufgeführt.',
-  'gap.balances': 'Diese Salden umfassen nur, was du lesen kannst. Dein eigener Stand stimmt genau — du warst an keiner früheren Aufteilung beteiligt —, aber Schulden zwischen anderen von vor deinem Beitritt fehlen.',
+  'gap.balances': 'Diese Salden umfassen nur, was du lesen kannst. Dein eigener Stand stimmt genau — du warst an keiner früheren Aufteilung beteiligt, aber Schulden zwischen anderen von vor deinem Beitritt fehlen.',
   'gap.charts': 'Diese Auswertungen umfassen nur, was du lesen kannst; Summen und Kategorien beginnen also mit deinem Beitritt.',
   'gap.activity': 'Der Verlauf beginnt mit deinem Beitritt. Frühere Einträge, Kommentare und Belege werden nicht angezeigt.',
   'gap.members': 'Du bist erst später dazugekommen und kannst den vollen Verlauf dieser Gruppe deshalb nicht an neue Mitglieder weitergeben.',
@@ -80,8 +80,8 @@ export const de: Catalogue = {
 
   'install.title': 'SpendApp installieren?',
   'install.ios': 'Teilen → Zum Home-Bildschirm',
-  'install.why': 'Installiert öffnet sie direkt vom Startbildschirm und funktioniert auch ohne Verbindung — trag Ausgaben offline ein, sie werden synchronisiert, sobald du wieder online bist.',
-  'install.manual': 'Tippe unten im Browser auf Teilen (das Quadrat mit dem Pfeil) und dann auf „Zum Home-Bildschirm“.',
+  'install.why': 'Installiert öffnet sie direkt vom Startbildschirm und funktioniert auch ohne Verbindung. Trag Ausgaben offline ein und sie werden synchronisiert, sobald du wieder online bist.',
+  'install.manual': 'Tippe unten im Browser auf Teilen und dann auf „Zum Home-Bildschirm“, o. Ä.',
   'install.gotIt': 'Alles klar',
   'install.install': 'Installieren',
   'install.later': 'Jetzt nicht',
@@ -215,7 +215,7 @@ export const de: Catalogue = {
   'charts.perMonth': 'Pro Monat ({currency})',
 
   // --- the expense editor --------------------------------------------------
-  'editor.what': 'Wofür war das?',
+  'editor.what': 'Was wars?',
   'editor.amount': '0,00',
   'editor.totalIsSum': 'Gesamt = Summe der Zahlerbeträge',
   'editor.rate': 'Kurs',
@@ -225,7 +225,7 @@ export const de: Catalogue = {
   'editor.chooseUnit': 'Währung wählen …',
   'editor.convertAt': 'zu 1 {currency} =',
   'editor.convert': 'Umrechnen',
-  'editor.paidBy': 'Bezahlt von',
+  'editor.paidBy': 'Bezahlt von:',
   'editor.singlePayer': 'einer zahlt',
   'editor.multiplePayers': 'mehrere zahlen',
   'editor.totalOfPayers': 'Gesamt ist die Summe davon — {amount} {currency}.',
@@ -236,7 +236,7 @@ export const de: Catalogue = {
   'editor.mode.shares': 'Anteile',
   'editor.percentRemaining': '{percent} % übrig',
   'editor.percentOver': '{percent} % zu viel',
-  'editor.balanced': 'geht auf',
+  'editor.balanced': 'genau richtig',
   'editor.amountRemaining': '{amount} {currency} übrig',
   'editor.amountOver': '{amount} {currency} zu viel',
   'editor.totalFromAmounts': 'Gesamt {amount} {currency} (aus den Beträgen)',
@@ -258,8 +258,8 @@ export const de: Catalogue = {
   'balances.delete': 'löschen',
   'balances.paid': 'zahlte an',
   'balances.crossCurrency': 'in einer anderen Währung gezahlt als die Schuld',
-  'balances.settlesLabel': 'gleicht aus',
-  'balances.ofDebt': '{currency} Schuld',
+  'balances.settlesLabel': 'gleicht',
+  'balances.ofDebt': '{currency} Schuld aus',
   'balances.ofDebtOffline': '{currency} Schuld (offline kein Kursvorschlag)',
   'balances.paymentNote': 'Notiz (optional, z. B. „per PayPal geschickt“)',
   'balances.submitPayment': 'Zahlung eintragen',
@@ -273,7 +273,7 @@ export const de: Catalogue = {
     other: '{count} Einträge umrechnen',
   },
   'balances.savedRateNote':
-    'Bei der Umrechnung in {currency} wird der gespeicherte Kurs des Eintrags verwendet, sonst der heutige gespeicherte Kurs.',
+    'Bei der Umrechnung in {currency} wird der gespeicherte Kurs des Eintrags verwendet, sonst der heutige Kurs.',
   'balances.converted': {
     one: '{count} Eintrag von {from} nach {to} umgerechnet — im Verlauf widerrufbar.',
     other: '{count} Einträge von {from} nach {to} umgerechnet — im Verlauf widerrufbar.',
@@ -327,10 +327,10 @@ export const de: Catalogue = {
   'group.import': 'Importieren',
   'group.inviteLink': 'Einladungslink',
   'group.inviteAll': 'Einladen, alles teilen',
-  'group.inviteAllNote': 'Sie lesen die Gruppe von Anfang an, wie alle anderen darin.',
+  'group.inviteAllNote': 'Gesamte Gruppe von Anfang an einsehbar, wie für Gründungsmitglieder.',
   'group.inviteToday': 'Einladen, erst ab heute',
   'group.inviteTodayNote':
-    'Nichts, was bisher eingetragen wurde, ist für sie lesbar — weder die Beträge noch wer wem was schuldete. Ihr eigener Saldo bleibt exakt, aber von dem der anderen sehen sie nur einen Teil, und sie können den früheren Verlauf an niemanden weitergeben.',
+    'Nichts, was bisher eingetragen wurde, ist lesbar - weder die Beträge noch wer wem was schuldete. Der eigene Saldo bleibt exakt, aber von dem der anderen sieht die eingeladene Person nur einen Teil, und sie können den früheren Verlauf an niemanden weitergeben.',
   'group.inviteScopedWarning':
     'Dieser Link teilt nichts von vor seiner Annahme, und die Annahme wechselt den Gruppenschlüssel.',
   'group.tab.expenses': 'Ausgaben',
@@ -399,7 +399,7 @@ export const de: Catalogue = {
   'import.title': 'Aus CSV importieren',
   'import.close': 'Schließen',
   'import.explain':
-    'Ein SpendApp-Export oder ein Splitwise-Gruppenexport — was davon es ist, wird automatisch erkannt.',
+    'Ein SpendApp-Export oder ein Splitwise-Gruppenexport. Welches es ist, wird automatisch erkannt.',
   'import.unrecognised': 'Das ist weder ein SpendApp- noch ein Splitwise-Export.',
   'import.summary': {
     one: '{format} — {count} Ausgabe',
@@ -455,7 +455,7 @@ export const de: Catalogue = {
   'members.cancel': 'Abbrechen',
   'members.someone': 'jemand',
   'members.noKeyYet':
-    'Dieses Konto hat noch keinen Schlüssel — es muss sich einmal anmelden, bevor die Gruppe weitergegeben werden kann.',
+    'Dieses Konto hat noch keinen Schlüssel. Es muss sich einmal anmelden, bevor die Gruppe weitergegeben werden kann.',
   'members.checkByVoice': 'Mündlich prüfen:',
   'members.waiting': 'Warten auf Freigabe ({count})',
   'members.wantsToTakeOver': 'möchte {name} übernehmen',
@@ -463,7 +463,7 @@ export const de: Catalogue = {
   'members.approve': 'Freigeben',
   'members.decline': 'Ablehnen',
   'members.queueNote':
-    'Der Code stammt vom Gerät der anderen Person; wer den Link abgefangen hat, liest also andere Ziffern vor. Eine Ablehnung hindert dieses Konto daran, erneut zu fragen — du kannst sie hier 30 Tage lang zurücknehmen.',
+    'Der Code stammt vom Gerät der anderen Person; wer den Link abgefangen hat, liest also andere Ziffern vor. Eine Ablehnung hindert dieses Konto daran, erneut zu fragen. Du kannst dich hier 30 Tage lang umentscheiden.',
   'members.declined': 'Abgelehnt ({count})',
   'members.declinedOn': 'abgelehnt am {date}',
   'members.letThemIn': 'Doch hereinlassen',
