@@ -36,8 +36,26 @@ export async function enablePush(): Promise<PushState> {
   return 'subscribed';
 }
 
+/**
+ * The active registration, or null.
+ *
+ * `serviceWorker.ready` never rejects — it simply never settles when nothing
+ * is registered, which is what a failed registration or a plain http origin
+ * leaves you with. Awaiting it unguarded is fine on a render path that just
+ * shows nothing, and not fine on logout, where it would hang the button
+ * forever. Bounded, so every caller finishes.
+ */
+async function activeRegistration(): Promise<ServiceWorkerRegistration | null> {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return null;
+  return Promise.race([
+    navigator.serviceWorker.ready,
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 2000)),
+  ]);
+}
+
 export async function disablePush(): Promise<PushState> {
-  const reg = await navigator.serviceWorker.ready;
+  const reg = await activeRegistration();
+  if (!reg) return 'unsupported';
   const sub = await reg.pushManager.getSubscription();
   if (sub) {
     await api('/api/push/subscribe', { method: 'DELETE', body: { endpoint: sub.endpoint } }).catch(() => {});

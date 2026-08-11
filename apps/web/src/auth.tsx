@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import { api, ApiError } from './api';
 import { wipeLocalDb } from './db';
 import { forgetKeys } from './keys';
+import { disablePush } from './push';
 import { startSyncLoop } from './sync';
 import type { Me } from './types';
 
@@ -54,6 +55,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user]);
 
   const logout = useCallback(async () => {
+    // Before the logout call, not after: dropping the row needs the session
+    // that is about to end. The `clear-site-data` on logout unregisters the
+    // service worker and takes the subscription with it either way, so
+    // without this the server keeps a live endpoint for a device that can no
+    // longer receive on it — until some later push 404s and prunes it.
+    //
+    // Best-effort: it names this device's endpoint, so a failure here costs a
+    // stale row, and blocking logout on it would be the worse trade. Other
+    // devices keep their own subscriptions.
+    await disablePush().catch(() => {});
     await api('/api/auth/logout', { method: 'POST' }).catch(() => {});
     localStorage.removeItem(CACHE_KEY);
     forgetKeys(); // the in-memory copy outlives the database wipe otherwise
