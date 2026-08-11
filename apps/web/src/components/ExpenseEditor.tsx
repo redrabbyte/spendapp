@@ -414,7 +414,11 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
     <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-2 rounded border border-slate-200 dark:border-slate-700 p-3">
       <div className="flex flex-wrap gap-2">
         <input
-          className={`${input} grow`}
+          // Always a line of its own. Sharing one with the amount meant the
+          // wrap point moved with the viewport — at 393px the description and
+          // the amount sat together, at 360px they did not — so the row looked
+          // different on every handset. It also holds the longest text here.
+          className={`${input} basis-full`}
           placeholder={t('editor.what')}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
@@ -422,10 +426,12 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
           maxLength={200}
         />
         <input
-          // Room for seven digits. Wider than that only bought space nobody
-          // types into, and it was pushing the currency and the scan button
-          // onto a line of their own on narrower phones.
-          className={`${input} w-24 ${multiPayer ? 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400' : ''}`}
+          // Takes whatever the unit and the scan button leave, so the line ends
+          // flush at every width instead of trailing off. The floor is about
+          // five characters — below that the field stops looking like somewhere
+          // you type a number, and it is what the line-breaking measures this
+          // field by, so it also decides whether the three fit together at all.
+          className={`${input} min-w-20 flex-1 ${multiPayer ? 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400' : ''}`}
           placeholder={t('editor.amount')}
           inputMode="decimal"
           value={amount}

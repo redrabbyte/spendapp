@@ -102,25 +102,38 @@ test('a code of the wrong kind changes nothing', async ({ page, api }) => {
   await expect(page.getByPlaceholder('0.00')).toHaveValue('9.99');
 });
 
-test('the amount, the unit and the scan button share a line on a narrow phone', async ({ page, api }) => {
-  // 360px, narrower than the suite's default handset — which is where this
-  // last broke, and where measuring beats looking at one screenshot.
-  await page.setViewportSize({ width: 360, height: 740 });
+test('the amount fills its line beside the unit and the scan button', async ({ page, api }) => {
   await stubScanner(page, null);
   await openGroup(page, api);
 
-  const top = async (l: import('@playwright/test').Locator) => Math.round((await l.boundingBox())!.y);
+  const box = async (l: import('@playwright/test').Locator) => (await l.boundingBox())!;
   const amount = page.getByPlaceholder('0.00');
-  // Seven digits: the width the amount field is cut to, and more than any
-  // shared expense needs.
-  await amount.fill('1234567');
-
   const unit = page.getByRole('combobox').filter({ hasText: 'EUR' });
   const scan = page.getByRole('button', { name: /^Scan/ });
-  expect(await top(unit)).toBe(await top(amount));
-  expect(await top(scan)).toBe(await top(amount));
+  const row = page.locator('form').first().locator('> div').first();
+  const widths: number[] = [];
 
-  // Typed digits are not cut off by the narrower field.
+  // A narrow handset, a common one, and a tablet. Checking one width is how
+  // this broke twice: the wrap point moves with the viewport, so a screenshot
+  // that looks right proves only that one width is right.
+  for (const width of [360, 393, 768]) {
+    await page.setViewportSize({ width, height: 800 });
+    await amount.fill('1234567');
+
+    const [r, a, u, s] = [await box(row), await box(amount), await box(unit), await box(scan)];
+    expect(Math.round(u.y), `unit at ${width}px`).toBe(Math.round(a.y));
+    expect(Math.round(s.y), `scan at ${width}px`).toBe(Math.round(a.y));
+    // Flush with the end of the row: no trailing gap at any width.
+    expect(Math.round(s.x + s.width), `right edge at ${width}px`).toBe(Math.round(r.x + r.width));
+    // Only the amount absorbs the slack; the other two keep their size.
+    expect(Math.round(u.width), `unit width at ${width}px`).toBe(76);
+    expect(Math.round(s.width), `scan width at ${width}px`).toBe(106);
+    widths.push(Math.round(a.width));
+  }
+
+  // Strictly wider each time, which is what "fills as much as possible" means.
+  expect(widths).toEqual([...widths].sort((x, y) => x - y));
+  expect(widths[0]).toBeLessThan(widths[2]!);
   await expect(amount).toHaveValue('1234567');
 });
 
