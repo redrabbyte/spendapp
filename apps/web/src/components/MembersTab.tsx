@@ -7,6 +7,7 @@ import { holdsFullHistory } from '../coverage';
 import { rotateGroupKey, shareKeyring } from '../groupKeys';
 import { addPlaceholderLocal, syncNow } from '../sync';
 import { ScanToAdd } from './ScanToAdd';
+import { useLocale, useT } from '../i18n/useT';
 
 /**
  * Two-step remove. The confirmation names the person, because in a list of
@@ -27,30 +28,31 @@ function RemoveButton({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const t = useT();
   const small = 'rounded px-2 py-1 text-xs font-medium disabled:opacity-50';
   if (!confirming) {
     return (
       <button
         disabled={busy}
         onClick={onAsk}
-        aria-label={`Remove ${member.displayName}`}
+        aria-label={t('members.removeLabel', { name: member.displayName })}
         className={`${small} border border-red-300 text-red-700 dark:border-red-800 dark:text-red-400`}
       >
-        Remove
+        {t('members.remove')}
       </button>
     );
   }
   return (
     <span className="flex items-center gap-2">
       <button disabled={busy} onClick={onConfirm} className={`${small} bg-red-700 text-white`}>
-        Remove {member.displayName}?
+        {t('members.removeConfirm', { name: member.displayName })}
       </button>
       <button
         disabled={busy}
         onClick={onCancel}
         className={`${small} border border-slate-300 text-slate-600 dark:border-slate-600 dark:text-slate-300`}
       >
-        Cancel
+        {t('members.cancel')}
       </button>
     </span>
   );
@@ -79,6 +81,7 @@ interface JoinRequest {
  * server — the server holds every input. That is what §4.3 claims and no more.
  */
 function SasDigits({ groupId, request }: { groupId: string; request: JoinRequest }) {
+  const t = useT();
   const [sas, setSas] = useState<string | null>(null);
 
   useEffect(() => {
@@ -95,14 +98,17 @@ function SasDigits({ groupId, request }: { groupId: string; request: JoinRequest
   if (!request.publicKey) {
     return (
       <span className="text-xs text-slate-400">
-        No key on this account yet — they must log in once before they can be given the group.
+        {t('members.noKeyYet')}
       </span>
     );
   }
   if (!sas) return null;
   return (
     <span className="text-xs text-slate-500 dark:text-slate-400">
-      Check by voice: <span className="font-mono font-medium tracking-widest">{sas.slice(0, 3)} {sas.slice(3)}</span>
+      {t('members.checkByVoice')}{' '}
+      <span className="font-mono font-medium tracking-widest">
+        {sas.slice(0, 3)} {sas.slice(3)}
+      </span>
     </span>
   );
 }
@@ -116,6 +122,8 @@ function SasDigits({ groupId, request }: { groupId: string; request: JoinRequest
  * asks to join, so somebody has to say yes.
  */
 export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; groupId: string; meId: string }) {
+  const t = useT();
+  const locale = useLocale();
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -136,7 +144,7 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
   // section filters them out — which is how a wrong claim used to become
   // invisible as well as permanent.
   const takenOver = members.filter((m) => m.aliasOf);
-  const nameOf = (id: string) => members.find((m) => m.userId === id)?.displayName ?? 'someone';
+  const nameOf = (id: string) => members.find((m) => m.userId === id)?.displayName ?? t('members.someone');
   const users = active.filter((m) => !m.isPlaceholder);
   const placeholders = active.filter((m) => m.isPlaceholder);
   const meIsAdmin = active.some((m) => m.userId === meId && m.role === 'admin');
@@ -224,15 +232,9 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
       if (decision === 'approve' && request && !request.shareHistory) {
         try {
           const rotated = await rotateGroupKey(groupId);
-          setKeyHandoff(
-            rotated
-              ? `Added from today onwards. Nothing recorded before now is readable to them, and they cannot pass this group's history on.`
-              : `Added, but no new key could be minted — they may be able to read entries from before they joined.`,
-          );
+          setKeyHandoff(t(rotated ? 'members.scopedAdded' : 'members.scopedNoKey'));
         } catch (err) {
-          setKeyHandoff(
-            `Added, but the key rotation failed (${(err as Error).message}). They cannot read anything yet; retry by removing and re-inviting them.`,
-          );
+          setKeyHandoff(t('members.scopedRotateFailed', { reason: (err as Error).message }));
         }
         await loadRequests();
         await syncNow();
@@ -253,12 +255,10 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
           // Saying nothing here would quietly produce a second partial member
           // and leave both of them believing they see the whole ledger.
           if (!(await holdsFullHistory(groupId))) {
-            setKeyHandoff(
-              'Added — but you joined this group partway through, so they can see only the same part of its history that you can.',
-            );
+            setKeyHandoff(t('members.addedPartial'));
           }
         } catch (err) {
-          setKeyHandoff(`Added, but sharing the group with them failed (${(err as Error).message}) — they cannot see anything yet.`);
+          setKeyHandoff(t('members.shareFailed', { reason: (err as Error).message }));
         }
       }
       await loadRequests();
@@ -281,13 +281,11 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
       // is what actually ends their access (design §4.5).
       try {
         const rotated = await rotateGroupKey(groupId);
-        if (rotated) setKeyHandoff(`Removed, and the group key was rotated — they cannot read anything written from now on.`);
+        if (rotated) setKeyHandoff(t('members.removedRotated'));
       } catch (err) {
         // They are already out; say plainly that the key still opens new
         // entries, because retrying is the only thing that fixes it.
-        setKeyHandoff(
-          `Removed, but rotating the key failed (${(err as Error).message}). They can still read new entries until an admin removes someone again or retries.`,
-        );
+        setKeyHandoff(t('members.removedRotateFailed', { reason: (err as Error).message }));
       }
       await syncNow();
     } catch (err) {
@@ -375,7 +373,7 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
       {meIsAdmin && pendingRequests.length > 0 && (
         <section className="flex flex-col gap-2">
           <h2 className="text-sm font-medium text-slate-500 dark:text-slate-400">
-            Waiting for approval ({pendingRequests.length})
+            {t('members.waiting', { count: pendingRequests.length })}
           </h2>
           {pendingRequests.map((r) => (
             <div key={r.userId} className={row}>
@@ -383,7 +381,11 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
                 <span>{r.displayName}</span>
                 {r.claimMemberId && (
                   <span className="text-xs text-slate-400">
-                    wants to take over {members.find((m) => m.userId === r.claimMemberId)?.displayName ?? 'a placeholder'}
+                    {t('members.wantsToTakeOver', {
+                      name:
+                        members.find((m) => m.userId === r.claimMemberId)?.displayName ??
+                        t('members.aPlaceholder'),
+                    })}
                   </span>
                 )}
                 <SasDigits groupId={groupId} request={r} />
@@ -394,37 +396,35 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
                   onClick={() => void decide(r.userId, 'approve')}
                   className={`${smallButton} bg-teal-700 text-white`}
                 >
-                  Approve
+                  {t('members.approve')}
                 </button>
                 <button
                   disabled={deciding === r.userId}
                   onClick={() => void decide(r.userId, 'reject')}
                   className={`${smallButton} border border-slate-300 text-slate-600 dark:border-slate-600 dark:text-slate-300`}
                 >
-                  Decline
+                  {t('members.decline')}
                 </button>
               </span>
             </div>
           ))}
-          <p className="text-xs text-slate-400">
-            The code is derived from their own device, so a stranger who intercepted the link reads out
-            different digits. Declining stops that account asking again — you can take it back here for
-            the next 30 days.
-          </p>
+          <p className="text-xs text-slate-400">{t('members.queueNote')}</p>
         </section>
       )}
 
       {meIsAdmin && declinedRequests.length > 0 && (
         <section className="flex flex-col gap-2">
           <h2 className="text-sm font-medium text-slate-500 dark:text-slate-400">
-            Declined ({declinedRequests.length})
+            {t('members.declined', { count: declinedRequests.length })}
           </h2>
           {declinedRequests.map((r) => (
             <div key={r.userId} className={`${row} opacity-60`}>
               <span className="flex flex-col">
                 <span className="line-through">{r.displayName}</span>
                 <span className="text-xs text-slate-400">
-                  declined {r.decidedAt ? new Date(r.decidedAt).toLocaleDateString() : ''}
+                  {t('members.declinedOn', {
+                    date: r.decidedAt ? new Date(r.decidedAt).toLocaleDateString(locale) : '',
+                  })}
                 </span>
               </span>
               <button
@@ -432,45 +432,42 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
                 onClick={() => void decide(r.userId, 'approve')}
                 className={`${smallButton} shrink-0 border border-teal-700 text-teal-800 dark:border-teal-500 dark:text-teal-400`}
               >
-                Let them in
+                {t('members.letThemIn')}
               </button>
             </div>
           ))}
-          <p className="text-xs text-slate-400">
-            They cannot ask again themselves, so this is the only way back in for them. Declines disappear
-            from here after 30 days.
-          </p>
+          <p className="text-xs text-slate-400">{t('members.declinedNote')}</p>
         </section>
       )}
 
       {meIsAdmin && (
         <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-medium text-slate-500 dark:text-slate-400">Add someone in person</h2>
+          <h2 className="text-sm font-medium text-slate-500 dark:text-slate-400">{t('members.addInPerson')}</h2>
           <ScanToAdd groupId={groupId} members={members} onDone={() => void loadRequests()} />
         </section>
       )}
 
       <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-medium text-slate-500 dark:text-slate-400">Registered users</h2>
+        <h2 className="text-sm font-medium text-slate-500 dark:text-slate-400">{t('members.registered')}</h2>
         {users.map((m) => (
           <div key={m.userId} className={row}>
             <span>
               {m.displayName}
               {m.role === 'admin' && (
                 <span className="ml-2 rounded bg-teal-100 px-1.5 py-0.5 text-xs font-medium text-teal-800 dark:bg-teal-900 dark:text-teal-200">
-                  admin
+                  {t('members.admin')}
                 </span>
               )}
             </span>
             <span className="flex items-center gap-3">
-              {m.userId === meId && <span className="text-xs text-slate-400">you</span>}
+              {m.userId === meId && <span className="text-xs text-slate-400">{t('members.you')}</span>}
               {meIsAdmin && m.role !== 'admin' && (
                 <button
                   disabled={deciding === m.userId}
                   onClick={() => void setRole(m.userId, 'admin')}
                   className={`${smallButton} border border-slate-300 text-slate-600 dark:border-slate-600 dark:text-slate-300`}
                 >
-                  Make admin
+                  {t('members.makeAdmin')}
                 </button>
               )}
               {/* Demoting the last admin would leave nobody able to approve joins. */}
@@ -480,7 +477,7 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
                   onClick={() => void setRole(m.userId, 'member')}
                   className={`${smallButton} border border-slate-300 text-slate-600 dark:border-slate-600 dark:text-slate-300`}
                 >
-                  Remove admin
+                  {t('members.removeAdmin')}
                 </button>
               )}
               {/* Removing yourself is leaving, and that lives in its own section. */}
@@ -501,13 +498,13 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
 
       {takenOver.length > 0 && (
         <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-medium text-slate-500 dark:text-slate-400">Names taken over</h2>
+          <h2 className="text-sm font-medium text-slate-500 dark:text-slate-400">{t('members.takenOver')}</h2>
           {takenOver.map((m) => (
             <div key={m.userId} className={row}>
               <span className="flex flex-col">
                 <span>{m.displayName}</span>
                 <span className="text-xs text-slate-400">
-                  everything recorded against this name now counts as {nameOf(m.aliasOf!)}
+                  {t('members.nowCountsAs', { name: nameOf(m.aliasOf!) })}
                 </span>
               </span>
               {meIsAdmin && (
@@ -516,30 +513,25 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
                   onClick={() => void unclaim(m.userId)}
                   className={`${smallButton} border border-slate-300 text-slate-600 dark:border-slate-600 dark:text-slate-300`}
                 >
-                  Undo
+                  {t('members.undo')}
                 </button>
               )}
             </div>
           ))}
-          <p className="text-xs text-slate-400">
-            Undo gives the name back its own entries and leaves the person who took it in the group as
-            themselves. It is how a wrong pick gets fixed — the name is claimable again afterwards.
-          </p>
+          <p className="text-xs text-slate-400">{t('members.undoNote')}</p>
         </section>
       )}
 
       <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-medium text-slate-500 dark:text-slate-400">Not signed up yet</h2>
+        <h2 className="text-sm font-medium text-slate-500 dark:text-slate-400">{t('members.notSignedUp')}</h2>
         {placeholders.length === 0 && (
-          <p className="text-sm text-slate-400">
-            Nobody yet. Add people here to split expenses with them before they have an account.
-          </p>
+          <p className="text-sm text-slate-400">{t('members.noPlaceholders')}</p>
         )}
         {placeholders.map((m) => (
           <div key={m.userId} className={row}>
             <span>{m.displayName}</span>
             <span className="flex items-center gap-3">
-              <span className="text-xs text-slate-400">unclaimed</span>
+              <span className="text-xs text-slate-400">{t('members.unclaimed')}</span>
               {meIsAdmin && (
                 <RemoveButton
                   member={m}
@@ -556,7 +548,7 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
         <form onSubmit={(e) => void add(e)} className="flex gap-2">
           <input
             className="grow rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800"
-            placeholder="Name"
+            placeholder={t('members.namePlaceholder')}
             value={name}
             onChange={(e) => setName(e.target.value)}
             maxLength={80}
@@ -565,27 +557,22 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
             disabled={busy || !name.trim()}
             className="rounded bg-teal-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
           >
-            Add
+            {t('members.add')}
           </button>
         </form>
         {error && <p className="text-sm text-red-600">{error}</p>}
-        <p className="text-xs text-slate-400">
-          When they sign up, send them an invite link — they can pick their name and take over the entries
-          already recorded against it.
-        </p>
+        <p className="text-xs text-slate-400">{t('members.inviteNote')}</p>
       </section>
 
       <section className="flex flex-col gap-2 rounded border border-red-200 p-3 dark:border-red-900">
-        <h2 className="text-sm font-medium text-red-700 dark:text-red-400">Leave this group</h2>
+        <h2 className="text-sm font-medium text-red-700 dark:text-red-400">{t('members.leaveTitle')}</h2>
         {lastRealMember ? (
           <p className="text-sm text-slate-600 dark:text-slate-300">
-            You are the last member. Leaving deletes the group and everything in it — expenses, payments and
-            receipts — from this device <em>and</em> from the server. This cannot be undone.
+            {t('members.leaveLast')}
           </p>
         ) : (
           <p className="text-sm text-slate-600 dark:text-slate-300">
-            The group is removed from this device. Everyone else keeps it, along with the entries you have
-            already recorded — your name stays on them.
+            {t('members.leaveOthers')}
           </p>
         )}
         {/* Not a variant of the two messages above — it can be true alongside
@@ -593,9 +580,7 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
             people who stay (design §4.7). */}
         {orphanEpochs.length > 0 && !lastRealMember && (
           <p className="rounded bg-red-50 p-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-300">
-            You are the last member who can read part of this group&apos;s history. If you leave, those
-            entries are lost to everyone, for good, and nothing can bring them back. Give someone else
-            access to the earlier entries first if that matters.
+            {t('members.leaveOrphans')}
           </p>
         )}
         {confirmLeave ? (
@@ -605,14 +590,14 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
               onClick={() => void leave()}
               className="rounded bg-red-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
             >
-              {lastRealMember ? 'Delete the group for good' : 'Yes, leave the group'}
+              {lastRealMember ? t('members.deleteForGood') : t('members.confirmLeave')}
             </button>
             <button
               disabled={busy}
               onClick={() => setConfirmLeave(false)}
               className="rounded border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 dark:border-slate-600 dark:text-slate-300"
             >
-              Cancel
+              {t('members.cancel')}
             </button>
           </div>
         ) : (
@@ -620,7 +605,7 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
             onClick={() => setConfirmLeave(true)}
             className="self-start rounded border border-red-300 px-3 py-2 text-sm font-medium text-red-700 dark:border-red-800 dark:text-red-400"
           >
-            Leave group
+            {t('members.leave')}
           </button>
         )}
       </section>

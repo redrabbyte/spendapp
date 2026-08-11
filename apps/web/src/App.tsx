@@ -7,6 +7,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { PrivacyGate } from './components/PrivacyGate';
 import { UnlockPrompt } from './components/UnlockPrompt';
 import { promptInstall, useInstallState } from './install';
+import { useT } from './i18n/useT';
 import { ExpenseDetailPage } from './pages/ExpenseDetail';
 import { GroupPage } from './pages/Group';
 import { GroupsPage } from './pages/Groups';
@@ -48,6 +49,7 @@ function NotificationRouter() {
  * browsers that offer no way to install at all.
  */
 function InstallButton() {
+  const t = useT();
   const state = useInstallState();
   const [showIosHint, setShowIosHint] = useState(false);
 
@@ -57,7 +59,7 @@ function InstallButton() {
     return (
       <>
         <button onClick={() => setShowIosHint(true)} className="text-teal-700 underline dark:text-teal-500">
-          Install as an app
+          {t('shell.installAsApp')}
         </button>
         {showIosHint && (
           <div
@@ -68,16 +70,13 @@ function InstallButton() {
               className="mt-16 flex w-full max-w-sm flex-col gap-3 rounded-lg bg-white p-5 text-left shadow-xl dark:bg-slate-900"
               onClick={(e) => e.stopPropagation()}
             >
-              <h2 className="text-lg font-semibold">Install SpendApp</h2>
-              <p className="text-sm text-slate-600 dark:text-slate-300">
-                Tap <strong>Share</strong> (the square with an arrow) at the bottom of the browser, then{' '}
-                <strong>Add to Home Screen</strong>.
-              </p>
+              <h2 className="text-lg font-semibold">{t('install.title')}</h2>
+              <p className="text-sm text-slate-600 dark:text-slate-300">{t('install.manual')}</p>
               <button
                 onClick={() => setShowIosHint(false)}
                 className="rounded bg-teal-700 px-3 py-2 font-medium text-white"
               >
-                Got it
+                {t('install.gotIt')}
               </button>
             </div>
           </div>
@@ -88,7 +87,7 @@ function InstallButton() {
 
   return (
     <button onClick={() => void promptInstall()} className="text-teal-700 underline dark:text-teal-500">
-      Install as an app
+      {t('shell.installAsApp')}
     </button>
   );
 }
@@ -104,6 +103,7 @@ function subscribeOnline(cb: () => void) {
 
 export function App() {
   const { user, logout } = useAuth();
+  const t = useT();
   const online = useSyncExternalStore(subscribeOnline, () => navigator.onLine);
   const [settingsOpen, setSettingsOpen] = useState(false);
   return (
@@ -114,11 +114,11 @@ export function App() {
             <Link to="/" className="text-lg font-semibold text-teal-700">
               SpendApp
             </Link>
-            <span className="text-[10px] text-slate-400">build {__BUILD_DATE__} UTC</span>
+            <span className="text-[10px] text-slate-400">{t('shell.build', { date: __BUILD_DATE__ })}</span>
           </span>
           {!online && (
             <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
-              offline — changes will sync later
+              {t('shell.offline')}
             </span>
           )}
         </span>
@@ -128,14 +128,14 @@ export function App() {
               <span className="text-slate-600 dark:text-slate-300">{user.displayName}</span>
               <button
                 onClick={() => setSettingsOpen(true)}
-                title="Settings"
-                aria-label="Settings"
+                title={t('shell.settings')}
+                aria-label={t('shell.settings')}
                 className="text-slate-500 dark:text-slate-400 hover:text-teal-700 dark:text-slate-400"
               >
                 ⚙
               </button>
               <button onClick={() => void logout()} className="text-slate-500 dark:text-slate-400 underline dark:text-slate-400">
-                Log out
+                {t('shell.logout')}
               </button>
             </div>
             <InstallButton />

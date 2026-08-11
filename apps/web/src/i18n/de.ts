@@ -283,6 +283,42 @@ export const de: Catalogue = {
     other: '{count} übersprungen, weil kein Kurs verfügbar ist.',
   },
 
+  // --- the app shell -------------------------------------------------------
+  'shell.settings': 'Einstellungen',
+  'shell.logout': 'Abmelden',
+  'shell.offline': 'offline — Änderungen werden später synchronisiert',
+  'shell.build': 'Build {date} UTC',
+  'shell.installAsApp': 'Als App installieren',
+
+  // --- taking your data with you, and leaving -------------------------------
+  'data.title': 'Meine Daten',
+  'data.download': 'Meine Daten herunterladen',
+  'data.working': 'Einen Moment …',
+  'data.collecting': 'Wird zusammengestellt …',
+  'data.receipts': 'Belege {done}/{total} …',
+  'data.packing': 'Wird gepackt …',
+  'data.downloaded': 'Heruntergeladen.',
+  'data.explain':
+    'Ein ZIP mit allem: dein Konto und jede Ausgabe, Zahlung, jeder Kommentar und Beleg — hier auf diesem Gerät entschlüsselt, weil der Server sie nicht lesen kann.',
+  'delete.zone': 'Gefahrenzone',
+  'delete.open': 'Mein Konto löschen',
+  'delete.title': 'Konto löschen',
+  'delete.warning':
+    'Das lässt sich nicht rückgängig machen. Deine Anmeldung und alles, was dich identifiziert, wird gelöscht. Dein Name bleibt auf den Ausgaben und Zahlungen stehen, die du mit anderen geteilt hast — das sind auch deren Aufzeichnungen über geschuldetes Geld.',
+  'delete.downloadFirst':
+    'Lad vorher deine Daten herunter, wenn du eine Kopie willst — danach gibt es keine Möglichkeit mehr dazu.',
+  'delete.lastMember': {
+    one: 'Du bist das letzte Mitglied dieser Gruppe, sie wird also mitsamt jeder Ausgabe, jedem Beleg und jedem Kommentar darin gelöscht:',
+    other: 'Du bist das letzte Mitglied dieser Gruppen, sie werden also mitsamt jeder Ausgabe, jedem Beleg und jedem Kommentar darin gelöscht:',
+  },
+  'delete.orphaning':
+    'Du bist die einzige Person, die einen Teil des Verlaufs in {groups} lesen kann. Diese Einträge sind für alle verloren, sobald du weg bist, und nichts kann sie zurückholen.',
+  'delete.promoting':
+    'Du bist die einzige Adminperson von {groups} — das am längsten dabei befindliche Mitglied übernimmt, damit Beitritte weiterhin freigegeben werden können.',
+  'delete.typePassword': 'Zum Bestätigen dein Passwort eingeben',
+  'delete.deleting': 'Wird gelöscht …',
+  'delete.cancel': 'Abbrechen',
+
   // --- a group and its expense list ----------------------------------------
   'group.formerMember': '(ehemaliges Mitglied)',
   'group.loading': 'Wird geladen …',
@@ -411,6 +447,71 @@ export const de: Catalogue = {
   'receipt.camera': 'Kamera',
   'receipt.upload': 'hochladen',
   'receipt.delete': 'Foto löschen',
+
+  // --- the members tab -----------------------------------------------------
+  'members.remove': 'Entfernen',
+  'members.removeLabel': '{name} entfernen',
+  'members.removeConfirm': '{name} entfernen?',
+  'members.cancel': 'Abbrechen',
+  'members.someone': 'jemand',
+  'members.noKeyYet':
+    'Dieses Konto hat noch keinen Schlüssel — es muss sich einmal anmelden, bevor die Gruppe weitergegeben werden kann.',
+  'members.checkByVoice': 'Mündlich prüfen:',
+  'members.waiting': 'Warten auf Freigabe ({count})',
+  'members.wantsToTakeOver': 'möchte {name} übernehmen',
+  'members.aPlaceholder': 'einen Platzhalter',
+  'members.approve': 'Freigeben',
+  'members.decline': 'Ablehnen',
+  'members.queueNote':
+    'Der Code stammt vom Gerät der anderen Person; wer den Link abgefangen hat, liest also andere Ziffern vor. Eine Ablehnung hindert dieses Konto daran, erneut zu fragen — du kannst sie hier 30 Tage lang zurücknehmen.',
+  'members.declined': 'Abgelehnt ({count})',
+  'members.declinedOn': 'abgelehnt am {date}',
+  'members.letThemIn': 'Doch hereinlassen',
+  'members.declinedNote':
+    'Sie können nicht von sich aus erneut fragen, das hier ist also der einzige Weg zurück. Ablehnungen verschwinden nach 30 Tagen von hier.',
+  'members.addInPerson': 'Jemanden persönlich hinzufügen',
+  'members.registered': 'Registrierte Konten',
+  'members.admin': 'Admin',
+  'members.you': 'du',
+  'members.makeAdmin': 'Zum Admin machen',
+  'members.removeAdmin': 'Adminrechte entziehen',
+  'members.takenOver': 'Übernommene Namen',
+  'members.nowCountsAs': 'alles unter diesem Namen zählt jetzt für {name}',
+  'members.undo': 'Rückgängig',
+  'members.undoNote':
+    'Rückgängig gibt dem Namen seine eigenen Einträge zurück und lässt die Person, die ihn übernommen hat, als sie selbst in der Gruppe. So wird eine falsche Wahl korrigiert — danach ist der Name wieder übernehmbar.',
+  'members.notSignedUp': 'Noch nicht registriert',
+  'members.noPlaceholders':
+    'Noch niemand. Trag hier Leute ein, um Ausgaben mit ihnen zu teilen, bevor sie ein Konto haben.',
+  'members.unclaimed': 'frei',
+  'members.namePlaceholder': 'Name',
+  'members.add': 'Hinzufügen',
+  'members.inviteNote':
+    'Wenn sie sich registrieren, schick ihnen einen Einladungslink — sie können ihren Namen wählen und die Einträge übernehmen, die schon darunter stehen.',
+  'members.leaveTitle': 'Gruppe verlassen',
+  'members.leaveLast':
+    'Du bist das letzte Mitglied. Wenn du gehst, werden die Gruppe und alles darin — Ausgaben, Zahlungen und Belege — von diesem Gerät und vom Server gelöscht. Das lässt sich nicht rückgängig machen.',
+  'members.leaveOthers':
+    'Die Gruppe wird von diesem Gerät entfernt. Für alle anderen bleibt sie bestehen, samt deiner bisherigen Einträge — dein Name bleibt darauf stehen.',
+  'members.leaveOrphans':
+    'Du bist die letzte Person, die einen Teil des Verlaufs dieser Gruppe lesen kann. Wenn du gehst, sind diese Einträge für alle endgültig verloren und nichts kann sie zurückholen. Gib vorher jemand anderem Zugriff auf die früheren Einträge, falls das wichtig ist.',
+  'members.deleteForGood': 'Gruppe endgültig löschen',
+  'members.confirmLeave': 'Ja, Gruppe verlassen',
+  'members.leave': 'Gruppe verlassen',
+  'members.scopedAdded':
+    'Ab heute hinzugefügt. Nichts von vorher ist für sie lesbar, und sie können den Verlauf dieser Gruppe nicht weitergeben.',
+  'members.scopedNoKey':
+    'Hinzugefügt, aber es konnte kein neuer Schlüssel erzeugt werden — Einträge von vor dem Beitritt sind für sie möglicherweise lesbar.',
+  'members.scopedRotateFailed':
+    'Hinzugefügt, aber der Schlüsselwechsel ist fehlgeschlagen ({reason}). Sie können noch nichts lesen; entferne sie und lade sie neu ein, um es erneut zu versuchen.',
+  'members.addedPartial':
+    'Hinzugefügt — aber du bist selbst erst später dazugekommen, sie sehen also nur denselben Teil des Verlaufs wie du.',
+  'members.shareFailed':
+    'Hinzugefügt, aber die Gruppe konnte nicht mit ihnen geteilt werden ({reason}) — sie sehen noch nichts.',
+  'members.removedRotated':
+    'Entfernt, und der Gruppenschlüssel wurde gewechselt — ab jetzt Geschriebenes können sie nicht mehr lesen.',
+  'members.removedRotateFailed':
+    'Entfernt, aber der Schlüsselwechsel ist fehlgeschlagen ({reason}). Sie können neue Einträge weiterhin lesen, bis wieder jemand entfernt wird oder es erneut versucht wird.',
 
   // --- following an invite link --------------------------------------------
   'invitePage.invitedBy': '{name} lädt dich in eine Gruppe ein',

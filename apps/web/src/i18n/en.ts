@@ -290,6 +290,41 @@ export const en = {
     other: 'Skipped {count} with no rate available.',
   },
 
+  // --- the app shell -------------------------------------------------------
+  'shell.settings': 'Settings',
+  'shell.logout': 'Log out',
+  'shell.offline': 'offline — changes will sync later',
+  'shell.build': 'build {date} UTC',
+  'shell.installAsApp': 'Install as an app',
+
+  // --- taking your data with you, and leaving -------------------------------
+  'data.title': 'My data',
+  'data.download': 'Download my data',
+  'data.working': 'Working…',
+  'data.collecting': 'Collecting…',
+  'data.receipts': 'Receipts {done}/{total}…',
+  'data.packing': 'Packing…',
+  'data.downloaded': 'Downloaded.',
+  'data.explain':
+    'A ZIP with everything: your account, and every expense, payment, comment and receipt, decrypted here on this device because the server cannot read them.',
+  'delete.zone': 'Danger zone',
+  'delete.open': 'Delete my account',
+  'delete.title': 'Delete your account',
+  'delete.warning':
+    'This cannot be undone. Your login and everything that identifies you are erased. Your name stays on the expenses and payments you shared with other people, because those are their records of money owed too.',
+  'delete.downloadFirst': 'Download your data first if you want a copy — after this there is no way to get one.',
+  'delete.lastMember': {
+    one: 'You are the last member of this group, so it will be destroyed along with every expense, receipt and comment in it:',
+    other: 'You are the last member of these groups, so they will be destroyed along with every expense, receipt and comment in them:',
+  },
+  'delete.orphaning':
+    'You are the only person who can read part of the history in {groups}. Those entries are lost to everyone once you are gone, and nothing can bring them back.',
+  'delete.promoting':
+    'You are the only admin of {groups} — the longest-standing member takes over so joins can still be approved.',
+  'delete.typePassword': 'Type your password to confirm',
+  'delete.deleting': 'Deleting…',
+  'delete.cancel': 'Cancel',
+
   // --- a group and its expense list ----------------------------------------
   'group.formerMember': '(former member)',
   'group.loading': 'Loading…',
@@ -421,6 +456,68 @@ export const en = {
   'receipt.camera': 'camera',
   'receipt.upload': 'upload',
   'receipt.delete': 'Delete photo',
+
+  // --- the members tab -----------------------------------------------------
+  'members.remove': 'Remove',
+  'members.removeLabel': 'Remove {name}',
+  'members.removeConfirm': 'Remove {name}?',
+  'members.cancel': 'Cancel',
+  'members.someone': 'someone',
+  'members.noKeyYet': 'No key on this account yet — they must log in once before they can be given the group.',
+  'members.checkByVoice': 'Check by voice:',
+  'members.waiting': 'Waiting for approval ({count})',
+  'members.wantsToTakeOver': 'wants to take over {name}',
+  'members.aPlaceholder': 'a placeholder',
+  'members.approve': 'Approve',
+  'members.decline': 'Decline',
+  'members.queueNote':
+    'The code is derived from their own device, so a stranger who intercepted the link reads out different digits. Declining stops that account asking again — you can take it back here for the next 30 days.',
+  'members.declined': 'Declined ({count})',
+  'members.declinedOn': 'declined {date}',
+  'members.letThemIn': 'Let them in',
+  'members.declinedNote':
+    'They cannot ask again themselves, so this is the only way back in for them. Declines disappear from here after 30 days.',
+  'members.addInPerson': 'Add someone in person',
+  'members.registered': 'Registered users',
+  'members.admin': 'admin',
+  'members.you': 'you',
+  'members.makeAdmin': 'Make admin',
+  'members.removeAdmin': 'Remove admin',
+  'members.takenOver': 'Names taken over',
+  'members.nowCountsAs': 'everything recorded against this name now counts as {name}',
+  'members.undo': 'Undo',
+  'members.undoNote':
+    'Undo gives the name back its own entries and leaves the person who took it in the group as themselves. It is how a wrong pick gets fixed — the name is claimable again afterwards.',
+  'members.notSignedUp': 'Not signed up yet',
+  'members.noPlaceholders': 'Nobody yet. Add people here to split expenses with them before they have an account.',
+  'members.unclaimed': 'unclaimed',
+  'members.namePlaceholder': 'Name',
+  'members.add': 'Add',
+  'members.inviteNote':
+    'When they sign up, send them an invite link — they can pick their name and take over the entries already recorded against it.',
+  'members.leaveTitle': 'Leave this group',
+  'members.leaveLast':
+    'You are the last member. Leaving deletes the group and everything in it — expenses, payments and receipts — from this device and from the server. This cannot be undone.',
+  'members.leaveOthers':
+    'The group is removed from this device. Everyone else keeps it, along with the entries you have already recorded — your name stays on them.',
+  'members.leaveOrphans':
+    'You are the last member who can read part of this group’s history. If you leave, those entries are lost to everyone, for good, and nothing can bring them back. Give someone else access to the earlier entries first if that matters.',
+  'members.deleteForGood': 'Delete the group for good',
+  'members.confirmLeave': 'Yes, leave the group',
+  'members.leave': 'Leave group',
+  // What happened to the keys after a decision. Said separately from the
+  // decision itself, because by then the person is already a member.
+  'members.scopedAdded':
+    'Added from today onwards. Nothing recorded before now is readable to them, and they cannot pass this group’s history on.',
+  'members.scopedNoKey': 'Added, but no new key could be minted — they may be able to read entries from before they joined.',
+  'members.scopedRotateFailed':
+    'Added, but the key rotation failed ({reason}). They cannot read anything yet; retry by removing and re-inviting them.',
+  'members.addedPartial':
+    'Added — but you joined this group partway through, so they can see only the same part of its history that you can.',
+  'members.shareFailed': 'Added, but sharing the group with them failed ({reason}) — they cannot see anything yet.',
+  'members.removedRotated': 'Removed, and the group key was rotated — they cannot read anything written from now on.',
+  'members.removedRotateFailed':
+    'Removed, but rotating the key failed ({reason}). They can still read new entries until an admin removes someone again or retries.',
 
   // --- following an invite link --------------------------------------------
   'invitePage.invitedBy': '{name} invited you to join',

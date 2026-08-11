@@ -8,6 +8,7 @@ import { buildAccountExport } from '../export';
 import { deriveAuthKeyFor } from '../keys';
 import { extensionFor, fetchReceiptBytes, sniffImageType } from '../receipts';
 import { download } from '../zip';
+import { useT } from '../i18n/useT';
 
 /**
  * The two things a person must be able to do without asking the operator:
@@ -22,6 +23,7 @@ import { download } from '../zip';
 // ---------------------------------------------------------------------------
 
 export function DownloadMyData() {
+  const t = useT();
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +31,7 @@ export function DownloadMyData() {
   async function run() {
     setBusy(true);
     setError(null);
-    setStatus('Collecting…');
+    setStatus(t('data.collecting'));
     try {
       // The half only the server has: account, membership, timings.
       const serverData = await api<unknown>('/api/me/export');
@@ -76,11 +78,12 @@ export function DownloadMyData() {
           const bytes = await fetchReceiptBytes(a);
           return bytes ? { bytes, ext: extensionFor(sniffImageType(bytes)) } : null;
         },
-        onProgress: (d, t) => setStatus(t ? `Receipts ${d}/${t}…` : 'Packing…'),
+        onProgress: (done, total) =>
+          setStatus(total ? t('data.receipts', { done, total }) : t('data.packing')),
       });
 
       download(`spendapp-data-${new Date().toISOString().slice(0, 10)}.zip`, zip);
-      setStatus('Downloaded.');
+      setStatus(t('data.downloaded'));
     } catch (err) {
       setError((err as Error).message);
       setStatus(null);
@@ -91,18 +94,15 @@ export function DownloadMyData() {
 
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-sm font-medium text-slate-500 dark:text-slate-400">My data</span>
+      <span className="text-sm font-medium text-slate-500 dark:text-slate-400">{t('data.title')}</span>
       <button
         onClick={() => void run()}
         disabled={busy}
         className="rounded border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-slate-600"
       >
-        {busy ? (status ?? 'Working…') : 'Download my data'}
+        {busy ? (status ?? t('data.working')) : t('data.download')}
       </button>
-      <span className="text-xs text-slate-400">
-        A ZIP with everything: your account, and every expense, payment, comment and receipt, decrypted here on
-        this device because the server cannot read them.
-      </span>
+      <span className="text-xs text-slate-400">{t('data.explain')}</span>
       {!busy && status && <span className="text-xs text-teal-700 dark:text-teal-500">{status}</span>}
       {error && <span className="text-xs text-red-600">{error}</span>}
     </div>
@@ -118,6 +118,7 @@ interface Preview {
 }
 
 export function DeleteAccount() {
+  const t = useT();
   const { user, setUser } = useAuth();
   const [preview, setPreview] = useState<Preview | null>(null);
   const [password, setPassword] = useState('');
@@ -154,9 +155,9 @@ export function DeleteAccount() {
   if (!preview) {
     return (
       <div className="flex flex-col gap-1">
-        <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Danger zone</span>
+        <span className="text-sm font-medium text-slate-500 dark:text-slate-400">{t('delete.zone')}</span>
         <button onClick={() => void openDialog()} className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-700 dark:border-red-800 dark:text-red-400">
-          Delete my account
+          {t('delete.open')}
         </button>
         {error && <span className="text-xs text-red-600">{error}</span>}
       </div>
@@ -170,23 +171,19 @@ export function DeleteAccount() {
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-black/50 p-4">
       <div className="flex w-full max-w-md flex-col gap-3 rounded bg-white p-5 dark:bg-slate-900">
-        <h2 className="text-lg font-semibold text-red-700 dark:text-red-400">Delete your account</h2>
+        <h2 className="text-lg font-semibold text-red-700 dark:text-red-400">{t('delete.title')}</h2>
 
         <p className="text-sm text-slate-600 dark:text-slate-300">
-          This cannot be undone. Your login and everything that identifies you are erased. Your name stays on
-          the expenses and payments you shared with other people, because those are their records of money
-          owed too.
+          {t('delete.warning')}
         </p>
 
         <p className="text-sm text-slate-600 dark:text-slate-300">
-          Download your data first if you want a copy — after this there is no way to get one.
+          {t('delete.downloadFirst')}
         </p>
 
         {dying.length > 0 && (
           <div className="rounded bg-red-50 p-2 text-xs text-red-900 dark:bg-red-950 dark:text-red-100">
-            You are the last member of {dying.length === 1 ? 'this group' : 'these groups'}, so{' '}
-            {dying.length === 1 ? 'it' : 'they'} will be destroyed along with every expense, receipt and comment
-            in {dying.length === 1 ? 'it' : 'them'}:
+            {t('delete.lastMember', { count: dying.length })}
             <ul className="mt-1 list-inside list-disc">
               {dying.map((g) => (
                 <li key={g.groupId}>{g.name}</li>
@@ -197,20 +194,18 @@ export function DeleteAccount() {
 
         {orphaning.length > 0 && (
           <div className="rounded bg-amber-50 p-2 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-100">
-            You are the only person who can read part of the history in {orphaning.map((g) => g.name).join(', ')}.
-            Those entries are lost to everyone once you are gone, and nothing can bring them back.
+            {t('delete.orphaning', { groups: orphaning.map((g) => g.name).join(', ') })}
           </div>
         )}
 
         {promoting.length > 0 && (
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            You are the only admin of {promoting.map((g) => g.name).join(', ')} — the longest-standing member
-            takes over so joins can still be approved.
+            {t('delete.promoting', { groups: promoting.map((g) => g.name).join(', ') })}
           </p>
         )}
 
         <label className="flex flex-col gap-1 text-sm">
-          Type your password to confirm
+          {t('delete.typePassword')}
           <input
             type="password"
             autoComplete="current-password"
@@ -228,7 +223,7 @@ export function DeleteAccount() {
             disabled={busy || password.length === 0}
             className="flex-1 rounded bg-red-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
           >
-            {busy ? 'Deleting…' : 'Delete my account'}
+            {busy ? t('delete.deleting') : t('delete.open')}
           </button>
           <button
             onClick={() => {
@@ -239,7 +234,7 @@ export function DeleteAccount() {
             disabled={busy}
             className="rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600"
           >
-            Cancel
+            {t('delete.cancel')}
           </button>
         </div>
       </div>

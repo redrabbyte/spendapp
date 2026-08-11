@@ -81,6 +81,14 @@ const slug = (s: string): string =>
 
 const jsonBytes = (value: unknown): Uint8Array => new TextEncoder().encode(JSON.stringify(value, null, 2));
 
+/**
+ * Deliberately English, and not translated with the rest of the interface.
+ *
+ * It is a key to an archive whose file names, CSV headings and JSON keys are
+ * all English and stay that way — a German README next to `expenses.json` and
+ * a `paid_minor` column would be half a translation, and the half that is
+ * missing is the half somebody actually has to read the file with.
+ */
 const README = `Your SpendApp data
 ==================
 

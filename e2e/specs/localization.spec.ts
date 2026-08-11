@@ -35,8 +35,10 @@ test('the interface follows the chosen language', async ({ page, api }) => {
   // And it survives a reload, because it is a stored choice rather than a
   // guess at the browser's locale.
   await page.reload();
-  await page.getByRole('button', { name: 'Settings' }).click();
-  await expect(page.getByText('Einstellungen')).toBeVisible();
+  // In German the gear is labelled in German too, which is the point: the
+  // choice survived the reload rather than falling back to the default.
+  await page.getByRole('button', { name: 'Einstellungen' }).click();
+  await expect(page.getByRole('heading', { name: 'Einstellungen' })).toBeVisible();
 });
 
 test('errors from the API arrive in the reader’s language', async ({ page, api }) => {
