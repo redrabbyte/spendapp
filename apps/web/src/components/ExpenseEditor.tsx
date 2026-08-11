@@ -17,6 +17,8 @@ import {
 } from '@spendapp/shared';
 import type { FxCacheRow } from '../db';
 import { getRates, suggestRate } from '../fx';
+import { hasUsableTotal, type FiscalReceipt } from '../receiptCode';
+import { ReceiptScan } from './ReceiptScan';
 import { upsertExpenseLocal } from '../sync';
 import { uuid } from '../uuid';
 import { AppError } from '../i18n/errors';
@@ -312,6 +314,27 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
     setConvRate('');
   }
 
+  /**
+   * Fill the form from a scanned till receipt.
+   *
+   * The currency is set along with the amount, never left alone: both fiscal
+   * schemes are euro-only, so writing their total into a field still labelled
+   * CHF would record the wrong money — the one way this feature could quietly
+   * cost somebody. Everything stays editable, and the scanner says in words
+   * what it filled in so it can be checked against the paper.
+   */
+  function applyReceipt(receipt: FiscalReceipt): void {
+    setError(null);
+    if (receipt.currency !== currency) setCurrency(receipt.currency);
+    if (hasUsableTotal(receipt)) {
+      setAmount(toInput(receipt.totalMinor, receipt.currency));
+      // A scanned total is a stated total: the exact-mode auto-sum must stop
+      // overwriting it the moment per-person amounts are typed.
+      setAmountManual(true);
+    }
+    if (receipt.occurredAt) setDate(localDateTimeInput(receipt.occurredAt));
+  }
+
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
@@ -411,6 +434,11 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
           ))}
         </select>
       </div>
+
+      {/* Not offered while editing: the receipt that produced an existing
+          entry is not the one in your hand, and overwriting a saved total
+          from a scan is a surprise nobody asked for. */}
+      {!existing && <ReceiptScan onRead={applyReceipt} />}
 
       {currency !== def && (
         <label className="flex flex-wrap items-center gap-2 text-sm text-slate-600 dark:text-slate-300">

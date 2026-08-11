@@ -444,6 +444,16 @@ export const de: Catalogue = {
     '{row}: die Aufteilung passt nicht zum Betrag — nach dem Import prüfen',
 
   // --- receipts ------------------------------------------------------------
+  'receiptScan.start': 'Beleg-Code scannen',
+  'receiptScan.beta': 'Beta',
+  'receiptScan.explain':
+    'Übernimmt Summe und Datum aus dem Code auf österreichischen und deutschen Kassenbelegen. Das Kamerabild wird auf diesem Gerät ausgewertet und nie hochgeladen.',
+  'receiptScan.limits':
+    'Belege aus anderen Ländern und handgeschriebene Belege haben keinen solchen Code — die trägst du weiterhin selbst ein.',
+  'receiptScan.filled': '{amount} und das Datum wurden vom Beleg übernommen. Bitte vor dem Speichern mit dem Papier vergleichen.',
+  'receiptScan.noAmount': 'Das ist ein Null- oder Stornobeleg, daher wurde nur das Datum übernommen.',
+  'receiptScan.unknown': 'Das ist kein österreichischer oder deutscher Belegcode.',
+
   'receipt.alt': 'Beleg',
   'receipt.undecryptable': 'nicht entschlüsselbar',
   'receipt.camera': 'Kamera',

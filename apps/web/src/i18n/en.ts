@@ -453,6 +453,16 @@ export const en = {
   'import.warning.split_totals_mismatch': '{row}: split totals do not match the amount — check after importing',
 
   // --- receipts ------------------------------------------------------------
+  'receiptScan.start': 'Scan receipt code',
+  'receiptScan.beta': 'beta',
+  'receiptScan.explain':
+    'Fills in the total and the date from the code printed on Austrian and German till receipts. The camera image is read on this device and never uploaded.',
+  'receiptScan.limits':
+    'Receipts from other countries, and handwritten ones, carry no such code — those you still fill in yourself.',
+  'receiptScan.filled': 'Took {amount} and the date from the receipt. Check them against the paper before saving.',
+  'receiptScan.noAmount': 'That is a zero or refund receipt, so only the date was filled in.',
+  'receiptScan.unknown': 'That is not an Austrian or German receipt code.',
+
   'receipt.alt': 'receipt',
   'receipt.undecryptable': 'can’t decrypt',
   'receipt.camera': 'camera',
