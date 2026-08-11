@@ -20,6 +20,9 @@ import {
 } from '@spendapp/shared';
 import { getRates, suggestRate } from '../fx';
 import type { FxCacheRow } from '../db';
+import { categoryLabel } from '../i18n/categories';
+import type { MessageKey } from '../i18n';
+import { useT } from '../i18n/useT';
 import { useMoney } from '../i18n/useMoney';
 
 // Validated categorical palette (dataviz reference order, checked on #fff):
@@ -33,11 +36,11 @@ const MUTED = '#898781';
 const GRID = '#e1e0d9';
 
 type Range = 'all' | '30' | '90' | 'ytd';
-const RANGES: { key: Range; label: string }[] = [
-  { key: 'all', label: 'all time' },
-  { key: '30', label: '30 days' },
-  { key: '90', label: '90 days' },
-  { key: 'ytd', label: 'this year' },
+const RANGES: { key: Range; label: MessageKey }[] = [
+  { key: 'all', label: 'charts.range.all' },
+  { key: '30', label: 'charts.range.30' },
+  { key: '90', label: 'charts.range.90' },
+  { key: 'ytd', label: 'charts.range.ytd' },
 ];
 
 function cutoff(range: Range): string | null {
@@ -52,10 +55,12 @@ const toMajor = (minor: number, ccy: string): number => minor / 10 ** minorUnitE
 interface BucketData {
   currency: string;
   perPerson: { userId: string; name: string; share: number; paid: number }[];
-  categories: { name: string; value: number; minor: number; color: string }[];
+  /** `key` is the stored category, `name` its label — the chart shows the label. */
+  categories: { key: string; name: string; value: number; minor: number; color: string }[];
   monthly: Record<string, number | string>[];
   categoryNames: string[];
   colorOf: (cat: string) => string;
+  labelOf: (cat: string) => string;
 }
 
 interface Props {
@@ -65,6 +70,7 @@ interface Props {
 }
 
 export function ChartsTab({ expenses, nameOf, defaultCurrency }: Props) {
+  const t = useT();
   const [range, setRange] = useState<Range>('all');
   const [convertTo, setConvertTo] = useState<string>(''); // '' = one section per currency
   const [fx, setFx] = useState<FxCacheRow | null>(null);
@@ -76,6 +82,9 @@ export function ChartsTab({ expenses, nameOf, defaultCurrency }: Props) {
   const { buckets, skipped } = useMemo(() => {
     const from = cutoff(range);
     let skippedCount = 0;
+    // Charts key off the stored category and show its label; the fold bucket is
+    // this component's own invention and so has a message of its own.
+    const labelOf = (cat: string): string => (cat === 'other*' ? t('category.folded') : categoryLabel(t, cat));
 
     // Fold currencies if a display currency is chosen (display-only — stored
     // data is untouched; suggestion rates from the cached fx table).
@@ -151,7 +160,8 @@ export function ChartsTab({ expenses, nameOf, defaultCurrency }: Props) {
             paid: toMajor(v.paid, currency),
           })),
         categories: categoryNames.map((c) => ({
-          name: c === 'other*' ? 'other (folded)' : c,
+          key: c,
+          name: labelOf(c),
           value: toMajor(catTotals.get(c)!, currency),
           minor: catTotals.get(c)!,
           color: c === 'other*' ? OTHER_COLOR : colorOf(c),
@@ -166,10 +176,11 @@ export function ChartsTab({ expenses, nameOf, defaultCurrency }: Props) {
           }),
         categoryNames,
         colorOf: (c: string) => (c === 'other*' ? OTHER_COLOR : colorOf(c)),
+        labelOf,
       };
     });
     return { buckets: out, skipped: skippedCount };
-  }, [expenses, range, convertTo, fx, nameOf]);
+  }, [expenses, range, convertTo, fx, nameOf, t]);
 
   // Charts work in major units; the axis and the list below must agree, so
   // both go through the same localized formatter.
@@ -186,30 +197,27 @@ export function ChartsTab({ expenses, nameOf, defaultCurrency }: Props) {
             onClick={() => setRange(key)}
             className={`rounded px-2 py-0.5 ${range === key ? 'bg-teal-700 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'}`}
           >
-            {label}
+            {t(label)}
           </button>
         ))}
-        <span className="ml-2 text-slate-500 dark:text-slate-400">view:</span>
+        <span className="ml-2 text-slate-500 dark:text-slate-400">{t('charts.view')}</span>
         <select
           className="rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-2 py-1"
           value={convertTo}
           onChange={(e) => setConvertTo(e.target.value)}
         >
-          <option value="">per currency</option>
+          <option value="">{t('charts.perCurrency')}</option>
           {[...new Set([defaultCurrency, ...COMMON_CURRENCIES])].map((c) => (
             <option key={c} value={c}>
-              all in {c}
+              {t('charts.allIn', { currency: c })}
             </option>
           ))}
         </select>
       </div>
       {skipped > 0 && (
-        <p className="text-sm text-amber-700">
-          {skipped} expense{skipped === 1 ? '' : 's'} skipped — no cached rate for its currency. Conversion is
-          display-only; stored data is untouched.
-        </p>
+        <p className="text-sm text-amber-700">{t('charts.skipped', { count: skipped })}</p>
       )}
-      {buckets.length === 0 && <p className="text-slate-500 dark:text-slate-400">No expenses in this range.</p>}
+      {buckets.length === 0 && <p className="text-slate-500 dark:text-slate-400">{t('charts.empty')}</p>}
 
       {buckets.map((b) => (
         <section key={b.currency} className="flex flex-col gap-4">
@@ -246,10 +254,12 @@ export function ChartsTab({ expenses, nameOf, defaultCurrency }: Props) {
             };
             return (
               <div>
-                <h3 className="mb-1 text-sm font-medium text-slate-500 dark:text-slate-400">Per person ({b.currency})</h3>
+                <h3 className="mb-1 text-sm font-medium text-slate-500 dark:text-slate-400">
+                  {t('charts.perPerson', { currency: b.currency })}
+                </h3>
                 <div className="flex flex-wrap justify-center gap-8">
-                  {pie('Spending', 'paid', 'paid out of pocket')}
-                  {pie('Share', 'share', 'what they consumed')}
+                  {pie(t('charts.spending'), 'paid', t('charts.spending.hint'))}
+                  {pie(t('charts.share'), 'share', t('charts.share.hint'))}
                 </div>
               </div>
             );
@@ -257,7 +267,7 @@ export function ChartsTab({ expenses, nameOf, defaultCurrency }: Props) {
 
           <div className="flex flex-wrap items-center gap-4">
             <div>
-              <h3 className="mb-1 text-sm font-medium text-slate-500 dark:text-slate-400">By category</h3>
+              <h3 className="mb-1 text-sm font-medium text-slate-500 dark:text-slate-400">{t('charts.byCategory')}</h3>
               <PieChart width={180} height={180}>
                 <Pie
                   data={b.categories}
@@ -269,7 +279,7 @@ export function ChartsTab({ expenses, nameOf, defaultCurrency }: Props) {
                   strokeWidth={2}
                 >
                   {b.categories.map((c) => (
-                    <Cell key={c.name} fill={c.color} />
+                    <Cell key={c.key} fill={c.color} />
                   ))}
                 </Pie>
                 <Tooltip formatter={(v) => chartMoney(b.currency)(Number(v))} />
@@ -277,7 +287,7 @@ export function ChartsTab({ expenses, nameOf, defaultCurrency }: Props) {
             </div>
             <ul className="flex flex-col gap-1 text-sm">
               {b.categories.map((c) => (
-                <li key={c.name} className="flex items-center gap-2">
+                <li key={c.key} className="flex items-center gap-2">
                   <span className="inline-block h-3 w-3 rounded-sm" style={{ background: c.color }} />
                   <span className="text-slate-700 dark:text-slate-200">{c.name}</span>
                   <span className="ml-auto pl-4 tabular-nums text-slate-500 dark:text-slate-400">
@@ -290,7 +300,9 @@ export function ChartsTab({ expenses, nameOf, defaultCurrency }: Props) {
 
           {b.monthly.length > 1 && (
             <div>
-              <h3 className="mb-1 text-sm font-medium text-slate-500 dark:text-slate-400">Per month ({b.currency})</h3>
+              <h3 className="mb-1 text-sm font-medium text-slate-500 dark:text-slate-400">
+                {t('charts.perMonth', { currency: b.currency })}
+              </h3>
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart data={b.monthly} margin={{ right: 16 }}>
                   <CartesianGrid stroke={GRID} vertical={false} />
@@ -302,7 +314,7 @@ export function ChartsTab({ expenses, nameOf, defaultCurrency }: Props) {
                     <Bar
                       key={c}
                       dataKey={c}
-                      name={c === 'other*' ? 'other (folded)' : c}
+                      name={b.labelOf(c)}
                       stackId="m"
                       fill={b.colorOf(c)}
                       stroke="#ffffff"

@@ -183,6 +183,90 @@ export const en = {
   'invite.shareFailed': 'Sharing failed',
   'invite.shareText': 'Join my group on SpendApp',
 
+  // --- categories ----------------------------------------------------------
+  // The stored value is a stable key ('food'), sealed inside the expense, so
+  // these are labels only — nothing here changes what is written down.
+  'category.food': 'food',
+  'category.groceries': 'groceries',
+  'category.transport': 'transport',
+  'category.housing': 'housing',
+  'category.utilities': 'utilities',
+  'category.entertainment': 'entertainment',
+  'category.travel': 'travel',
+  'category.health': 'health',
+  'category.shopping': 'shopping',
+  'category.other': 'other',
+  'category.folded': 'other (folded)',
+
+  // --- charts --------------------------------------------------------------
+  'charts.range.all': 'all time',
+  'charts.range.30': '30 days',
+  'charts.range.90': '90 days',
+  'charts.range.ytd': 'this year',
+  'charts.view': 'view:',
+  'charts.perCurrency': 'per currency',
+  'charts.allIn': 'all in {currency}',
+  'charts.empty': 'No expenses in this range.',
+  'charts.skipped': {
+    one: '{count} expense skipped — no cached rate for its currency. Conversion is display-only; stored data is untouched.',
+    other: '{count} expenses skipped — no cached rate for their currency. Conversion is display-only; stored data is untouched.',
+  },
+  'charts.perPerson': 'Per person ({currency})',
+  'charts.spending': 'Spending',
+  'charts.spending.hint': 'paid out of pocket',
+  'charts.share': 'Share',
+  'charts.share.hint': 'what they consumed',
+  'charts.byCategory': 'By category',
+  'charts.perMonth': 'Per month ({currency})',
+
+  // --- the expense editor --------------------------------------------------
+  'editor.what': 'What was it?',
+  // A worked example of the format, so it follows the reader's decimal mark.
+  // `parseToMinor` accepts either, which is what makes translating it safe.
+  'editor.amount': '0.00',
+  'editor.totalIsSum': 'total = sum of payer amounts',
+  'editor.rate': 'rate',
+  'editor.ratePrefilled': '(prefilled from today’s rate; editable)',
+  'editor.rateOffline': '(no fx suggestion offline; enter manually)',
+  'editor.convertTo': 'Convert amounts to',
+  'editor.chooseUnit': 'choose unit…',
+  'editor.convertAt': 'at 1 {currency} =',
+  'editor.convert': 'Convert',
+  'editor.paidBy': 'Paid by',
+  'editor.singlePayer': 'single payer',
+  'editor.multiplePayers': 'multiple payers',
+  'editor.totalOfPayers': 'Total is the sum of these — {amount} {currency}.',
+  'editor.split': 'Split',
+  'editor.mode.equal': 'equally',
+  'editor.mode.exact': 'exact amounts',
+  'editor.mode.percent': 'percentages',
+  'editor.mode.shares': 'shares',
+  'editor.percentRemaining': '{percent}% remaining',
+  'editor.percentOver': '{percent}% over',
+  'editor.balanced': 'balanced',
+  'editor.amountRemaining': '{amount} {currency} remaining',
+  'editor.amountOver': '{amount} {currency} over',
+  'editor.totalFromAmounts': 'total {amount} {currency} (from amounts)',
+  'editor.paid': 'paid',
+  'editor.owes': 'owes',
+  'editor.note': 'Note (optional)',
+  'editor.save': 'Save changes',
+  'editor.add': 'Add expense',
+  'editor.cancel': 'cancel',
+
+  // --- receipts ------------------------------------------------------------
+  'receipt.alt': 'receipt',
+  'receipt.undecryptable': 'can’t decrypt',
+  'receipt.camera': 'camera',
+  'receipt.upload': 'upload',
+  'receipt.delete': 'Delete photo',
+
+  // --- camera scanner ------------------------------------------------------
+  'scan.noCamera': 'This browser cannot open a camera. Send them an invite link instead.',
+  'scan.refused': 'Camera access was refused. Allow it, or send them an invite link instead.',
+  'scan.failed': 'Could not open the camera: {reason}',
+  'scan.cancel': 'Cancel',
+
   // --- push -------------------------------------------------------------
   // Written here rather than on the server, which has no idea who is reading.
   // Deliberately say nothing about the entry itself (design §3.3).

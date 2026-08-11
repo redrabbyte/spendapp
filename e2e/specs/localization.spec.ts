@@ -52,6 +52,25 @@ test('errors from the API arrive in the reader’s language', async ({ page, api
   await expect(page.getByText('Dieser Benutzername ist schon vergeben.')).toBeVisible();
 });
 
+test('a translated category label still stores the untranslated category', async ({ page, api }) => {
+  seedGroup(api, GROUP, 'Trip', [
+    { userId: ME.id, displayName: ME.displayName, isPlaceholder: false, role: 'admin' },
+  ]);
+  await seedGroupKey(api, GROUP);
+
+  await signIn(page);
+  await switchToGerman(page);
+  await page.goto(`/g/${GROUP}`);
+
+  await expect(page.getByPlaceholder('Wofür war das?')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('button', { name: 'gleichmäßig' })).toBeVisible();
+
+  // The label is German and the value is not: categories are a stable key
+  // sealed into the expense, so translating one must never change what a
+  // German reader writes down for an English one to read.
+  await expect(page.getByRole('option', { name: 'Lebensmittel' })).toHaveAttribute('value', 'groceries');
+});
+
 test('money is written the way the language writes it', async ({ page, api }) => {
   seedGroup(api, GROUP, 'Trip', [
     { userId: ME.id, displayName: ME.displayName, isPlaceholder: false, role: 'admin' },

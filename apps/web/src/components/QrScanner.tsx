@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import type { MessageKey, TranslateOptions } from '../i18n';
+import { useT } from '../i18n/useT';
 
 /**
  * Camera QR scanner (design §4.2). Only the *inviter* ever needs this — the
@@ -38,8 +40,12 @@ async function jsqrDetector(): Promise<(canvas: HTMLCanvasElement) => string | n
 }
 
 export function QrScanner({ onScan, onCancel }: { onScan: (text: string) => void; onCancel: () => void }) {
+  const t = useT();
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [error, setError] = useState<string | null>(null);
+  // The message is held as a key and put into words at render, so the effect
+  // below never has to depend on the language — changing it mid-scan would
+  // otherwise tear down the camera and start it again.
+  const [error, setError] = useState<{ key: MessageKey; values?: TranslateOptions } | null>(null);
   // A ref, not state: the scan loop must see the latest callback without being
   // torn down and restarting the camera on every render.
   const onScanRef = useRef(onScan);
@@ -52,7 +58,7 @@ export function QrScanner({ onScan, onCancel }: { onScan: (text: string) => void
 
     void (async () => {
       if (!navigator.mediaDevices?.getUserMedia) {
-        setError('This browser cannot open a camera. Send them an invite link instead.');
+        setError({ key: 'scan.noCamera' });
         return;
       }
       try {
@@ -64,8 +70,8 @@ export function QrScanner({ onScan, onCancel }: { onScan: (text: string) => void
       } catch (err) {
         setError(
           (err as Error).name === 'NotAllowedError'
-            ? 'Camera access was refused. Allow it, or send them an invite link instead.'
-            : `Could not open the camera: ${(err as Error).message}`,
+            ? { key: 'scan.refused' }
+            : { key: 'scan.failed', values: { reason: (err as Error).message } },
         );
         return;
       }
@@ -115,7 +121,9 @@ export function QrScanner({ onScan, onCancel }: { onScan: (text: string) => void
   return (
     <div className="flex flex-col gap-2">
       {error ? (
-        <p className="rounded bg-red-50 p-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">{error}</p>
+        <p className="rounded bg-red-50 p-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
+          {t(error.key, error.values)}
+        </p>
       ) : (
         <div className="relative overflow-hidden rounded bg-black">
           <video ref={videoRef} playsInline muted className="h-56 w-full object-cover" />
@@ -126,7 +134,7 @@ export function QrScanner({ onScan, onCancel }: { onScan: (text: string) => void
         onClick={onCancel}
         className="self-start rounded border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 dark:border-slate-600 dark:text-slate-300"
       >
-        Cancel
+        {t('scan.cancel')}
       </button>
     </div>
   );

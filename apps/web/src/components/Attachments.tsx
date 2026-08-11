@@ -4,6 +4,7 @@ import type { AttachmentDto, ExpenseDto } from '@spendapp/shared';
 import { localDb } from '../db';
 import { fetchReceiptBlob } from '../receipts';
 import { addPhotoLocal, deleteAttachmentLocal } from '../sync';
+import { useT } from '../i18n/useT';
 
 /**
  * Receipts fetched from the server are ciphertext, so there is no URL an <img>
@@ -34,6 +35,7 @@ function AttachmentImg({
   className: string;
   onClick?: () => void;
 }) {
+  const t = useT();
   const id = attachment.id;
   const blobRow = useLiveQuery(() => localDb.blobs.get(id), [id]);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
@@ -67,15 +69,16 @@ function AttachmentImg({
         className={`${className} flex items-center justify-center bg-slate-100 text-center text-[10px] text-slate-500 dark:bg-slate-800`}
         onClick={onClick}
       >
-        can’t decrypt
+        {t('receipt.undecryptable')}
       </div>
     );
   }
   if (!blobUrl) return <div className={`${className} bg-slate-100 dark:bg-slate-800`} />;
-  return <img src={blobUrl} className={className} loading="lazy" alt="receipt" onClick={onClick} />;
+  return <img src={blobUrl} className={className} loading="lazy" alt={t('receipt.alt')} onClick={onClick} />;
 }
 
 export function AttachmentRow({ expense, meId }: { expense: ExpenseDto; meId: string }) {
+  const t = useT();
   const attachments = useLiveQuery(
     () =>
       localDb.attachments
@@ -114,7 +117,7 @@ export function AttachmentRow({ expense, meId }: { expense: ExpenseDto; meId: st
       {/* Camera: capture hints the OS to open the camera directly. */}
       <label className="flex h-16 w-16 cursor-pointer flex-col items-center justify-center rounded border border-dashed border-slate-300 dark:border-slate-600 dark:bg-slate-800 text-[11px] text-slate-400 hover:border-teal-600 hover:text-teal-600">
         <span className="text-xl leading-none">📷</span>
-        camera
+        {t('receipt.camera')}
         <input
           type="file"
           accept="image/*"
@@ -126,7 +129,7 @@ export function AttachmentRow({ expense, meId }: { expense: ExpenseDto; meId: st
       {/* Files: no capture → gallery / file picker, multi-select. */}
       <label className="flex h-16 w-16 cursor-pointer flex-col items-center justify-center rounded border border-dashed border-slate-300 dark:border-slate-600 dark:bg-slate-800 text-[11px] text-slate-400 hover:border-teal-600 hover:text-teal-600">
         <span className="text-xl leading-none">＋</span>
-        upload
+        {t('receipt.upload')}
         <input
           ref={fileInput}
           type="file"
@@ -152,7 +155,7 @@ export function AttachmentRow({ expense, meId }: { expense: ExpenseDto; meId: st
               setViewing(null);
             }}
           >
-            Delete photo
+            {t('receipt.delete')}
           </button>
         </div>
       )}
