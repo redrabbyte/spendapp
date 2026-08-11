@@ -564,7 +564,17 @@ export async function installApi(context: BrowserContext, state: ApiState): Prom
     }
     if (path === '/api/auth/logout') {
       state.signedIn = false;
-      return json(route, { ok: true });
+      // With the header the real route sends. It is not decoration: the
+      // browser drops IndexedDB out from under the open Dexie connection as
+      // this response is handled, which is the condition the client's own
+      // wipe then has to survive. Logging out worked in these tests and hung
+      // in production for exactly as long as this was missing.
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: { 'clear-site-data': '"cache", "storage"' },
+        body: JSON.stringify({ ok: true }),
+      });
     }
 
     const joinRequestsMatch = /^\/api\/groups\/([^/]+)\/join-requests$/.exec(path);
@@ -785,6 +795,11 @@ export async function installApi(context: BrowserContext, state: ApiState): Prom
     }
 
     if (path === '/api/sync') {
+      // The real route carries `requireUser`, and without the same guard here
+      // the mock was the one place in the world where an ended session kept
+      // serving group data — so the client's handling of that 401 could never
+      // be exercised.
+      if (!state.signedIn) return json(route, { error: 'authentication_required' }, 401);
       const data = check(syncRequestSchema, body());
       if (!data) return;
       state.mutations.push(...data.mutations);

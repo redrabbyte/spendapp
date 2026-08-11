@@ -5,6 +5,7 @@ import { COMMON_CURRENCIES } from '@spendapp/shared';
 import { localDb } from '../db';
 import { createGroupLocal } from '../sync';
 import { useSettings } from '../settings';
+import { useSyncSettled } from '../useSyncState';
 import { useAuth } from '../auth';
 import { ImportDialog } from '../components/ImportDialog';
 import { useT } from '../i18n/useT';
@@ -12,6 +13,11 @@ import { useT } from '../i18n/useT';
 export function GroupsPage() {
   const groups = useLiveQuery(() => localDb.groups.toArray(), []);
   const members = useLiveQuery(() => localDb.members.filter((m) => m.leftAt === null).toArray(), []);
+  const synced = useSyncSettled();
+  // An empty mirror before the first sync is not an answer yet. `undefined` is
+  // only the instant before Dexie replies, which is far shorter than the wait
+  // that actually shows: signing in, then the round trip that fills it.
+  const stillLoading = groups === undefined || (groups.length === 0 && !synced);
   const t = useT();
   const { settings } = useSettings();
   const [name, setName] = useState('');
@@ -41,8 +47,10 @@ export function GroupsPage() {
     <div className="flex flex-col gap-6">
       <section>
         <h1 className="mb-3 text-xl font-semibold">{t('groups.title')}</h1>
-        {groups === undefined && <p className="text-slate-500 dark:text-slate-400">{t('groups.loading')}</p>}
-        {groups?.length === 0 && <p className="text-slate-500 dark:text-slate-400">{t('groups.empty')}</p>}
+        {stillLoading && <p className="text-slate-500 dark:text-slate-400">{t('groups.loading')}</p>}
+        {!stillLoading && groups?.length === 0 && (
+          <p className="text-slate-500 dark:text-slate-400">{t('groups.empty')}</p>
+        )}
         <ul className="flex flex-col gap-2">
           {groups?.map((g) => (
             <li key={g.id}>

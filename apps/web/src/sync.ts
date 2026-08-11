@@ -30,6 +30,38 @@ const BATCH = 200;
 
 let syncing = false;
 let runAgain = false;
+
+/**
+ * The server has told us this session is over.
+ *
+ * Announced rather than swallowed. Sync used to return quietly on a 401, which
+ * left the app fully signed out and looking signed in: the shell, the header,
+ * the group list all still there, silently frozen, until a reload finally
+ * landed on the login screen with no explanation of what happened.
+ */
+export const SESSION_ENDED_EVENT = 'app:session-ended';
+let sessionEnded = false;
+
+/**
+ * Whether a sync has finished since the app started — success or failure.
+ *
+ * The group list needs this to tell "nothing here yet" from "nothing here
+ * *yet*". Straight after signing in the mirror is legitimately empty, and
+ * without this the first seconds of every new session claimed the reader had
+ * no groups at all.
+ */
+let settled = false;
+const settledListeners = new Set<() => void>();
+export const hasSyncSettled = (): boolean => settled;
+export function onSyncSettled(listener: () => void): () => void {
+  settledListeners.add(listener);
+  return () => settledListeners.delete(listener);
+}
+function markSettled(): void {
+  if (settled) return;
+  settled = true;
+  for (const listener of settledListeners) listener();
+}
 let timer: number | undefined;
 
 export function scheduleSync(delayMs = 2000): void {
@@ -38,6 +70,10 @@ export function scheduleSync(delayMs = 2000): void {
 }
 
 export async function syncNow(): Promise<void> {
+  // Nothing to talk to until somebody signs in again. Without this the poll
+  // keeps firing every six seconds against a session the server has already
+  // rejected, once per tick, forever.
+  if (sessionEnded) return;
   if (syncing) {
     runAgain = true;
     return;
@@ -186,10 +222,20 @@ export async function syncNow(): Promise<void> {
 
     if (remaining.length > 0) runAgain = true; // more than one batch queued
   } catch (err) {
-    if (err instanceof ApiError && err.status === 401) return; // logged out
+    if (err instanceof ApiError && err.status === 401) {
+      // A definite answer from the server, unlike a network error — so it is
+      // safe to act on. Stop polling and say so; the auth layer turns this
+      // into the login screen.
+      sessionEnded = true;
+      window.dispatchEvent(new Event(SESSION_ENDED_EVENT));
+      return;
+    }
     // Offline or server hiccup: keep the queue, try again on the next trigger.
     console.debug('sync deferred:', (err as Error).message);
   } finally {
+    // Settled either way. A failed attempt means offline, and claiming to
+    // still be loading would be its own lie.
+    markSettled();
     syncing = false;
     if (runAgain) {
       runAgain = false;
@@ -213,6 +259,9 @@ function applyPollCadence(): void {
 
 /** Sync triggers per design §6: start, online, foreground, push, poll. */
 export function startSyncLoop(): void {
+  // Called again whenever somebody signs in, so a fresh session revives a loop
+  // that a 401 stopped — the listeners below are still registered.
+  sessionEnded = false;
   if (loopStarted) return;
   loopStarted = true;
   window.addEventListener('online', () => scheduleSync(0));

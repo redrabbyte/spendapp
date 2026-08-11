@@ -3,7 +3,7 @@ import { api, ApiError } from './api';
 import { wipeLocalDb } from './db';
 import { forgetKeys } from './keys';
 import { disablePush } from './push';
-import { startSyncLoop } from './sync';
+import { SESSION_ENDED_EVENT, startSyncLoop } from './sync';
 import type { Me } from './types';
 
 interface AuthState {
@@ -54,6 +54,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (user) startSyncLoop();
   }, [user]);
 
+  // A session the server has ended, found by whatever spoke to it first.
+  // Dropping the user here is what puts the login screen on screen: until it
+  // did, the app stayed on a shell it could no longer fill, and the only clue
+  // was a group list that had quietly stopped changing.
+  useEffect(() => {
+    const onEnded = () => setUser(null);
+    window.addEventListener(SESSION_ENDED_EVENT, onEnded);
+    return () => window.removeEventListener(SESSION_ENDED_EVENT, onEnded);
+  }, [setUser]);
+
+  /**
+   * How long the local wipe may hold up the redirect.
+   *
+   * `Dexie.delete()` waits for every open connection to close, and this tab's
+   * live queries reopen the database as fast as it goes away, so it can block
+   * for as long as the app is on screen — which is the whole time, since the
+   * redirect is what would take it off. Leaving somebody staring at an app
+   * that has emptied itself is the worse failure, and the logout response
+   * carries `clear-site-data`, so the browser has already cleared this origin.
+   * The explicit wipe is the belt to that pair of braces.
+   */
+  const WIPE_BUDGET_MS = 1_500;
+  const after = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
   const logout = useCallback(async () => {
     // Before the logout call, not after: dropping the row needs the session
     // that is about to end. The `clear-site-data` on logout unregisters the
@@ -64,12 +88,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Best-effort: it names this device's endpoint, so a failure here costs a
     // stale row, and blocking logout on it would be the worse trade. Other
     // devices keep their own subscriptions.
-    await disablePush().catch(() => {});
-    await api('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    // First, and synchronously: whatever happens to the calls below, this
+    // device must not come back holding a session it has been told to forget.
     localStorage.removeItem(CACHE_KEY);
     forgetKeys(); // the in-memory copy outlives the database wipe otherwise
-    await wipeLocalDb();
-    location.assign('/login');
+    try {
+      await disablePush().catch(() => {});
+      await api('/api/auth/logout', { method: 'POST' }).catch(() => {});
+      await Promise.race([wipeLocalDb().catch(() => {}), after(WIPE_BUDGET_MS)]);
+    } finally {
+      // In a finally, so no failure or hang above can strand somebody inside
+      // an app they have already logged out of.
+      location.assign('/login');
+    }
   }, []);
 
   return <AuthContext.Provider value={{ user, loading, setUser, logout }}>{children}</AuthContext.Provider>;
