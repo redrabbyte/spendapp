@@ -130,7 +130,9 @@ test('the footer reaches the policy from a signed-out page', async ({ page, api 
   api.policy = {
     version: 'v1',
     // Markdown, to prove the reader gets prose rather than the source of it.
-    text: '## What we keep\n\nAs **little** as we can.',
+    text:
+      '## What we keep\n\nAs **little** as we can.\n\n' +
+      '| What | Where |\n|---|---|\n| A cookie | your browser |\n| A cache | your device |',
     installed: true,
   };
   await page.goto('/login');
@@ -144,4 +146,10 @@ test('the footer reaches the policy from a signed-out page', async ({ page, api 
   await expect(page.getByText('## What we keep')).toHaveCount(0);
   await expect(page.getByText('What we keep')).toBeVisible();
   await expect(page.locator('strong', { hasText: 'little' })).toBeVisible();
+
+  // A table is a table, not a row of pipes run together into a paragraph.
+  await expect(page.getByRole('table')).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: 'Where' })).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'your browser' })).toBeVisible();
+  await expect(page.getByText('|---|')).toHaveCount(0);
 });

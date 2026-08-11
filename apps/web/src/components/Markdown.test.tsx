@@ -49,4 +49,49 @@ describe('Markdown', () => {
   it('survives an empty document', () => {
     expect(html('')).toBe('<div class="flex flex-col gap-2"></div>');
   });
+
+  it('renders a pipe table', () => {
+    const out = html('| What | Where |\n|---|---|\n| A cookie | your browser |\n| A cache | your device |');
+    expect(out).toContain('<table');
+    expect(out).toContain('<th');
+    expect(out).toContain('What');
+    expect(out).toContain('<td');
+    expect(out).toContain('your browser');
+    expect((out.match(/<tr>/g) ?? []).length).toBe(3); // header + two rows
+    // Wide content scrolls in its own box rather than sliding the page.
+    expect(out).toContain('overflow-x-auto');
+  });
+
+  it('honours column alignment', () => {
+    const out = html('| a | b | c |\n|:---|:---:|---:|\n| 1 | 2 | 3 |');
+    expect(out).toContain('text-left');
+    expect(out).toContain('text-center');
+    expect(out).toContain('text-right');
+  });
+
+  it('formats inside cells', () => {
+    const out = html('| what |\n|---|\n| **bold** and `code` |');
+    expect(out).toContain('<strong>bold</strong>');
+    expect(out).toContain('<code');
+  });
+
+  it('pads a row that is short a cell rather than dropping the table', () => {
+    const out = html('| a | b |\n|---|---|\n| only one |');
+    expect(out).toContain('<table');
+    expect(out).toContain('only one');
+    expect((out.match(/<td/g) ?? []).length).toBe(2);
+  });
+
+  it('leaves a paragraph that merely contains a pipe alone', () => {
+    // No row of dashes underneath, so this is prose, not a table.
+    const out = html('Costs are split 50 | 50 between us.');
+    expect(out).not.toContain('<table');
+    expect(out).toContain('Costs are split 50 | 50 between us.');
+  });
+
+  it('ends the table at a blank line and carries on', () => {
+    const out = html('| a |\n|---|\n| 1 |\n\nAfter the table.');
+    expect(out).toContain('<table');
+    expect(out).toContain('<p>After the table.</p>');
+  });
 });

@@ -73,6 +73,42 @@ function inline(text: string, keyPrefix: string): ReactNode[] {
   });
 }
 
+/**
+ * A pipe table is a header row, a row of dashes, then body rows. The dashes
+ * are what distinguishes it from a paragraph that happens to contain a `|`,
+ * so a row only starts a table when the line under it is one.
+ */
+const hasPipe = (line: string): boolean => line.includes('|');
+
+/** `| a | b |` and `a | b` both give ['a', 'b']. */
+const cells = (line: string): string[] =>
+  line.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
+
+/**
+ * Every cell is dashes, with optional alignment colons. Checked cell by cell
+ * rather than with one regex over the whole line — the regex version wanted at
+ * least two columns and quietly failed to see `|---|`.
+ */
+const isDelimiter = (line: string): boolean => {
+  if (!hasPipe(line)) return false;
+  const parts = cells(line);
+  return parts.length > 0 && parts.every((c) => /^:?-+:?$/.test(c));
+};
+
+type Align = 'left' | 'center' | 'right';
+const alignments = (line: string): Align[] =>
+  cells(line).map((c) => {
+    const left = c.startsWith(':');
+    const right = c.endsWith(':');
+    return left && right ? 'center' : right ? 'right' : 'left';
+  });
+
+const alignClass: Record<Align, string> = {
+  left: 'text-left',
+  center: 'text-center',
+  right: 'text-right',
+};
+
 /** Blank lines separate blocks; a run of `- ` lines is one list. */
 export function Markdown({ text }: { text: string }): ReactNode {
   const blocks: ReactNode[] = [];
@@ -103,11 +139,59 @@ export function Markdown({ text }: { text: string }): ReactNode {
     flushBullets();
   };
 
-  for (const raw of lines) {
+  // Indexed rather than for-of: a table is only a table if the *next* line is
+  // its row of dashes, so this has to be able to look ahead.
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i]!;
     const line = raw.trimEnd();
     const heading = /^(#{1,4})\s+(.*)$/.exec(line);
     const bullet = /^[-*]\s+(.*)$/.exec(line);
-    if (heading) {
+
+    if (hasPipe(line) && isDelimiter(lines[i + 1] ?? '')) {
+      flush();
+      const header = cells(line);
+      const align = alignments(lines[i + 1]!);
+      const body: string[][] = [];
+      i += 2;
+      while (i < lines.length && hasPipe(lines[i]!) && lines[i]!.trim() !== '') {
+        // Pad or trim to the header's width: a row with the wrong number of
+        // cells is a typo in the policy, not a reason to drop the table.
+        const row = cells(lines[i]!);
+        body.push(Array.from({ length: header.length }, (_, c) => row[c] ?? ''));
+        i++;
+      }
+      i--; // the loop's own i++ takes us past the last row
+      const key = `t-${blocks.length}`;
+      const cell = 'border-b border-slate-300 px-2 py-1 align-top dark:border-slate-600';
+      blocks.push(
+        // Its own scroller: a policy read on a phone must not make the whole
+        // page slide sideways.
+        <div key={key} className="overflow-x-auto">
+          <table className="w-full border-collapse">
+            <thead>
+              <tr>
+                {header.map((h, c) => (
+                  <th key={c} className={`${cell} font-semibold ${alignClass[align[c] ?? 'left']}`}>
+                    {inline(h, `${key}-h-${c}`)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {body.map((row, r) => (
+                <tr key={r}>
+                  {row.map((c, ci) => (
+                    <td key={ci} className={`${cell} ${alignClass[align[ci] ?? 'left']}`}>
+                      {inline(c, `${key}-${r}-${ci}`)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>,
+      );
+    } else if (heading) {
       flush();
       const key = `h-${blocks.length}`;
       // One step down: the page around this already owns the h1.
