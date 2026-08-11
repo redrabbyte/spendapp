@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { api, ApiError } from './api';
 import { wipeLocalDb } from './db';
+import { useT } from './i18n/useT';
 import { forgetKeys } from './keys';
 import { disablePush } from './push';
 import { SESSION_ENDED_EVENT, startSyncLoop } from './sync';
@@ -14,6 +15,29 @@ interface AuthState {
 }
 
 const AuthContext = createContext<AuthState | null>(null);
+
+/**
+ * Shown from the moment logout is pressed until the browser has left the page.
+ *
+ * Logging out is several seconds of network calls and a database wipe, and
+ * until this existed all of it happened behind a screen that looked untouched
+ * apart from the group list emptying itself. Covering the app is the point
+ * rather than a side effect: there is nothing useful left to click, and the
+ * data behind it is being deleted as you look at it.
+ */
+function LoggingOut() {
+  const t = useT();
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex flex-col items-center justify-center gap-3 bg-white/95 dark:bg-slate-900/95"
+      role="status"
+      aria-live="polite"
+    >
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-teal-700 dark:border-slate-600 dark:border-t-teal-500" />
+      <p className="text-sm text-slate-600 dark:text-slate-300">{t('shell.loggingOut')}</p>
+    </div>
+  );
+}
 
 const CACHE_KEY = 'me';
 const readCache = (): Me | null => {
@@ -30,6 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // content offline instead of the login screen.
   const [user, setUserState] = useState<Me | null>(readCache);
   const [loading, setLoading] = useState(true);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   const setUser = useCallback((u: Me | null) => {
     setUserState(u);
@@ -88,8 +113,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Best-effort: it names this device's endpoint, so a failure here costs a
     // stale row, and blocking logout on it would be the worse trade. Other
     // devices keep their own subscriptions.
-    // First, and synchronously: whatever happens to the calls below, this
-    // device must not come back holding a session it has been told to forget.
+    // Before the first await, so the cover is painted while the work below
+    // runs rather than after it.
+    setLoggingOut(true);
+    // Synchronously too: whatever happens to the calls below, this device must
+    // not come back holding a session it has been told to forget.
     localStorage.removeItem(CACHE_KEY);
     forgetKeys(); // the in-memory copy outlives the database wipe otherwise
     try {
@@ -103,7 +131,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  return <AuthContext.Provider value={{ user, loading, setUser, logout }}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={{ user, loading, setUser, logout }}>
+      {children}
+      {/* Outside the router, so it covers every screen logout can be pressed
+          from — the header, the unlock prompt and the policy gate alike. */}
+      {loggingOut && <LoggingOut />}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth(): AuthState {

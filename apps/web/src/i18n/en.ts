@@ -293,6 +293,7 @@ export const en = {
   // --- the app shell -------------------------------------------------------
   'shell.settings': 'Settings',
   'shell.logout': 'Log out',
+  'shell.loggingOut': 'Logging out and clearing this device…',
   'shell.offline': 'offline — changes will sync later',
   'shell.build': 'build {date} UTC',
   'shell.installAsApp': 'Install as an app',

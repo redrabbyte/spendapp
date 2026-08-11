@@ -57,6 +57,11 @@ test('logging out arrives there even when the local wipe never finishes', async 
 
   await page.getByRole('button', { name: 'Log out' }).click();
 
+  // Said out loud while the wipe stalls. Several seconds of silence, with the
+  // group list emptying itself and nothing else moving, is what made this look
+  // broken rather than slow.
+  await expect(page.getByText('Logging out and clearing this device')).toBeVisible();
+
   await page.waitForURL(/\/login/, { timeout: 15_000 });
   await expect(page.getByRole('button', { name: 'Log in', exact: true })).toBeVisible();
 });

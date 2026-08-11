@@ -286,6 +286,7 @@ export const de: Catalogue = {
   // --- the app shell -------------------------------------------------------
   'shell.settings': 'Einstellungen',
   'shell.logout': 'Abmelden',
+  'shell.loggingOut': 'Abmelden und Daten auf diesem Gerät löschen…',
   'shell.offline': 'offline — Änderungen werden später synchronisiert',
   'shell.build': 'Build {date} UTC',
   'shell.installAsApp': 'Als App installieren',
