@@ -69,6 +69,40 @@ describe('Austrian receipts', () => {
   });
 });
 
+/**
+ * A code copied from a vendor's documentation of the Austrian receipt layout.
+ * It is here because it is a real-world string rather than one of ours: it pins
+ * the field *positions* against something we did not write.
+ *
+ * Its amounts are wrong, and instructively so. The receipt it appears on prints
+ * SUMME 15,00 — gross 12,00 at 10% and 3,00 at 20% — but the code carries 0,50
+ * and 1,20, which are that receipt's *tax* amounts rather than its gross ones.
+ * The same illustration also says a 15,00 bill was paid with 1,80, so its
+ * figures do not agree with each other in the first place.
+ *
+ * Summing to 1,70 is therefore the correct reading of an incorrect code, and
+ * the test asserts that rather than the number a person would expect from
+ * looking at the picture. Guessing that a total "looks too small" and reaching
+ * for other fields is exactly the cleverness that makes a parser untrustworthy.
+ */
+const DOCUMENTED =
+  '_R1-AT1_01_RF01_2017-07-25T13:08:25_0,50_1,20_0,00_0,00_0,00_7AHvANHuPKU=_17999FFF_lF+b4hKKvY7=' +
+  '_Y0p0ZLpIkYH2bcA3vlwnS4Jztz0HC8olvAdksoj789Yd8Z950j1JF8h5nKMp7eaugNdNcTfuyy18o/HV1rMwLv==';
+
+describe('a published example', () => {
+  it('reads the fields the specification puts at those positions', () => {
+    const r = parseFiscalCode(DOCUMENTED)!;
+    expect(r.occurredAt).toBe('2017-07-25T13:08:25'); // as printed on the receipt
+    expect(r.totalMinor).toBe(170); // 0,50 + 1,20, exactly what the code carries
+  });
+
+  it('is unbothered by a standard-base64 signature', () => {
+    // `+`, `/` and `=` rather than the base64url alphabet the other fixtures
+    // use. The tail is never read, and this proves it stays that way.
+    expect(parseFiscalCode(DOCUMENTED)).not.toBeNull();
+  });
+});
+
 describe('German receipts', () => {
   it('totals the gross amounts and prefers the finished-at time', () => {
     const r = parseFiscalCode(DE)!;
