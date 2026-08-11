@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-  formatMinor,
-  type ActivityDto,
-  type ExpenseDto,
-  type PaymentDto,
-  type UpsertExpense,
-  type UpsertPayment,
+import type {
+  ActivityDto,
+  ExpenseDto,
+  PaymentDto,
+  UpsertExpense,
+  UpsertPayment,
 } from '@spendapp/shared';
 import { openSnapshot } from '../envelope';
 import { restoreExpenseLocal, restorePaymentLocal } from '../sync';
 import { revertImport } from '../import';
+import type { Translator } from '../i18n';
+import { useLocale, useT } from '../i18n/useT';
+import { useMoney, type MoneyFormatter } from '../i18n/useMoney';
 
 interface ImportPayload {
   source?: string;
@@ -72,38 +74,47 @@ function latestSnapshot(
   return withSnap[0] ? snapshots.get(withSnap[0].id) : undefined;
 }
 
-function describe(a: ActivityDto, snapshot?: AnySnapshot): string {
+function describe(t: Translator, money: MoneyFormatter, a: ActivityDto, snapshot?: AnySnapshot): string {
   const snap = snapshot && isExpenseSnapshot(snapshot) ? snapshot : undefined;
-  const what = snap ? `“${snap.description}” (${formatMinor(snap.amountMinor, snap.currency)})` : '';
+  // Without a snapshot — one that has not synced, or was written before this
+  // device held the key — the sentence still has to name something.
+  const what = snap
+    ? t('activity.what', { description: snap.description, amount: money(snap.amountMinor, snap.currency) })
+    : t('activity.anExpense');
+  const named = (a.payload as { displayName?: string })?.displayName ?? t('activity.aMember');
   switch (a.type) {
     case 'group.created':
-      return 'created the group';
+      return t('activity.group.created');
     case 'member.joined':
-      return 'joined the group';
+      return t('activity.member.joined');
     case 'expense.created':
-      return `added ${what}`;
+      return t('activity.expense.created', { what });
     case 'expense.updated':
-      return `edited ${what}`;
+      return t('activity.expense.updated', { what });
     case 'expense.restored':
-      return `restored ${what}`;
+      return t('activity.expense.restored', { what });
     case 'expense.deleted':
-      return 'deleted an expense';
+      return t('activity.expense.deleted');
     case 'payment.created':
-      return 'recorded a payment';
+      return t('activity.payment.created');
     case 'payment.updated':
-      return 'edited a payment';
+      return t('activity.payment.updated');
     case 'payment.deleted':
-      return 'deleted a payment';
+      return t('activity.payment.deleted');
     case 'member.added':
-      return `added ${(a.payload as { displayName?: string })?.displayName ?? 'a member'}`;
+      return t('activity.member.added', { name: named });
     case 'member.claimed':
-      return `took over ${(a.payload as { displayName?: string })?.displayName ?? 'a member'}`;
+      return t('activity.member.claimed', { name: named });
     case 'import.created': {
       const p = a.payload as ImportPayload;
-      return `imported ${p.count ?? 0} entries from ${p.source === 'splitwise' ? 'Splitwise' : 'a CSV'}`;
+      return t('activity.import.created', {
+        count: p.count ?? 0,
+        // Splitwise is a name; a CSV is a thing, and needs words.
+        source: p.source === 'splitwise' ? 'Splitwise' : t('activity.import.csv'),
+      });
     }
     case 'import.reverted':
-      return 'reverted an import';
+      return t('activity.import.reverted');
     default:
       return a.type;
   }
@@ -119,6 +130,9 @@ interface Props {
 }
 
 export function ActivityTab({ activity, expenses, payments, meId, groupId, nameOf }: Props) {
+  const t = useT();
+  const locale = useLocale();
+  const money = useMoney();
   const snapshots = useSnapshots(activity);
   // An import already undone must not offer the button again.
   const revertedImports = useMemo(
@@ -141,7 +155,7 @@ export function ActivityTab({ activity, expenses, payments, meId, groupId, nameO
     return out;
   }, [activity]);
 
-  if (sorted.length === 0) return <p className="text-slate-500 dark:text-slate-400">Nothing has happened yet.</p>;
+  if (sorted.length === 0) return <p className="text-slate-500 dark:text-slate-400">{t('activity.empty')}</p>;
 
   return (
     <ul className="flex flex-col gap-2 text-sm">
@@ -168,27 +182,31 @@ export function ActivityTab({ activity, expenses, payments, meId, groupId, nameO
         return (
           <li key={a.id} className="flex items-center justify-between gap-2 border-b border-slate-100 pb-1">
             <span>
-              <span className="font-medium">{nameOf(a.actorId)}</span> {describe(a, snap)}
+              <span className="font-medium">{nameOf(a.actorId)}</span> {describe(t, money, a, snap)}
               {restorable && isExpenseSnapshot(restorable) && (
-                <span className="text-slate-500 dark:text-slate-400"> — “{restorable.description}”</span>
+                <span className="text-slate-500 dark:text-slate-400">
+                  {' '}
+                  {t('activity.wasNamed', { description: restorable.description })}
+                </span>
               )}
             </span>
             <span className="flex items-center gap-2 whitespace-nowrap text-slate-400">
               {restorable && (
                 <button className="text-teal-700 underline" onClick={() => void restore(restorable)}>
-                  restore
+                  {t('activity.restore')}
                 </button>
               )}
               {revertable && (
                 <button className="text-teal-700 underline" onClick={() => void restore(revertable)}>
-                  revert to this
+                  {t('activity.revertTo')}
                 </button>
               )}
               {importPayload && (
                 <button
                   className="text-teal-700 underline"
                   onClick={() => {
-                    if (!confirm(`Delete the ${importPayload.count ?? 0} entries this import created?`)) return;
+                    const count = importPayload.count ?? 0;
+                    if (!confirm(t('activity.confirmRevertImport', { count }))) return;
                     void revertImport(
                       groupId,
                       a.entityId,
@@ -197,10 +215,10 @@ export function ActivityTab({ activity, expenses, payments, meId, groupId, nameO
                     );
                   }}
                 >
-                  revert import
+                  {t('activity.revertImport')}
                 </button>
               )}
-              {new Date(a.createdAt).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
+              {new Date(a.createdAt).toLocaleString(locale, { dateStyle: 'short', timeStyle: 'short' })}
             </span>
           </li>
         );
@@ -221,6 +239,9 @@ export function VersionLog({
   meId: string;
   nameOf: (id: string) => string;
 }) {
+  const t = useT();
+  const locale = useLocale();
+  const money = useMoney();
   const snapshots = useSnapshots(activity);
   const versions = useMemo(
     () =>
@@ -229,7 +250,8 @@ export function VersionLog({
         .sort((a, b) => b.version - a.version),
     [activity, expense.id],
   );
-  if (versions.length === 0) return <p className="text-sm text-slate-500 dark:text-slate-400">No history synced yet.</p>;
+  if (versions.length === 0)
+    return <p className="text-sm text-slate-500 dark:text-slate-400">{t('activity.noHistory')}</p>;
 
   return (
     <ul className="flex flex-col gap-1 text-sm">
@@ -238,8 +260,8 @@ export function VersionLog({
         return (
           <li key={a.id} className="flex items-center justify-between gap-2">
             <span>
-              <span className="font-medium">{nameOf(a.actorId)}</span> {describe(a, snap)}
-              {i === 0 && <span className="ml-1 text-xs text-slate-400">(current)</span>}
+              <span className="font-medium">{nameOf(a.actorId)}</span> {describe(t, money, a, snap)}
+              {i === 0 && <span className="ml-1 text-xs text-slate-400">{t('activity.current')}</span>}
             </span>
             <span className="flex items-center gap-2 whitespace-nowrap text-slate-400">
               {i > 0 && snap && isExpenseSnapshot(snap) && (
@@ -247,10 +269,10 @@ export function VersionLog({
                   className="text-teal-700 underline"
                   onClick={() => void restoreExpenseLocal(snap, meId)}
                 >
-                  revert to this
+                  {t('activity.revertTo')}
                 </button>
               )}
-              {new Date(a.createdAt).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
+              {new Date(a.createdAt).toLocaleString(locale, { dateStyle: 'short', timeStyle: 'short' })}
             </span>
           </li>
         );

@@ -10,7 +10,9 @@ import { useSettings } from '../settings';
  * Display only. Anything a machine reads — the CSV export — or anything that
  * goes back into a number field keeps `formatMinor`.
  */
-export function useMoney(): (amountMinor: number, currency: string) => string {
+export type MoneyFormatter = (amountMinor: number, currency: string) => string;
+
+export function useMoney(): MoneyFormatter {
   const { settings } = useSettings();
   return useCallback(
     (amountMinor, currency) => formatMoney(amountMinor, currency, settings.language),

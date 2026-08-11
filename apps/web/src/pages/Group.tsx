@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { aliasResolver, formatMinor, resolveSplits } from '@spendapp/shared';
+import { aliasResolver, resolveSplits } from '@spendapp/shared';
 import { api } from '../api';
 import { downloadCsv, toCsv } from '../export';
 import { useAuth } from '../auth';
@@ -19,9 +19,13 @@ import { InvalidEntries } from '../components/InvalidEntries';
 import { MembersTab } from '../components/MembersTab';
 import { SyncPendingBadge } from '../components/SyncPendingBadge';
 import { useMoney } from '../i18n/useMoney';
+import { useT } from '../i18n/useT';
+import { categoryLabel } from '../i18n/categories';
+import type { MessageKey } from '../i18n';
 
 const TABS = ['expenses', 'balances', 'charts', 'activity', 'members'] as const;
 type Tab = (typeof TABS)[number];
+const tabLabel = (tab: Tab): MessageKey => `group.tab.${tab}`;
 
 export function GroupPage() {
   const { groupId } = useParams<{ groupId: string }>();
@@ -31,10 +35,10 @@ export function GroupPage() {
   const [params, setParams] = useSearchParams();
   const fromUrl = params.get('tab');
   const tab: Tab = (TABS as readonly string[]).includes(fromUrl ?? '') ? (fromUrl as Tab) : 'expenses';
-  const setTab = (t: Tab) => {
+  const setTab = (next_: Tab) => {
     const next = new URLSearchParams(params);
-    if (t === 'expenses') next.delete('tab');
-    else next.set('tab', t);
+    if (next_ === 'expenses') next.delete('tab');
+    else next.set('tab', next_);
     setParams(next, { replace: true }); // tab switches should not stack history
   };
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
@@ -46,6 +50,7 @@ export function GroupPage() {
   const pending = usePendingExpenseIds();
   const { settings } = useSettings();
   const money = useMoney();
+  const t = useT();
 
   // undefined = still querying, null = definitely not in the local mirror
   const group = useLiveQuery(
@@ -89,8 +94,8 @@ export function GroupPage() {
   const resolve = useMemo(() => aliasResolver(allMembers ?? []), [allMembers]);
   const nameOf = useMemo(() => {
     const map = new Map((allMembers ?? []).map((m) => [m.userId, m.displayName]));
-    return (id: string) => map.get(resolve(id)) ?? map.get(id) ?? '(former member)';
-  }, [allMembers, resolve]);
+    return (id: string) => map.get(resolve(id)) ?? map.get(id) ?? t('group.formerMember');
+  }, [allMembers, resolve, t]);
   // Charts total per person, so a claimed placeholder must be folded into the
   // claimer here — an alias-aware name alone would show them twice under one
   // name, which reads as a bug in the chart rather than in the data.
@@ -117,9 +122,9 @@ export function GroupPage() {
 
   if (!user) return null;
   if (group === undefined || !expenses || !allMembers || !payments || !activity) {
-    return <p className="text-slate-500 dark:text-slate-400">Loading…</p>;
+    return <p className="text-slate-500 dark:text-slate-400">{t('group.loading')}</p>;
   }
-  if (group === null) return <p className="text-red-600">Group not found (or not synced yet).</p>;
+  if (group === null) return <p className="text-red-600">{t('group.notFound')}</p>;
 
   return (
     <div className="flex flex-col gap-4">
@@ -132,13 +137,13 @@ export function GroupPage() {
             }
             className="text-slate-500 underline dark:text-slate-400"
           >
-            CSV
+            {t('group.csv')}
           </button>
           <button onClick={() => setImportOpen(true)} className="text-slate-500 underline dark:text-slate-400">
-            Import
+            {t('group.import')}
           </button>
           <button onClick={() => setInviteOpen((o) => !o)} className="text-teal-700 underline">
-            Invite link
+            {t('group.inviteLink')}
           </button>
         </span>
       </div>
@@ -157,48 +162,40 @@ export function GroupPage() {
             onClick={() => void createInvite(true)}
             className="rounded bg-teal-700 px-3 py-1.5 text-sm font-medium text-white"
           >
-            Invite, sharing everything
+            {t('group.inviteAll')}
           </button>
-          <p className="text-xs text-slate-400">
-            They read the group from the beginning, like everyone else in it.
-          </p>
+          <p className="text-xs text-slate-400">{t('group.inviteAllNote')}</p>
           {/* Rare on purpose (design §4.7): it forces a key rotation, and the
               person it admits can never pass the group's history on. */}
           <button
             onClick={() => void createInvite(false)}
             className="rounded border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 dark:border-slate-600 dark:text-slate-300"
           >
-            Invite, from today only
+            {t('group.inviteToday')}
           </button>
-          <p className="text-xs text-slate-400">
-            Nothing recorded so far will be readable to them — not the amounts, not who owed whom. Their own
-            balance stays exact, but they see a partial picture of everyone else&apos;s, and they cannot pass
-            the earlier history on to anyone.
-          </p>
+          <p className="text-xs text-slate-400">{t('group.inviteTodayNote')}</p>
         </div>
       )}
       {inviteUrl && (
         <div className="flex flex-col gap-1">
           <InviteLink url={inviteUrl} />
           {inviteScoped && (
-            <p className="text-xs text-amber-700 dark:text-amber-500">
-              This link shares nothing from before it is accepted, and accepting it rotates the group key.
-            </p>
+            <p className="text-xs text-amber-700 dark:text-amber-500">{t('group.inviteScopedWarning')}</p>
           )}
         </div>
       )}
       {inviteError && <p className="text-sm text-red-600">{inviteError}</p>}
       {/* Scrolls rather than wrapping: five tabs do not fit a phone width. */}
       <nav className="flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-700">
-        {TABS.map((t) => (
+        {TABS.map((name) => (
           <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`shrink-0 whitespace-nowrap px-2.5 py-2 text-sm font-medium capitalize ${
-              tab === t ? 'border-b-2 border-teal-700 text-teal-700' : 'text-slate-500 dark:text-slate-400'
+            key={name}
+            onClick={() => setTab(name)}
+            className={`shrink-0 whitespace-nowrap px-2.5 py-2 text-sm font-medium ${
+              tab === name ? 'border-b-2 border-teal-700 text-teal-700' : 'text-slate-500 dark:text-slate-400'
             }`}
           >
-            {t}
+            {t(tabLabel(name))}
           </button>
         ))}
       </nav>
@@ -220,14 +217,14 @@ export function GroupPage() {
                 enterKeyHint="search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search expenses"
-                aria-label="Search expenses"
+                placeholder={t('group.search')}
+                aria-label={t('group.search')}
                 className="w-full rounded border border-slate-300 px-3 py-2 pr-9 text-sm dark:border-slate-600 dark:bg-slate-800"
               />
               {query && (
                 <button
                   onClick={() => setQuery('')}
-                  aria-label="Clear search"
+                  aria-label={t('group.clearSearch')}
                   className="absolute inset-y-0 right-0 px-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                 >
                   ✕
@@ -236,9 +233,11 @@ export function GroupPage() {
             </div>
           )}
           <ul className="flex flex-col gap-2">
-            {sorted.length === 0 && <p className="text-slate-500 dark:text-slate-400">No expenses yet.</p>}
+            {sorted.length === 0 && <p className="text-slate-500 dark:text-slate-400">{t('group.noExpenses')}</p>}
             {sorted.length > 0 && visible.length === 0 && (
-              <p className="text-slate-500 dark:text-slate-400">Nothing matches “{query.trim()}”.</p>
+              <p className="text-slate-500 dark:text-slate-400">
+                {t('group.noMatches', { query: query.trim() })}
+              </p>
             )}
             {visible.map((e) => (
               <li key={e.id}>
@@ -254,11 +253,14 @@ export function GroupPage() {
                     <span className="whitespace-nowrap">{money(e.amountMinor, e.currency)}</span>
                   </div>
                   <div className="text-sm text-slate-500 dark:text-slate-400">
-                    {formatExpenseDate(e.expenseDate, settings.displayTz, settings.language)} · {e.category} · paid by{' '}
-                    {e.splits
-                      .filter((s) => s.paidMinor > 0)
-                      .map((s) => nameOf(s.userId))
-                      .join(' + ')}
+                    {t('group.expenseLine', {
+                      date: formatExpenseDate(e.expenseDate, settings.displayTz, settings.language),
+                      category: categoryLabel(t, e.category),
+                      names: e.splits
+                        .filter((s) => s.paidMinor > 0)
+                        .map((s) => nameOf(s.userId))
+                        .join(' + '),
+                    })}
                   </div>
                 </Link>
               </li>

@@ -23,6 +23,8 @@ import type { FxCacheRow } from '../db';
 import { deletePaymentLocal, upsertExpenseLocal, upsertPaymentLocal } from '../sync';
 import { uuid } from '../uuid';
 import { useMoney } from '../i18n/useMoney';
+import { useLocale, useT } from '../i18n/useT';
+import { formatExpenseDate } from '../settings';
 import { AppError } from '../i18n/errors';
 
 const toInput = (minor: number, ccy: string): string => formatMinor(minor, ccy).split(' ')[0]!;
@@ -73,6 +75,8 @@ interface Props {
 }
 
 export function BalancesTab({ group, members, expenses, payments, meId, nameOf }: Props) {
+  const t = useT();
+  const locale = useLocale();
   // Claiming a placeholder aliases it rather than rewriting history, so every
   // split and payment still names the retired id and has to be resolved here.
   // Without this the claimer's money stays attributed to nobody (design §3.4).
@@ -104,7 +108,7 @@ export function BalancesTab({ group, members, expenses, payments, meId, nameOf }
 
   return (
     <div className="flex flex-col gap-5">
-      {balances.size === 0 && <p className="text-slate-500 dark:text-slate-400">All settled up.</p>}
+      {balances.size === 0 && <p className="text-slate-500 dark:text-slate-400">{t('balances.settled')}</p>}
       {[...balances.entries()].map(([ccy, perUser]) => (
         <section key={ccy}>
           <h2 className="mb-2 font-semibold">{ccy}</h2>
@@ -118,25 +122,25 @@ export function BalancesTab({ group, members, expenses, payments, meId, nameOf }
                 </li>
               ))}
           </ul>
-          <h3 className="text-sm font-medium text-slate-500 dark:text-slate-400">Suggested settlements</h3>
+          <h3 className="text-sm font-medium text-slate-500 dark:text-slate-400">{t('balances.suggested')}</h3>
           <ul className="flex flex-col gap-1 text-sm">
-            {simplifyDebts(perUser).map((t, i) => (
+            {simplifyDebts(perUser).map((transfer, i) => (
               <li key={i} className="flex items-center gap-2">
                 <span>
-                  {nameOf(t.fromUser)} → {nameOf(t.toUser)}: {money(t.amountMinor, ccy)}
+                  {nameOf(transfer.fromUser)} → {nameOf(transfer.toUser)}: {money(transfer.amountMinor, ccy)}
                 </span>
                 <button
                   className="text-teal-700 underline"
                   onClick={() =>
                     setDraft({
-                      fromUser: t.fromUser,
-                      toUser: t.toUser,
+                      fromUser: transfer.fromUser,
+                      toUser: transfer.toUser,
                       currency: ccy,
-                      amount: toInput(t.amountMinor, ccy),
+                      amount: toInput(transfer.amountMinor, ccy),
                     })
                   }
                 >
-                  record
+                  {t('balances.record')}
                 </button>
               </li>
             ))}
@@ -153,13 +157,13 @@ export function BalancesTab({ group, members, expenses, payments, meId, nameOf }
             setDraft({ fromUser: meId, toUser: otherMember, currency: group.defaultCurrency, amount: '' })
           }
         >
-          Record a payment
+          {t('balances.recordPayment')}
         </button>
       )}
 
       {livePayments.length > 0 && (
         <section>
-          <h3 className="mb-1 text-sm font-medium text-slate-500 dark:text-slate-400">Payments</h3>
+          <h3 className="mb-1 text-sm font-medium text-slate-500 dark:text-slate-400">{t('balances.payments')}</h3>
           <ul className="flex flex-col gap-1 text-sm">
             {livePayments
               .slice()
@@ -167,18 +171,27 @@ export function BalancesTab({ group, members, expenses, payments, meId, nameOf }
               .map((p) => (
                 <li key={p.id} className="flex items-center justify-between gap-2">
                   <span>
-                    {p.paidOn}: {nameOf(p.fromUser)} paid {nameOf(p.toUser)}{' '}
-                    {money(p.amountMinor, p.currency)}
+                    {t('balances.paymentLine', {
+                      // paidOn is a plain date, which formatExpenseDate reads on
+                      // its date-only branch — no time zone to apply.
+                      date: formatExpenseDate(p.paidOn, 'device', locale),
+                      from: nameOf(p.fromUser),
+                      to: nameOf(p.toUser),
+                      amount: money(p.amountMinor, p.currency),
+                    })}
                     {p.settlesCurrency && p.settledMinor != null && (
                       <span className="text-slate-500 dark:text-slate-400">
                         {' '}
-                        (settles {money(p.settledMinor, p.settlesCurrency)} @ {p.rate})
+                        {t('balances.settles', {
+                          amount: money(p.settledMinor, p.settlesCurrency),
+                          rate: p.rate ?? '',
+                        })}
                       </span>
                     )}
                     {p.note && <span className="text-slate-500 dark:text-slate-400"> · {p.note}</span>}
                   </span>
                   <button onClick={() => void deletePaymentLocal(p)} className="text-red-500 underline">
-                    delete
+                    {t('balances.delete')}
                   </button>
                 </li>
               ))}
@@ -206,6 +219,7 @@ function PaymentForm({
   fx: FxCacheRow | null;
   onDone: () => void;
 }) {
+  const t = useT();
   const [fromUser, setFromUser] = useState(draft.fromUser);
   const [toUser, setToUser] = useState(draft.toUser);
   const [amount, setAmount] = useState(draft.amount); // in payCcy
@@ -293,12 +307,12 @@ function PaymentForm({
     <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-2 rounded border border-slate-200 dark:border-slate-700 p-3 text-sm">
       <div className="flex flex-wrap items-center gap-2">
         {select(fromUser, setFromUser)}
-        <span>paid</span>
+        <span>{t('balances.paid')}</span>
         {select(toUser, setToUser)}
         <input
           className={`${input} w-24 text-right`}
           inputMode="decimal"
-          placeholder="0.00"
+          placeholder={t('editor.amount')}
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
           required
@@ -316,11 +330,11 @@ function PaymentForm({
       </div>
       <label className="flex items-center gap-2">
         <input type="checkbox" checked={cross} onChange={toggleCross} />
-        paid in a different currency than the debt
+        {t('balances.crossCurrency')}
       </label>
       {cross && (
         <div className="flex flex-wrap items-center gap-2">
-          <span>settles</span>
+          <span>{t('balances.settlesLabel')}</span>
           <input
             className={`${input} w-24 text-right`}
             inputMode="decimal"
@@ -329,13 +343,15 @@ function PaymentForm({
             required
           />
           <span>
-            {draft.currency} of debt{fx?.day ? '' : ' (no fx suggestion available offline)'}
+            {fx?.day
+              ? t('balances.ofDebt', { currency: draft.currency })
+              : t('balances.ofDebtOffline', { currency: draft.currency })}
           </span>
         </div>
       )}
       <input
         className={input}
-        placeholder="Note (optional, e.g. 'sent via PayPal')"
+        placeholder={t('balances.paymentNote')}
         value={note}
         onChange={(e) => setNote(e.target.value)}
         maxLength={2000}
@@ -343,10 +359,10 @@ function PaymentForm({
       {error && <p className="text-red-600">{error}</p>}
       <div className="flex gap-2">
         <button className="self-start rounded bg-teal-700 px-3 py-1.5 font-medium text-white">
-          Record payment
+          {t('balances.submitPayment')}
         </button>
         <button type="button" onClick={onDone} className="text-slate-500 dark:text-slate-400 underline">
-          cancel
+          {t('editor.cancel')}
         </button>
       </div>
     </form>
@@ -366,6 +382,7 @@ function ConvertSection({
   meId: string;
   fx: FxCacheRow | null;
 }) {
+  const t = useT();
   const currenciesInUse = useMemo(
     () =>
       [
@@ -428,10 +445,14 @@ function ConvertSection({
         await upsertPaymentLocal(convertPayment(toUpsertPayment(p), from, to, r), meId);
         converted += 1;
       }
+      // Two whole sentences rather than one built from clauses: the skipped
+      // part is optional, and a language that puts it elsewhere cannot if it
+      // only ever gets handed a fragment to append.
       setDone(
-        `Converted ${converted} entr${converted === 1 ? 'y' : 'ies'} ${from}→${to}` +
-          (skipped ? `, skipped ${skipped} (no rate available)` : '') +
-          ' — revertable in history.',
+        [
+          t('balances.converted', { count: converted, from, to }),
+          ...(skipped ? [t('balances.convertSkipped', { count: skipped })] : []),
+        ].join(' '),
       );
       setFrom('');
     } catch (err) {
@@ -442,10 +463,10 @@ function ConvertSection({
   const input = 'rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-2 py-1';
   return (
     <section className="rounded border border-slate-200 dark:border-slate-700 p-3 text-sm">
-      <h3 className="mb-2 font-medium text-slate-500 dark:text-slate-400">Convert old entries</h3>
+      <h3 className="mb-2 font-medium text-slate-500 dark:text-slate-400">{t('balances.convertOld')}</h3>
       <form onSubmit={(e) => void convert(e)} className="flex flex-wrap items-center gap-2">
         <select className={input} value={from} onChange={(e) => setFrom(e.target.value)}>
-          <option value="">from…</option>
+          <option value="">{t('balances.from')}</option>
           {currenciesInUse.map((c) => (
             <option key={c}>{c}</option>
           ))}
@@ -458,11 +479,11 @@ function ConvertSection({
         </select>
         <label className="flex items-center gap-1">
           <input type="checkbox" checked={useGlobalRate} onChange={(e) => setUseGlobalRate(e.target.checked)} />
-          one rate for all
+          {t('balances.oneRate')}
         </label>
         {useGlobalRate && (
           <label className="flex items-center gap-1">
-            at rate
+            {t('balances.atRate')}
             <input
               className={`${input} w-28 text-right`}
               inputMode="decimal"
@@ -477,12 +498,12 @@ function ConvertSection({
           disabled={!from || count === 0}
           className="rounded bg-teal-700 px-3 py-1.5 font-medium text-white disabled:opacity-50"
         >
-          Convert {from ? `${count} entr${count === 1 ? 'y' : 'ies'}` : ''}
+          {from ? t('balances.convertCount', { count }) : t('balances.convert')}
         </button>
       </form>
       {!useGlobalRate && (
         <p className="mt-1 text-xs text-slate-400">
-          Uses each entry's saved rate when converting to {group.defaultCurrency}; otherwise today's cached rate.
+          {t('balances.savedRateNote', { currency: group.defaultCurrency })}
         </p>
       )}
       {error && <p className="mt-1 text-red-600">{error}</p>}

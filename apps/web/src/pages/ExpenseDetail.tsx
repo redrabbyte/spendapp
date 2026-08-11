@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { aliasResolver, convertExpense, formatMinor, resolveSplits, type UpsertExpense } from '@spendapp/shared';
+import { aliasResolver, convertExpense, resolveSplits, type UpsertExpense } from '@spendapp/shared';
 import { openComment } from '../envelope';
 import { useAuth } from '../auth';
 import { localDb, type FxCacheRow } from '../db';
@@ -14,11 +14,14 @@ import { SyncPendingBadge } from '../components/SyncPendingBadge';
 import { usePendingExpenseIds } from '../pending';
 import { formatExpenseDate, useSettings } from '../settings';
 import { useMoney } from '../i18n/useMoney';
+import { useLocale, useT } from '../i18n/useT';
+import { categoryLabel } from '../i18n/categories';
 import { AppError } from '../i18n/errors';
 
 export function ExpenseDetailPage() {
   const { groupId, expenseId } = useParams<{ groupId: string; expenseId: string }>();
   const { user } = useAuth();
+  const t = useT();
   const navigate = useNavigate();
   const [editing, setEditing] = useState(false);
 
@@ -42,8 +45,8 @@ export function ExpenseDetailPage() {
   const resolve = useMemo(() => aliasResolver(members ?? []), [members]);
   const nameOf = useMemo(() => {
     const map = new Map((members ?? []).map((m) => [m.userId, m.displayName]));
-    return (id: string) => map.get(resolve(id)) ?? map.get(id) ?? '(former member)';
-  }, [members, resolve]);
+    return (id: string) => map.get(resolve(id)) ?? map.get(id) ?? t('group.formerMember');
+  }, [members, resolve, t]);
 
   // Folded, not just renamed: if the claimer was already on this expense the
   // table would otherwise list the same person twice.
@@ -69,7 +72,7 @@ export function ExpenseDetailPage() {
     if (!expense || !group || !user) return;
     const def = group.defaultCurrency;
     const rate = expense.rateToDefault ?? suggestRate(fx, expense.currency, def);
-    if (!rate) return setConvError(`No saved or cached rate to convert ${expense.currency} → ${def}.`);
+    if (!rate) return setConvError(t('expense.noRate', { from: expense.currency, to: def }));
     const toUpsert: UpsertExpense = {
       id: expense.id,
       groupId: expense.groupId,
@@ -121,14 +124,14 @@ export function ExpenseDetailPage() {
 
   if (!user) return null;
   if (group === undefined || expense === undefined || !members || !activity) {
-    return <p className="text-slate-500 dark:text-slate-400">Loading…</p>;
+    return <p className="text-slate-500 dark:text-slate-400">{t('group.loading')}</p>;
   }
   if (!group || !expense || expense.deletedAt) {
     return (
       <div className="flex flex-col gap-3">
-        <p className="text-slate-500 dark:text-slate-400">This expense is no longer here.</p>
+        <p className="text-slate-500 dark:text-slate-400">{t('expense.gone')}</p>
         <Link to={groupId ? `/g/${groupId}` : '/'} className="text-teal-700 underline">
-          ← back to group
+          {t('expense.backToGroup')}
         </Link>
       </div>
     );
@@ -147,15 +150,22 @@ export function ExpenseDetailPage() {
             {pending.has(expense.id) && <SyncPendingBadge />}
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            {formatExpenseDate(expense.expenseDate, displayTz, language)} · {expense.category}
+            {t('expense.line', {
+              date: formatExpenseDate(expense.expenseDate, displayTz, language),
+              category: categoryLabel(t, expense.category),
+            })}
           </p>
         </div>
         <span className="flex flex-col items-end whitespace-nowrap">
           <span className="text-lg font-medium">{money(expense.amountMinor, expense.currency)}</span>
           {expense.currency !== group.defaultCurrency && (
             <button onClick={() => void convertToDefault()} className="text-xs text-teal-700 underline">
-              convert to {group.defaultCurrency}
-              {expense.rateToDefault ? ` @ ${expense.rateToDefault}` : ''}
+              {expense.rateToDefault
+                ? t('expense.convertToAt', {
+                    currency: group.defaultCurrency,
+                    rate: expense.rateToDefault,
+                  })
+                : t('expense.convertTo', { currency: group.defaultCurrency })}
             </button>
           )}
         </span>
@@ -165,13 +175,13 @@ export function ExpenseDetailPage() {
       {expense.note && <p className="rounded bg-slate-50 dark:bg-slate-800/60 p-2 text-sm text-slate-700 dark:text-slate-200">{expense.note}</p>}
 
       <section>
-        <h2 className="mb-1 text-sm font-medium text-slate-500 dark:text-slate-400">Split</h2>
+        <h2 className="mb-1 text-sm font-medium text-slate-500 dark:text-slate-400">{t('editor.split')}</h2>
         <table className="w-full text-sm">
           <thead>
             <tr className="text-slate-400">
               <th className="text-left font-normal"></th>
-              <th className="w-28 text-right font-normal">paid</th>
-              <th className="w-28 text-right font-normal">owes</th>
+              <th className="w-28 text-right font-normal">{t('editor.paid')}</th>
+              <th className="w-28 text-right font-normal">{t('editor.owes')}</th>
             </tr>
           </thead>
           <tbody>
@@ -191,14 +201,14 @@ export function ExpenseDetailPage() {
       </section>
 
       <section>
-        <h2 className="mb-1 text-sm font-medium text-slate-500 dark:text-slate-400">Photos</h2>
+        <h2 className="mb-1 text-sm font-medium text-slate-500 dark:text-slate-400">{t('expense.photos')}</h2>
         <AttachmentRow expense={expense} meId={user.id} />
       </section>
 
       <section>
         <div className="flex items-center gap-3">
           <button onClick={() => setEditing((v) => !v)} className="text-sm text-teal-700 underline">
-            {editing ? 'close editor' : 'edit'}
+            {editing ? t('expense.closeEditor') : t('expense.edit')}
           </button>
           <button
             onClick={() => {
@@ -207,7 +217,7 @@ export function ExpenseDetailPage() {
             }}
             className="text-sm text-red-500 underline"
           >
-            delete
+            {t('expense.delete')}
           </button>
         </div>
         {editing && (
@@ -224,13 +234,13 @@ export function ExpenseDetailPage() {
       </section>
 
       <section>
-        <h2 className="mb-1 text-sm font-medium text-slate-500 dark:text-slate-400">Comments</h2>
+        <h2 className="mb-1 text-sm font-medium text-slate-500 dark:text-slate-400">{t('expense.comments')}</h2>
         <CommentList comments={comments} nameOf={nameOf} />
         <CommentForm expenseId={expense.id} meId={user.id} />
       </section>
 
       <section>
-        <h2 className="mb-1 text-sm font-medium text-slate-500 dark:text-slate-400">History</h2>
+        <h2 className="mb-1 text-sm font-medium text-slate-500 dark:text-slate-400">{t('expense.history')}</h2>
         <VersionLog activity={activity} expense={expense} meId={user.id} nameOf={nameOf} />
       </section>
     </div>
@@ -244,18 +254,20 @@ function CommentList({
   comments: { id: string; actorId: string; createdAt: string; text: string | null }[];
   nameOf: (id: string) => string;
 }) {
-  if (comments.length === 0) return <p className="text-sm text-slate-400">No comments yet.</p>;
+  const t = useT();
+  const locale = useLocale();
+  if (comments.length === 0) return <p className="text-sm text-slate-400">{t('expense.noComments')}</p>;
   return (
     <ul className="mb-2 flex flex-col gap-2 text-sm">
       {comments.map((c) => (
         <li key={c.id}>
           <span className="font-medium">{nameOf(c.actorId)}</span>{' '}
           <span className="text-slate-400">
-            {new Date(c.createdAt).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
+            {new Date(c.createdAt).toLocaleString(locale, { dateStyle: 'short', timeStyle: 'short' })}
           </span>
           {/* A body that will not open is said so, not shown blank. */}
           {c.text === null ? (
-            <p className="text-slate-400 italic">Cannot be read on this device.</p>
+            <p className="text-slate-400 italic">{t('expense.unreadableComment')}</p>
           ) : (
             <p className="text-slate-700 dark:text-slate-200">{c.text}</p>
           )}
@@ -266,6 +278,7 @@ function CommentList({
 }
 
 function CommentForm({ expenseId, meId }: { expenseId: string; meId: string }) {
+  const t = useT();
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -288,12 +301,12 @@ function CommentForm({ expenseId, meId }: { expenseId: string; meId: string }) {
     <form onSubmit={(e) => void submit(e)} className="flex gap-2">
       <input
         className="grow rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-3 py-1.5 text-sm"
-        placeholder="Add a comment…"
+        placeholder={t('expense.addComment')}
         value={text}
         onChange={(e) => setText(e.target.value)}
         maxLength={2000}
       />
-      <button className="rounded bg-teal-700 px-3 py-1.5 text-sm font-medium text-white">Post</button>
+      <button className="rounded bg-teal-700 px-3 py-1.5 text-sm font-medium text-white">{t('expense.post')}</button>
       {error && <span className="text-sm text-red-600">{error}</span>}
     </form>
   );
