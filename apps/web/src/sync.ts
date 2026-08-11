@@ -43,6 +43,18 @@ export const SESSION_ENDED_EVENT = 'app:session-ended';
 let sessionEnded = false;
 
 /**
+ * Stop syncing now, without waiting to be told by a 401.
+ *
+ * Logging out calls this first thing. Otherwise the poll carries on through
+ * the teardown, and the moment the server drops the session it answers 401 —
+ * which signs the app out under the cover and puts the login screen up behind
+ * it, while the logout it is reporting on is still running.
+ */
+export function stopSync(): void {
+  sessionEnded = true;
+}
+
+/**
  * Whether a sync has finished since the app started — success or failure.
  *
  * The group list needs this to tell "nothing here yet" from "nothing here
@@ -57,11 +69,12 @@ export function onSyncSettled(listener: () => void): () => void {
   settledListeners.add(listener);
   return () => settledListeners.delete(listener);
 }
-function markSettled(): void {
-  if (settled) return;
-  settled = true;
+function setSettled(next: boolean): void {
+  if (settled === next) return;
+  settled = next;
   for (const listener of settledListeners) listener();
 }
+const markSettled = (): void => setSettled(true);
 let timer: number | undefined;
 
 export function scheduleSync(delayMs = 2000): void {
@@ -233,9 +246,15 @@ export async function syncNow(): Promise<void> {
     // Offline or server hiccup: keep the queue, try again on the next trigger.
     console.debug('sync deferred:', (err as Error).message);
   } finally {
-    // Settled either way. A failed attempt means offline, and claiming to
-    // still be loading would be its own lie.
-    markSettled();
+    // Not when another pass is already queued. The rewind above returns before
+    // a single row reaches the mirror, and that is the pass a fresh sign-in
+    // always makes: keys arrive, the cursors go back, and nothing has been
+    // written yet. Calling that finished is exactly the moment the group list
+    // would announce there are no groups.
+    //
+    // A failed attempt does settle: it means offline, and claiming to still be
+    // loading would be its own lie.
+    if (!runAgain) markSettled();
     syncing = false;
     if (runAgain) {
       runAgain = false;
@@ -262,6 +281,11 @@ export function startSyncLoop(): void {
   // Called again whenever somebody signs in, so a fresh session revives a loop
   // that a 401 stopped — the listeners below are still registered.
   sessionEnded = false;
+  // And a new session has not looked at anything yet. Without this, signing
+  // back in after a session ended mid-visit inherits the last one's answer:
+  // the document never reloaded, so the group list would report the empty
+  // mirror as "no groups" before the first pull of the new session returned.
+  setSettled(false);
   if (loopStarted) return;
   loopStarted = true;
   window.addEventListener('online', () => scheduleSync(0));

@@ -66,6 +66,25 @@ test('logging out arrives there even when the local wipe never finishes', async 
   await expect(page.getByRole('button', { name: 'Log in', exact: true })).toBeVisible();
 });
 
+test('a logout request that never answers still ends at the login screen', async ({ page, api }) => {
+  // The one unbounded step there was. `fetch` has no timeout, so on a
+  // connection that has quietly died this hangs for minutes — and everything
+  // that ends the logout sat behind it, including the redirect. The cover
+  // stayed up over an app that had stopped doing anything.
+  await page.route('**/api/auth/logout', () => {
+    /* never fulfilled, never aborted — exactly what a dead connection does */
+  });
+  await signedInWithAGroup(page, api);
+
+  await page.getByRole('button', { name: 'Log out' }).click();
+  await expect(page.getByText('Logging out and clearing this device')).toBeVisible();
+
+  // Gives up on the request rather than on the reader.
+  await page.waitForURL(/\/login/, { timeout: 20_000 });
+  await expect(page.getByRole('button', { name: 'Log in', exact: true })).toBeVisible();
+  await expect(page.getByText('Logging out and clearing this device')).toHaveCount(0);
+});
+
 test('the group list says it is loading rather than that there is nothing', async ({ page, api }) => {
   seedGroup(api, GROUP, 'Trip', [
     { userId: ME.id, displayName: ME.displayName, isPlaceholder: false, role: 'admin' },

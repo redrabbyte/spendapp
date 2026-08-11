@@ -4,7 +4,7 @@ import { wipeLocalDb } from './db';
 import { useT } from './i18n/useT';
 import { forgetKeys } from './keys';
 import { disablePush } from './push';
-import { SESSION_ENDED_EVENT, startSyncLoop } from './sync';
+import { SESSION_ENDED_EVENT, startSyncLoop, stopSync } from './sync';
 import type { Me } from './types';
 
 interface AuthState {
@@ -101,6 +101,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * The explicit wipe is the belt to that pair of braces.
    */
   const WIPE_BUDGET_MS = 1_500;
+  /**
+   * And how long the whole teardown may take before the redirect goes anyway.
+   *
+   * The logout request has no timeout of its own, so on a connection that has
+   * quietly died it can hang for minutes. That is what left the cover up: the
+   * `finally` below never ran, so nothing ever navigated.
+   *
+   * Giving up on it is not free — the session may outlive the request, and a
+   * cookie that still works would sign this device back in. But that was
+   * already true of any failed logout, since the call has always been
+   * best-effort, and an app frozen behind a spinner is the worse of the two.
+   */
+  const TEARDOWN_BUDGET_MS = 8_000;
   const after = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
   const logout = useCallback(async () => {
@@ -116,20 +129,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Before the first await, so the cover is painted while the work below
     // runs rather than after it.
     setLoggingOut(true);
+    // Before anything can answer 401 and sign the app out underneath the
+    // cover, which is how the login screen ended up behind it.
+    stopSync();
     // Synchronously too: whatever happens to the calls below, this device must
     // not come back holding a session it has been told to forget.
     localStorage.removeItem(CACHE_KEY);
     forgetKeys(); // the in-memory copy outlives the database wipe otherwise
     try {
-      await disablePush().catch(() => {});
-      await api('/api/auth/logout', { method: 'POST' }).catch(() => {});
-      await Promise.race([wipeLocalDb().catch(() => {}), after(WIPE_BUDGET_MS)]);
+      await Promise.race([
+        (async () => {
+          await disablePush().catch(() => {});
+          await api('/api/auth/logout', { method: 'POST' }).catch(() => {});
+          await Promise.race([wipeLocalDb().catch(() => {}), after(WIPE_BUDGET_MS)]);
+        })(),
+        after(TEARDOWN_BUDGET_MS),
+      ]);
     } finally {
-      // In a finally, so no failure or hang above can strand somebody inside
-      // an app they have already logged out of.
+      // Signed out in the app itself, not only on the server. The reload below
+      // is a clean-slate measure — it resets the module state a re-login would
+      // otherwise inherit — but it is not what the reader is waiting for, and
+      // it can take a while: `clear-site-data` has just unregistered the
+      // service worker, so fetching the login page goes to the network.
+      //
+      // Which is why the cover comes down here rather than at the reload. It
+      // was outliving its job: the router had already put the login screen up
+      // underneath it, and it sat on top of a screen that was finished.
+      setUser(null);
+      setLoggingOut(false);
       location.assign('/login');
     }
-  }, []);
+  }, [setUser]);
 
   return (
     <AuthContext.Provider value={{ user, loading, setUser, logout }}>
