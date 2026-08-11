@@ -30,6 +30,13 @@ notifications, and a full audit trail with revert.
 - **Insight** — per-person spending, category breakdown, monthly trend
   (per currency or display-converted); CSV export.
 - **Push notifications** — Web Push on expense/payment/member events.
+- **English and German** — chosen in settings, guessed from the browser on
+  first run, and remembered. Money and dates follow the chosen language
+  rather than the browser's locale. The server sends error *codes*, never
+  prose, so every word a user reads comes from the client — including inside
+  the service worker, which renders notification bodies itself. The privacy
+  policy is English only, deliberately: it is a legal text and a machine
+  translation of one would be worse than none.
 - All money is integer minor units; split math is largest-remainder exact.
   The **client** re-validates every invariant on read and on
   write — the server cannot, because it cannot see inside an expense.
