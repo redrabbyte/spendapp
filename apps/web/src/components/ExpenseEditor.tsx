@@ -403,6 +403,12 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
   }
 
   const input = 'rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-3 py-2';
+  // Tighter than the rest. The unit is three letters and an arrow, and at the
+  // usual padding it was wide enough to push the scan button onto a line of
+  // its own on a 360px handset. Its own constant rather than `${input} px-2`,
+  // because two padding utilities on one element are resolved by their order
+  // in the stylesheet, not in the attribute.
+  const unitSelect = 'rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-2 py-2';
   const smallInput = 'w-24 rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-2 py-1 text-right';
   return (
     <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-2 rounded border border-slate-200 dark:border-slate-700 p-3">
@@ -416,7 +422,10 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
           maxLength={200}
         />
         <input
-          className={`${input} w-28 ${multiPayer ? 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400' : ''}`}
+          // Room for seven digits. Wider than that only bought space nobody
+          // types into, and it was pushing the currency and the scan button
+          // onto a line of their own on narrower phones.
+          className={`${input} w-24 ${multiPayer ? 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400' : ''}`}
           placeholder={t('editor.amount')}
           inputMode="decimal"
           value={amount}
@@ -428,7 +437,7 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
           title={multiPayer ? t('editor.totalIsSum') : undefined}
           required
         />
-        <select className={input} value={currency} onChange={(e) => setCurrency(e.target.value)}>
+        <select className={unitSelect} value={currency} onChange={(e) => setCurrency(e.target.value)}>
           {[...new Set([currency, group.defaultCurrency, ...COMMON_CURRENCIES])].map((c) => (
             <option key={c}>{c}</option>
           ))}

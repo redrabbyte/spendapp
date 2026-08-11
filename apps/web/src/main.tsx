@@ -38,7 +38,12 @@ const updateSW = registerSW({
   },
   onRegisteredSW(_url, registration) {
     if (!registration) return;
-    let last = 0;
+    // Seeded a full gap in the past, not at zero. `performance.now()` counts
+    // from page load, so `last = 0` put the first twenty seconds of every
+    // page's life inside the throttle window: the check fired when the app was
+    // opened, was dropped as too soon, and nothing looked again until the
+    // interval came round a minute later.
+    let last = -MIN_CHECK_GAP_MS;
     const check = () => {
       if (document.hidden) return;
       const now = performance.now();

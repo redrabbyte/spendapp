@@ -102,6 +102,28 @@ test('a code of the wrong kind changes nothing', async ({ page, api }) => {
   await expect(page.getByPlaceholder('0.00')).toHaveValue('9.99');
 });
 
+test('the amount, the unit and the scan button share a line on a narrow phone', async ({ page, api }) => {
+  // 360px, narrower than the suite's default handset — which is where this
+  // last broke, and where measuring beats looking at one screenshot.
+  await page.setViewportSize({ width: 360, height: 740 });
+  await stubScanner(page, null);
+  await openGroup(page, api);
+
+  const top = async (l: import('@playwright/test').Locator) => Math.round((await l.boundingBox())!.y);
+  const amount = page.getByPlaceholder('0.00');
+  // Seven digits: the width the amount field is cut to, and more than any
+  // shared expense needs.
+  await amount.fill('1234567');
+
+  const unit = page.getByRole('combobox').filter({ hasText: 'EUR' });
+  const scan = page.getByRole('button', { name: /^Scan/ });
+  expect(await top(unit)).toBe(await top(amount));
+  expect(await top(scan)).toBe(await top(amount));
+
+  // Typed digits are not cut off by the narrower field.
+  await expect(amount).toHaveValue('1234567');
+});
+
 test('the small print appears with the camera, not before it', async ({ page, api }) => {
   // A detector that finds nothing, so the camera view stays open to be looked
   // at. With a code to find it would close on the first frame.
