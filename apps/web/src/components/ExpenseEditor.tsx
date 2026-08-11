@@ -519,7 +519,9 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
               key={key}
               type="button"
               onClick={() => setMode(key)}
-              className={`mr-1 rounded px-2 py-0.5 ${
+              // my-0.5: four of these wrap to two rows on a phone, and inline
+              // buttons with only a right margin end up stacked edge to edge.
+              className={`mr-1 my-0.5 rounded px-2 py-0.5 ${
                 mode === key ? 'bg-teal-700 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
               }`}
             >
