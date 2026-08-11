@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { useAuth } from '../auth';
 import { KEYS_CACHED_EVENT, loadKeys, unlock } from '../keys';
 import { syncNow } from '../sync';
+import { useT } from '../i18n/useT';
 
 /**
  * A session can outlive the keys it needs: a second browser, cleared site
@@ -17,6 +18,7 @@ import { syncNow } from '../sync';
  */
 export function UnlockPrompt() {
   const { user, logout } = useAuth();
+  const t = useT();
   const { pathname } = useLocation();
   const [needed, setNeeded] = useState(false);
   const [password, setPassword] = useState('');
@@ -67,15 +69,14 @@ export function UnlockPrompt() {
         onSubmit={(e) => void submit(e)}
         className="flex w-full max-w-sm flex-col gap-3 rounded bg-white p-5 dark:bg-slate-900"
       >
-        <h2 className="text-lg font-semibold">Unlock this device</h2>
+        <h2 className="text-lg font-semibold">{t('unlock.title')}</h2>
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          You are signed in as <strong>{username}</strong>, but this device has no keys. Your password is the
-          only thing that can rebuild them — the server cannot.
+          {t('unlock.explain', { username })}
         </p>
         <input
           className="rounded border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-800"
           type="password"
-          placeholder="Password"
+          placeholder={t('unlock.password')}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
@@ -87,7 +88,7 @@ export function UnlockPrompt() {
           disabled={busy}
           className="rounded bg-teal-700 px-3 py-2 font-medium text-white disabled:opacity-50"
         >
-          {busy ? 'Unlocking…' : 'Unlock'}
+          {busy ? t('unlock.working') : t('unlock.submit')}
         </button>
         <button
           type="button"
@@ -95,7 +96,7 @@ export function UnlockPrompt() {
           onClick={() => void logout()}
           className="text-sm text-slate-500 underline dark:text-slate-400"
         >
-          Log out instead
+          {t('unlock.logout')}
         </button>
       </form>
     </div>

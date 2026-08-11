@@ -37,13 +37,13 @@ export const en = {
   'account.saved': 'Saved.',
 
   // --- app shell ----------------------------------------------------------
-  'sync.pending': 'Not synced yet â this change was made offline and will upload when you are back online.',
+  'sync.pending': 'Not synced yet — this change was made offline and will upload when you are back online.',
 
   'invalid.summary': {
     one: '{count} entry does not add up and is left out of every total here.',
     other: '{count} entries do not add up and are left out of every total here.',
   },
-  'invalid.item': 'last written by {author} â {reason}',
+  'invalid.item': 'last written by {author} — {reason}',
   'invalid.hint': 'Ask them to open it and save it again. Until then the group’s totals are short by whatever it held.',
 
   'push.unavailable': 'Push is not configured on this server (no VAPID keys).',
@@ -62,6 +62,32 @@ export const en = {
   'gap.charts': 'These charts cover only what you can read, so totals and categories start from when you joined.',
   'gap.activity': 'The history starts when you joined. Earlier entries, comments and receipts are not shown.',
   'gap.members': 'You joined partway through, so you cannot pass this group’s full history on to anyone new.',
+
+  // --- unlocking and passwords --------------------------------------------
+  'unlock.title': 'Unlock this device',
+  'unlock.explain': 'You are signed in as {username}, but this device has no keys. Your password is the only thing that can rebuild them — the server cannot.',
+  'unlock.password': 'Password',
+  'unlock.submit': 'Unlock',
+  'unlock.working': 'Unlocking…',
+  'unlock.logout': 'Log out instead',
+
+  'password.title': 'Password',
+  'password.change': 'Change password',
+  'password.current': 'Current password',
+  'password.new': 'New password (min. 10 characters)',
+  'password.save': 'Save new password',
+  'password.saving': 'Re-keying…',
+  'password.cancel': 'Cancel',
+  'password.changed': 'Password changed. Your other devices will ask for the new one.',
+  'password.noReset': 'There is no reset — the server cannot read your data, so it cannot restore access either.',
+
+  'install.title': 'Install SpendApp?',
+  'install.ios': 'Share → Add to Home Screen',
+  'install.why': 'Installed, it opens straight from your home screen and keeps working without a connection — add expenses offline and they sync when you are back.',
+  'install.manual': 'Tap Share (the square with an arrow) at the bottom of the browser, then “Add to Home Screen”.',
+  'install.gotIt': 'Got it',
+  'install.install': 'Install',
+  'install.later': 'Not now',
 
   // --- push -------------------------------------------------------------
   // Written here rather than on the server, which has no idea who is reading.

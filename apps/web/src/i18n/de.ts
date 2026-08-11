@@ -60,6 +60,32 @@ export const de: Catalogue = {
   'gap.activity': 'Der Verlauf beginnt mit deinem Beitritt. Frühere Einträge, Kommentare und Belege werden nicht angezeigt.',
   'gap.members': 'Du bist erst später dazugekommen und kannst den vollen Verlauf dieser Gruppe deshalb nicht an neue Mitglieder weitergeben.',
 
+  // --- unlocking and passwords --------------------------------------------
+  'unlock.title': 'Dieses Gerät entsperren',
+  'unlock.explain': 'Du bist als {username} angemeldet, aber auf diesem Gerät liegen keine Schlüssel. Nur dein Passwort kann sie wiederherstellen — der Server kann es nicht.',
+  'unlock.password': 'Passwort',
+  'unlock.submit': 'Entsperren',
+  'unlock.working': 'Wird entsperrt…',
+  'unlock.logout': 'Stattdessen abmelden',
+
+  'password.title': 'Passwort',
+  'password.change': 'Passwort ändern',
+  'password.current': 'Aktuelles Passwort',
+  'password.new': 'Neues Passwort (mind. 10 Zeichen)',
+  'password.save': 'Neues Passwort speichern',
+  'password.saving': 'Schlüssel werden erneuert…',
+  'password.cancel': 'Abbrechen',
+  'password.changed': 'Passwort geändert. Deine anderen Geräte fragen nach dem neuen.',
+  'password.noReset': 'Es gibt kein Zurücksetzen — der Server kann deine Daten nicht lesen und den Zugriff deshalb auch nicht wiederherstellen.',
+
+  'install.title': 'SpendApp installieren?',
+  'install.ios': 'Teilen → Zum Home-Bildschirm',
+  'install.why': 'Installiert öffnet sie direkt vom Startbildschirm und funktioniert auch ohne Verbindung — trag Ausgaben offline ein, sie werden synchronisiert, sobald du wieder online bist.',
+  'install.manual': 'Tippe unten im Browser auf Teilen (das Quadrat mit dem Pfeil) und dann auf „Zum Home-Bildschirm“.',
+  'install.gotIt': 'Alles klar',
+  'install.install': 'Installieren',
+  'install.later': 'Jetzt nicht',
+
   // --- push -------------------------------------------------------------
   'push.expense.saved': '{actor} hat eine Ausgabe hinzugefügt oder geändert',
   'push.expense.deleted': '{actor} hat eine Ausgabe gelöscht',

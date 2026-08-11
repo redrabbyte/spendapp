@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../auth';
 import { promptInstall, useInstallState } from '../install';
+import { useT } from '../i18n/useT';
 
 /**
  * Shown after every sign-in, suggesting the app be installed.
@@ -11,6 +12,7 @@ import { promptInstall, useInstallState } from '../install';
  */
 export function InstallPrompt() {
   const { user } = useAuth();
+  const t = useT();
   const state = useInstallState();
   // Seeded from the value at mount, so resuming a cached session (an offline
   // cold start) is not mistaken for a sign-in.
@@ -35,20 +37,18 @@ export function InstallPrompt() {
         className="mt-16 flex w-full max-w-sm flex-col gap-3 rounded-lg bg-white p-5 shadow-xl dark:bg-slate-900"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-lg font-semibold">Install SpendApp?</h2>
+        <h2 className="text-lg font-semibold">{t('install.title')}</h2>
         <p className="text-sm text-slate-600 dark:text-slate-300">
-          Installed, it opens straight from your home screen and keeps working without a connection — add
-          expenses offline and they sync when you are back.
+          {t('install.why')}
         </p>
 
         {state === 'manual' ? (
           <>
             <p className="rounded bg-slate-100 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-              Tap <strong>Share</strong> (the square with an arrow) at the bottom of the browser, then{' '}
-              <strong>Add to Home Screen</strong>.
+              {t('install.manual')}
             </p>
             <button onClick={close} className="rounded bg-teal-700 px-3 py-2 font-medium text-white">
-              Got it
+              {t('install.gotIt')}
             </button>
           </>
         ) : (
@@ -57,10 +57,10 @@ export function InstallPrompt() {
               onClick={() => void promptInstall().finally(close)}
               className="rounded bg-teal-700 px-3 py-2 font-medium text-white"
             >
-              Install
+              {t('install.install')}
             </button>
             <button onClick={close} className="px-3 py-2 text-sm text-slate-500 underline dark:text-slate-400">
-              Not now
+              {t('install.later')}
             </button>
           </div>
         )}

@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useAuth } from '../auth';
 import { changePassword } from '../keys';
+import { useT } from '../i18n/useT';
 
 /**
  * Changing the password re-derives the KEK and re-wraps the identity key under
@@ -13,6 +14,7 @@ import { changePassword } from '../keys';
  */
 export function ChangePassword() {
   const { user } = useAuth();
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
@@ -32,7 +34,7 @@ export function ChangePassword() {
       setCurrent('');
       setNext('');
       setOpen(false);
-      setNote('Password changed. Your other devices will ask for the new one.');
+      setNote(t('password.changed'));
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -45,14 +47,14 @@ export function ChangePassword() {
 
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Password</span>
+      <span className="text-sm font-medium text-slate-500 dark:text-slate-400">{t('password.title')}</span>
       {note && <p className="text-xs text-teal-700 dark:text-teal-300">{note}</p>}
       {open ? (
         <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-2">
           <input
             className={input}
             type="password"
-            placeholder="Current password"
+            placeholder={t('password.current')}
             value={current}
             onChange={(e) => setCurrent(e.target.value)}
             required
@@ -61,7 +63,7 @@ export function ChangePassword() {
           <input
             className={input}
             type="password"
-            placeholder="New password (min. 10 characters)"
+            placeholder={t('password.new')}
             value={next}
             onChange={(e) => setNext(e.target.value)}
             required
@@ -74,7 +76,7 @@ export function ChangePassword() {
               disabled={busy}
               className="rounded bg-teal-700 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
             >
-              {busy ? 'Re-keying…' : 'Save new password'}
+              {busy ? t('password.saving') : t('password.save')}
             </button>
             <button
               type="button"
@@ -85,11 +87,11 @@ export function ChangePassword() {
               }}
               className="rounded border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-600"
             >
-              Cancel
+              {t('password.cancel')}
             </button>
           </div>
           <p className="text-xs text-slate-400">
-            There is no reset — the server cannot read your data, so it cannot restore access either.
+            {t('password.noReset')}
           </p>
         </form>
       ) : (
@@ -97,7 +99,7 @@ export function ChangePassword() {
           onClick={() => setOpen(true)}
           className="self-start rounded border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-600"
         >
-          Change password
+          {t('password.change')}
         </button>
       )}
     </div>
