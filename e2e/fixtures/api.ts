@@ -137,6 +137,11 @@ export interface ApiState {
   profile: { displayName?: string; username?: string };
   /** Usernames the mock treats as already registered, for the 409 path. */
   takenUsernames: string[];
+  /** What GET /api/push/vapid serves. null = push not configured on this server. */
+  vapidPublicKey: string | null;
+  /** Endpoints the client subscribed and unsubscribed, in order. */
+  pushSubscribed: string[];
+  pushUnsubscribed: string[];
   /** Bodies rejected by schema validation — a non-empty list is a failure. */
   rejected: { url: string; error: string }[];
 }
@@ -166,6 +171,9 @@ export function createState(overrides: Partial<ApiState> = {}): ApiState {
     deleted: false,
     profile: {},
     takenUsernames: [],
+    vapidPublicKey: null,
+    pushSubscribed: [],
+    pushUnsubscribed: [],
     rejected: [],
     ...overrides,
   };
@@ -477,6 +485,18 @@ export async function installApi(context: BrowserContext, state: ApiState): Prom
       state.deleted = true;
       state.signedIn = false;
       return json(route, { status: 'deleted' });
+    }
+
+    if (path === '/api/push/vapid') {
+      if (!state.signedIn) return json(route, { error: 'authentication_required' }, 401);
+      return json(route, { publicKey: state.vapidPublicKey });
+    }
+
+    if (path === '/api/push/subscribe') {
+      if (!state.signedIn) return json(route, { error: 'authentication_required' }, 401);
+      const { endpoint } = body() as { endpoint?: string };
+      (method === 'DELETE' ? state.pushUnsubscribed : state.pushSubscribed).push(endpoint ?? '');
+      return json(route, { ok: true });
     }
 
     if (path === '/api/me' && method === 'PATCH') {

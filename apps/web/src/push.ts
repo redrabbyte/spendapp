@@ -21,6 +21,25 @@ export async function getPushState(): Promise<PushState> {
 export async function enablePush(): Promise<PushState> {
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') return 'denied';
+  return subscribePush();
+}
+
+/**
+ * Subscribe without asking for anything.
+ *
+ * Split out of `enablePush` for the one case where the permission is already
+ * granted — logging back in, since `clear-site-data` wipes the subscription
+ * along with the service worker but never touches the permission grant. Here
+ * `subscribe()` puts nothing on screen, so the offer can be skipped entirely.
+ *
+ * Only ever call this having *read* `Notification.permission` and found
+ * 'granted'. From 'default', `subscribe()` raises the permission prompt
+ * itself, which is the UI this exists to avoid.
+ *
+ * Throws rather than reporting failure, so a caller cannot quietly treat a
+ * failed subscription as a working one.
+ */
+export async function subscribePush(): Promise<PushState> {
   const { publicKey } = await api<{ publicKey: string | null }>('/api/push/vapid');
   if (!publicKey) return 'unavailable';
   const reg = await navigator.serviceWorker.ready;
