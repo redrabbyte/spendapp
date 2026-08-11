@@ -7,6 +7,7 @@ import { QrCode } from '../components/QrCode';
 import { localDb } from '../db';
 import { loadKeys } from '../keys';
 import { syncNow } from '../sync';
+import { useT } from '../i18n/useT';
 
 /**
  * The joiner's half of an in-person join (design §4.2): show a code, let
@@ -20,6 +21,7 @@ import { syncNow } from '../sync';
  */
 export function JoinByCodePage() {
   const { user } = useAuth();
+  const t = useT();
   const navigate = useNavigate();
   const [code, setCode] = useState<string | null>(null);
   const [locked, setLocked] = useState(false);
@@ -67,33 +69,31 @@ export function JoinByCodePage() {
 
   return (
     <div className="mx-auto mt-6 flex max-w-sm flex-col items-center gap-4 text-center">
-      <h1 className="text-xl font-semibold">Join a group in person</h1>
+      <h1 className="text-xl font-semibold">{t('join.title')}</h1>
       <p className="text-sm text-slate-500 dark:text-slate-400">
-        Show this to someone already in the group and let them scan it. They can add you on the spot — no
-        link, and nothing to read out.
+        {t('join.explain')}
       </p>
 
       {locked ? (
         <p className="rounded bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
-          Your keys are locked on this device. Log in again and the code will appear.
+          {t('join.locked')}
         </p>
       ) : code ? (
         <>
           <QrCode text={code} className="w-64 max-w-full rounded" />
           <p className="text-xs text-slate-400">
-            Safe to show anyone: it holds your name and a public key, never a password or a group&apos;s
-            contents.
+            {t('join.safe')}
           </p>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            The group appears here by itself once they have added you.
+            {t('join.waiting')}
           </p>
         </>
       ) : (
-        <p className="text-sm text-slate-500 dark:text-slate-400">Preparing your code…</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400">{t('join.preparing')}</p>
       )}
 
       <Link to="/" className="text-sm text-teal-700 underline dark:text-teal-300">
-        Back to your groups
+        {t('join.back')}
       </Link>
     </div>
   );

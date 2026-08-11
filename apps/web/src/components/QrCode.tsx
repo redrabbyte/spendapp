@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import qrcode from 'qrcode-generator';
+import { useT } from '../i18n/useT';
 
 /**
  * A QR code as inline SVG. SVG rather than canvas because this gets held up to
@@ -10,6 +11,7 @@ import qrcode from 'qrcode-generator';
  * a screen that may be scratched, dim or behind a case.
  */
 export function QrCode({ text, className }: { text: string; className?: string }) {
+  const t = useT();
   const { path, size } = useMemo(() => {
     const qr = qrcode(0, 'M'); // 0 = smallest version that fits
     qr.addData(text);
@@ -32,7 +34,7 @@ export function QrCode({ text, className }: { text: string; className?: string }
       viewBox={`${-quiet} ${-quiet} ${size + quiet * 2} ${size + quiet * 2}`}
       className={className}
       role="img"
-      aria-label="Your join code"
+      aria-label={t('join.codeLabel')}
       shapeRendering="crispEdges"
     >
       {/* Always light-on-dark-free: a themed QR is a QR that sometimes fails. */}

@@ -160,6 +160,24 @@ export const de: Catalogue = {
   'split.paid_sum_mismatch': 'die gezahlten Beträge ergeben nicht die Gesamtsumme',
   'split.owed_sum_mismatch': 'die geschuldeten Beträge ergeben nicht die Gesamtsumme',
 
+  // --- joining -------------------------------------------------------------
+  'join.title': 'Einer Gruppe persönlich beitreten',
+  'join.explain': 'Zeig das jemandem, der schon in der Gruppe ist, und lass es scannen. Dann kannst du sofort hinzugefügt werden — ohne Link und ohne etwas vorzulesen.',
+  'join.locked': 'Deine Schlüssel sind auf diesem Gerät gesperrt. Melde dich neu an, dann erscheint der Code.',
+  'join.safe': 'Du kannst das jedem zeigen: darin stehen dein Name und ein öffentlicher Schlüssel, nie ein Passwort und nie der Inhalt einer Gruppe.',
+  'join.waiting': 'Sobald du hinzugefügt wurdest, erscheint die Gruppe hier von selbst.',
+  'join.preparing': 'Dein Code wird vorbereitet…',
+  'join.back': 'Zurück zu deinen Gruppen',
+  'join.codeLabel': 'Dein Beitrittscode',
+
+  'invite.share': 'Diesen Link teilen (14 Tage gültig):',
+  'invite.copy': 'Link kopieren',
+  'invite.shareAction': 'Link teilen',
+  'invite.copied': 'Kopiert',
+  'invite.copyFailed': 'Kopieren hat nicht geklappt — markier den Link und kopier ihn von Hand',
+  'invite.shareFailed': 'Teilen hat nicht geklappt',
+  'invite.shareText': 'Tritt meiner Gruppe auf SpendApp bei',
+
   // --- push -------------------------------------------------------------
   'push.expense.saved': '{actor} hat eine Ausgabe hinzugefügt oder geändert',
   'push.expense.deleted': '{actor} hat eine Ausgabe gelöscht',

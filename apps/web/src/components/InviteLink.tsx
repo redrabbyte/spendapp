@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AppError } from '../i18n/errors';
+import { useT } from '../i18n/useT';
 
 /**
  * navigator.clipboard needs a secure context, and this app is often reached
@@ -61,6 +62,7 @@ function ShareIcon() {
 }
 
 export function InviteLink({ url }: { url: string }) {
+  const t = useT();
   const [note, setNote] = useState<string | null>(null);
   // Only mobile browsers implement the share sheet; elsewhere copy is all there is.
   const canShare = typeof navigator.share === 'function';
@@ -74,18 +76,18 @@ export function InviteLink({ url }: { url: string }) {
   async function copy() {
     try {
       await copyText(url);
-      setNote('Copied');
+      setNote(t('invite.copied'));
     } catch {
-      setNote('Could not copy — select the link and copy it by hand');
+      setNote(t('invite.copyFailed'));
     }
   }
 
   async function share() {
     try {
-      await navigator.share({ title: 'SpendApp', text: 'Join my group on SpendApp', url });
+      await navigator.share({ title: 'SpendApp', text: t('invite.shareText'), url });
     } catch (err) {
       // Dismissing the sheet rejects with AbortError; that is not a failure.
-      if ((err as Error).name !== 'AbortError') setNote('Sharing failed');
+      if ((err as Error).name !== 'AbortError') setNote(t('invite.shareFailed'));
     }
   }
 
@@ -96,13 +98,13 @@ export function InviteLink({ url }: { url: string }) {
     <div className="rounded bg-teal-50 p-2 text-sm text-teal-900 dark:bg-teal-950 dark:text-teal-100">
       <div className="flex items-start gap-1">
         <span className="grow break-all">
-          Share this link (valid 14 days): {url}
+          {t('invite.share')} {url}
         </span>
-        <button onClick={() => void copy()} className={button} title="Copy link" aria-label="Copy link">
+        <button onClick={() => void copy()} className={button} title={t('invite.copy')} aria-label={t('invite.copy')}>
           <CopyIcon />
         </button>
         {canShare && (
-          <button onClick={() => void share()} className={button} title="Share link" aria-label="Share link">
+          <button onClick={() => void share()} className={button} title={t('invite.shareAction')} aria-label={t('invite.shareAction')}>
             <ShareIcon />
           </button>
         )}

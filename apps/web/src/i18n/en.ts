@@ -165,6 +165,24 @@ export const en = {
   'split.paid_sum_mismatch': 'the amounts paid do not add up to the total',
   'split.owed_sum_mismatch': 'the amounts owed do not add up to the total',
 
+  // --- joining -------------------------------------------------------------
+  'join.title': 'Join a group in person',
+  'join.explain': 'Show this to someone already in the group and let them scan it. They can add you on the spot — no link, and nothing to read out.',
+  'join.locked': 'Your keys are locked on this device. Log in again and the code will appear.',
+  'join.safe': 'Safe to show anyone: it holds your name and a public key, never a password or a group’s contents.',
+  'join.waiting': 'The group appears here by itself once they have added you.',
+  'join.preparing': 'Preparing your code…',
+  'join.back': 'Back to your groups',
+  'join.codeLabel': 'Your join code',
+
+  'invite.share': 'Share this link (valid 14 days):',
+  'invite.copy': 'Copy link',
+  'invite.shareAction': 'Share link',
+  'invite.copied': 'Copied',
+  'invite.copyFailed': 'Could not copy — select the link and copy it by hand',
+  'invite.shareFailed': 'Sharing failed',
+  'invite.shareText': 'Join my group on SpendApp',
+
   // --- push -------------------------------------------------------------
   // Written here rather than on the server, which has no idea who is reading.
   // Deliberately say nothing about the entry itself (design §3.3).
