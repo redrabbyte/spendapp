@@ -20,6 +20,7 @@ const KEYS: Record<ApiErrorCode, MessageKey> = {
   invalid_input: 'error.invalid_input',
   client_update_required: 'error.client_update_required',
   username_taken: 'error.username_taken',
+  invalid_username: 'error.invalid_username',
   invalid_credentials: 'error.invalid_credentials',
   wrong_password: 'error.wrong_password',
   no_such_account: 'error.no_such_account',

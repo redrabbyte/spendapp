@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { usernameSchema } from '@spendapp/shared';
 import { de } from './de';
 import { en } from './en';
 import type { Message } from './index';
@@ -48,6 +49,21 @@ describe('message catalogues', () => {
     // count-sensitive wording.
     for (const key of Object.keys(en) as (keyof typeof en)[]) {
       expect(typeof de[key], key).toBe(typeof (en[key] as Message));
+    }
+  });
+
+  /**
+   * The username rule lives in `packages/shared` and the sentence describing it
+   * lives here, because only the client knows who is reading. Nothing else ties
+   * the two together: widen the regex and both catalogues would go on listing
+   * the old set, which is worse than saying nothing — the reader would rule out
+   * a character the server would have taken.
+   */
+  it.each(Object.entries(CATALOGUES))('%s lists exactly the username characters the rule allows', (_n, catalogue) => {
+    const sentence = catalogue['error.invalid_username'] as string;
+    const accepts = (c: string) => usernameSchema.safeParse(`a${c}a`).success;
+    for (const c of '.-_@+!#$%&*/\\ ,;:?~^|()[]{}<>"\'=') {
+      expect(sentence.includes(` ${c}`), `${c} accepted=${accepts(c)}`).toBe(accepts(c));
     }
   });
 });

@@ -19,6 +19,7 @@ import {
   seal,
   syncRequestSchema,
   toBase64Url,
+  usernameSchema,
   type AttachmentDto,
   type ExpenseWire,
   type GroupChanges,
@@ -423,11 +424,16 @@ export async function installApi(context: BrowserContext, state: ApiState): Prom
     const check = <S extends z.ZodTypeAny>(schema: S, value: unknown): z.output<S> | null => {
       const parsed = schema.safeParse(value);
       if (parsed.success) return parsed.data;
-      const error = parsed.error.issues[0]?.message ?? 'invalid input';
-      // Recorded in full for the failure message, but sent as the code the
-      // real server sends — the client can only translate a code.
-      state.rejected.push({ url: path, error });
-      void json(route, { error: 'invalid_input' }, 400);
+      // Mirrors `rejection()` in routes/auth.ts — a mock that answers more
+      // usefully than the server is how a real gap stays hidden.
+      const badUsername = parsed.error.issues.some((i) => i.path[0] === 'username');
+      // `rejected` means "the client sent something malformed", which is always
+      // a bug and fails the run at teardown. A username is typed by a person,
+      // so a bad one is the feature working, not a client fault.
+      if (!badUsername) {
+        state.rejected.push({ url: path, error: parsed.error.issues[0]?.message ?? 'invalid input' });
+      }
+      void json(route, { error: badUsername ? 'invalid_username' : 'invalid_input' }, 400);
       return null;
     };
 
@@ -476,6 +482,12 @@ export async function installApi(context: BrowserContext, state: ApiState): Prom
     if (path === '/api/me' && method === 'PATCH') {
       if (!state.signedIn) return json(route, { error: 'authentication_required' }, 401);
       const patch = body() as { displayName?: string; username?: string };
+      // Shape before availability, like the real handler — and validated at
+      // all, which it was not: a mock that takes any username would let a spec
+      // claiming the form rejects a bad one pass without the server agreeing.
+      if (patch.username !== undefined && !usernameSchema.safeParse(patch.username).success) {
+        return json(route, { error: 'invalid_username' }, 400);
+      }
       // The one answer this endpoint must give differently, and the reason it
       // is rate-limited like the auth routes.
       if (patch.username && state.takenUsernames.includes(patch.username.toLowerCase())) {

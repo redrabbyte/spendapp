@@ -595,6 +595,11 @@ export const en = {
   'error.invalid_input': 'That does not look right — check the form and try again.',
   'error.client_update_required': 'This app is out of date. Reload the page to update it.',
   'error.username_taken': 'That username is taken.',
+  // Says the rule rather than "check the form": it is the one thing here a
+  // person can fix without guessing. Kept in step with `usernameSchema` by a
+  // test — if the characters it accepts change, this has to say so.
+  'error.invalid_username':
+    'Username: 3–32 characters, starting and ending with a letter or digit. Allowed special characters: . _ - @',
   'error.invalid_credentials': 'Wrong username or password.',
   'error.wrong_password': 'Wrong password.',
   'error.no_such_account': 'No account with that name.',

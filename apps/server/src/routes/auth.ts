@@ -18,6 +18,24 @@ import { createSession, destroySession } from '../lib/sessions.js';
 
 const ARGON_OPTS = { type: argon2.argon2id, memoryCost: 19_456, timeCost: 2, parallelism: 1 } as const;
 
+/**
+ * The body to send for a rejected request.
+ *
+ * Everything the client submits here is machine-made except the username and
+ * the display name, and only the username has a shape somebody can get wrong.
+ * Saying so is the difference between "check the form" and knowing which of
+ * three fields to look at — the client turns the code into the actual rule.
+ *
+ * Returns the whole body rather than the bare code, so both codes stay written
+ * out here in the shape errors.test.ts scans the source for. A helper that
+ * returned the code alone would make them invisible to it, and the check that
+ * every declared code is really reachable would quietly stop covering these.
+ */
+const rejection = (error: z.ZodError) =>
+  error.issues.some((i) => i.path[0] === 'username')
+    ? { error: 'invalid_username' as const }
+    : { error: 'invalid_input' as const };
+
 // Verified for unknown usernames so response timing doesn't reveal account existence.
 const dummyHashPromise = argon2.hash('dummy-password-for-timing', ARGON_OPTS);
 
@@ -100,7 +118,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
 
   app.post('/api/auth/register', { config: AUTH_RATE }, async (req, reply) => {
     const parsed = registerSchema.safeParse(req.body);
-    if (!parsed.success) return reply.code(400).send({ error: 'invalid_input' });
+    if (!parsed.success) return reply.code(400).send(rejection(parsed.error));
     const { username, displayName, authKey, privacyVersion, ...keys } = parsed.data;
 
     // Consent is part of creating the account, not a step afterwards: an
@@ -231,7 +249,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       })
       .refine((v) => v.displayName !== undefined || v.username !== undefined, { message: 'nothing to change' })
       .safeParse(req.body);
-    if (!parsed.success) return reply.code(400).send({ error: 'invalid_input' });
+    if (!parsed.success) return reply.code(400).send(rejection(parsed.error));
 
     const username = parsed.data.username?.toLowerCase();
     try {

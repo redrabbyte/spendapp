@@ -82,6 +82,27 @@ test('a username somebody else holds is refused, not silently kept', async ({ pa
   expect(api.profile.username).toBeUndefined();
 });
 
+test('a malformed username says so, and says what a username may hold', async ({ page, api }) => {
+  await signIn(page);
+  await openSettings(page);
+  // A space is the mistake somebody actually makes, and the browser's own
+  // minLength/maxLength do not catch it — this reaches the server.
+  await page.getByLabel('Username').fill('lukas b');
+  await page.getByRole('button', { name: 'Save changes' }).click();
+
+  // Not "check the form": the point of the separate code is that this is the
+  // one validation failure a person can act on without guessing which field.
+  await expect(page.getByText(/^Username: 3–32 characters/)).toBeVisible();
+  await expect(page.getByText(/Allowed special characters: \. _ - @/)).toBeVisible();
+  expect(api.profile.username).toBeUndefined();
+
+  // And the characters it names really are taken.
+  await page.getByLabel('Username').fill('lukas@example.com');
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByText('Saved.')).toBeVisible();
+  expect(api.profile.username).toBe('lukas@example.com');
+});
+
 test('deleting says what it will destroy before asking for the password', async ({ page, api }) => {
   api.deletionPreview = [
     { groupId: 'g1', name: 'Flat', willBeDeleted: true, willPromoteAnAdmin: false, orphanedEpochs: [] },

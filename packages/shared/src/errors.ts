@@ -18,6 +18,10 @@ export const API_ERRORS = [
 
   // accounts
   'username_taken',
+  // Distinct from `invalid_input` on purpose: it is the one validation failure
+  // a person can actually act on, and "check the form" does not tell them
+  // which of three fields to look at (see `usernameSchema`).
+  'invalid_username',
   'invalid_credentials',
   'wrong_password',
   'no_such_account',

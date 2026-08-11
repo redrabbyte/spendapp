@@ -54,6 +54,21 @@ test('errors from the API arrive in the reader’s language', async ({ page, api
   await expect(page.getByText('Dieser Benutzername ist schon vergeben.')).toBeVisible();
 });
 
+// `api` is unused here but must be declared: the fixture is lazy, and without
+// it no mock is installed and the sign-in below has no server to talk to.
+test('a rejected username explains the rule in the reader’s language', async ({ page, api }) => {
+  expect(api.profile.username).toBeUndefined();
+  await signIn(page);
+  await switchToGerman(page);
+  await page.getByLabel('Benutzername').fill('lukas b');
+  await page.getByRole('button', { name: 'Änderungen speichern' }).click();
+
+  // The server sent `invalid_username` and nothing else. Every word of the
+  // rule — including the list of characters — belongs to the client.
+  await expect(page.getByText(/^Benutzername: 3–32 Zeichen/)).toBeVisible();
+  await expect(page.getByText(/Erlaubte Sonderzeichen: \. _ - @/)).toBeVisible();
+});
+
 test('a translated category label still stores the untranslated category', async ({ page, api }) => {
   seedGroup(api, GROUP, 'Trip', [
     { userId: ME.id, displayName: ME.displayName, isPlaceholder: false, role: 'admin' },

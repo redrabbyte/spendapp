@@ -588,6 +588,8 @@ export const de: Catalogue = {
   'error.invalid_input': 'Das sieht nicht richtig aus — prüf das Formular und versuch es noch einmal.',
   'error.client_update_required': 'Diese App ist veraltet. Lade die Seite neu, um sie zu aktualisieren.',
   'error.username_taken': 'Dieser Benutzername ist schon vergeben.',
+  'error.invalid_username':
+    'Benutzername: 3–32 Zeichen, beginnend und endend mit einem Buchstaben oder einer Ziffer. Erlaubte Sonderzeichen: . _ - @',
   'error.invalid_credentials': 'Benutzername oder Passwort ist falsch.',
   'error.wrong_password': 'Falsches Passwort.',
   'error.no_such_account': 'Kein Konto mit diesem Namen.',
