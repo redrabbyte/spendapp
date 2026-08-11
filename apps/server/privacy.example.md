@@ -40,6 +40,15 @@ Notes for whoever writes it, not legal advice:
 - The lawful basis for each of those, and how long they are kept.
 - That a forgotten password destroys access to the encrypted data
   irrecoverably, because no recovery copy of the key exists.
+- What the app puts on the reader's own device, and why none of it is asked
+  about. The session cookie, the settings in local storage, the `spendapp`
+  database holding a decrypted copy of their groups, and the cache holding the
+  app and recent receipts. Consent is a separate obligation from transparency:
+  none of that storage needs permission, because each part is what makes a
+  service the user asked for work — but they still have to be told it is there.
+  No banner is warranted while the page contacts no third party, loads no
+  analytics and carries no advertising; adding any one of those changes the
+  answer.
 - Web push endpoints, if notifications are enabled, and the third parties the
   browser vendor routes them through.
 - How to exercise access, rectification, erasure and portability — including
