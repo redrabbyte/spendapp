@@ -3,6 +3,7 @@ import { parseImport, type MemberDto, type ParsedImport } from '@spendapp/shared
 import { applyImport, suggestAssignment, type Assignment } from '../import';
 import { addPlaceholderLocal, createGroupLocal, syncNow } from '../sync';
 import { useMoney } from '../i18n/useMoney';
+import { AppError } from '../i18n/errors';
 
 /**
  * Say which step failed. A bare server message ("Required") tells the user
@@ -12,7 +13,7 @@ async function step<T>(what: string, run: () => Promise<T>): Promise<T> {
   try {
     return await run();
   } catch (err) {
-    throw new Error(`Could not ${what}: ${(err as Error).message}`);
+    throw new AppError('app.importFailed', { step: what, reason: (err as Error).message });
   }
 }
 

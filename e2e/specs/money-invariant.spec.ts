@@ -59,8 +59,10 @@ test('an entry that does not add up is kept out of the totals and named', async 
   await expect(page.getByText('Honest lunch')).toBeVisible();
   // Not rendered, not counted — and not silent about either.
   await expect(page.getByText('Rigged dinner')).toHaveCount(0);
-  await expect(page.getByText(/do(es)? not add up/i)).toBeVisible();
-  await expect(page.getByText(/owed amounts do not sum to total/i)).toBeVisible();
+  await expect(page.getByText(/entry does not add up and is left out/i)).toBeVisible();
+  // The reason is stored as a code and put into words at render, so this is
+  // the translated sentence rather than what validateSplits threw.
+  await expect(page.getByText(/the amounts owed do not add up to the total/i)).toBeVisible();
   await expect(page.getByText(new RegExp(`last written by ${ME.displayName}`, 'i'))).toBeVisible();
 });
 

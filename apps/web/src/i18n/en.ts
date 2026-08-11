@@ -125,6 +125,46 @@ export const en = {
   'privacy.accepting': 'Saving…',
   'privacy.logout': 'Log out instead',
 
+  // --- errors this app raises itself ---------------------------------------
+  'app.keysLocked': 'Your keys are locked — log in again to create a group.',
+  'app.noGroupKeys': 'You hold no keys for this group yet.',
+  'app.nobodyToRotateTo': 'Nobody left in this group has a key to rotate to.',
+  'app.noKeyYet': 'No key for this group yet — wait for it to sync, then try again.',
+  'app.missingKeyParams': 'Could not start signing in. Check your connection and try again.',
+  'app.noStoredKeys': 'This account has no stored keys.',
+  'app.wrongPassword': 'Wrong password — that did not unlock your data.',
+  'app.copyFailed': 'Could not copy — select the link and copy it by hand.',
+  'app.expenseMissing': 'That expense is not here any more.',
+  'app.samePayer': 'The payer and the receiver have to be different people.',
+  'app.badRate': 'Those amounts give a rate that cannot be right.',
+  'app.pickTwoCurrencies': 'Pick two different currencies.',
+  'app.invalidRate': 'Enter a valid rate.',
+  'app.badPercentage': 'Percentages have to be numbers, and cannot be negative.',
+  'app.badShares': 'Shares have to be whole numbers.',
+  'app.paidSum': 'The amounts paid add up to {paid}, but the expense is {total}.',
+  'app.needRate': 'Enter a valid conversion rate to {currency}.',
+  'app.paymentAmount': 'A payment has to be a positive amount.',
+  'app.paymentSelf': 'A payment cannot go from someone to themselves.',
+  'app.settledAmount': 'The settled amount is not a valid number.',
+  'app.importFailed': 'Could not {step}: {reason}',
+
+  // Why an entry was refused. Stored with the entry, so these are looked up
+  // when it is shown rather than written when it was checked.
+  'split.no_participants': 'nobody is included',
+  'split.invalid_weight': 'a share is not a valid number',
+  'split.invalid_total': 'the total is not a valid number',
+  'split.weights_sum_zero': 'every share is zero',
+  'split.duplicate_participant': 'somebody appears twice',
+  'split.exact_sum_mismatch': 'the exact amounts do not add up to the total',
+  'split.percent_sum_mismatch': 'the percentages do not add up to 100%',
+  'split.invalid_shares': 'a share is not a whole number',
+  'split.no_splits': 'it splits between nobody',
+  'split.invalid_amount': 'the amount is not a valid number',
+  'split.invalid_paid': 'an amount paid is not a valid number',
+  'split.invalid_owed': 'an amount owed is not a valid number',
+  'split.paid_sum_mismatch': 'the amounts paid do not add up to the total',
+  'split.owed_sum_mismatch': 'the amounts owed do not add up to the total',
+
   // --- push -------------------------------------------------------------
   // Written here rather than on the server, which has no idea who is reading.
   // Deliberately say nothing about the entry itself (design §3.3).

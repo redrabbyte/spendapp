@@ -14,6 +14,7 @@ import { SyncPendingBadge } from '../components/SyncPendingBadge';
 import { usePendingExpenseIds } from '../pending';
 import { formatExpenseDate, useSettings } from '../settings';
 import { useMoney } from '../i18n/useMoney';
+import { AppError } from '../i18n/errors';
 
 export function ExpenseDetailPage() {
   const { groupId, expenseId } = useParams<{ groupId: string; expenseId: string }>();
@@ -275,7 +276,7 @@ function CommentForm({ expenseId, meId }: { expenseId: string; meId: string }) {
     setError(null);
     try {
       const expense = await localDb.expenses.get(expenseId);
-      if (!expense) throw new Error('expense not found');
+      if (!expense) throw new AppError('app.expenseMissing');
       await addCommentLocal(expense, trimmed, meId);
       setText('');
     } catch (err) {

@@ -6,6 +6,8 @@
  * sum(result) === total.
  */
 
+import { SplitError } from './errors.js';
+
 export type SplitMode = 'equal' | 'exact' | 'percent' | 'shares';
 
 export interface SplitEntry {
@@ -24,17 +26,17 @@ export function allocateByWeights(
   totalMinor: number,
   entries: ReadonlyArray<{ userId: string; weight: number }>,
 ): number[] {
-  if (entries.length === 0) throw new Error('no participants');
+  if (entries.length === 0) throw new SplitError('no_participants');
   for (const e of entries) {
-    if (!Number.isSafeInteger(e.weight) || e.weight < 0) throw new Error('invalid weight');
+    if (!Number.isSafeInteger(e.weight) || e.weight < 0) throw new SplitError('invalid_weight');
   }
-  if (!Number.isSafeInteger(totalMinor)) throw new Error('invalid total');
+  if (!Number.isSafeInteger(totalMinor)) throw new SplitError('invalid_total');
 
   const negative = totalMinor < 0;
   const total = BigInt(Math.abs(totalMinor));
   const weights = entries.map((e) => BigInt(e.weight));
   const weightSum = weights.reduce((a, b) => a + b, 0n);
-  if (weightSum <= 0n) throw new Error('weights sum to zero');
+  if (weightSum <= 0n) throw new SplitError('weights_sum_zero');
 
   const base = weights.map((w) => (total * w) / weightSum);
   const remainders = weights.map((w) => (total * w) % weightSum);
@@ -64,20 +66,20 @@ export function computeOwed(amountMinor: number, input: OwedInput): { userId: st
   switch (input.mode) {
     case 'equal': {
       const ids = [...new Set(input.userIds)];
-      if (ids.length !== input.userIds.length) throw new Error('duplicate participant');
+      if (ids.length !== input.userIds.length) throw new SplitError('duplicate_participant');
       const owed = allocateByWeights(amountMinor, ids.map((userId) => ({ userId, weight: 1 })));
       return ids.map((userId, i) => ({ userId, owedMinor: owed[i]! }));
     }
     case 'exact': {
       assertUniqueUsers(input.entries);
       const sum = input.entries.reduce((a, e) => a + e.amountMinor, 0);
-      if (sum !== amountMinor) throw new Error('exact amounts do not sum to total');
+      if (sum !== amountMinor) throw new SplitError('exact_sum_mismatch');
       return input.entries.map((e) => ({ userId: e.userId, owedMinor: e.amountMinor }));
     }
     case 'percent': {
       assertUniqueUsers(input.entries);
       const bp = input.entries.reduce((a, e) => a + e.percentBp, 0);
-      if (bp !== 10_000) throw new Error('percentages must sum to 100%');
+      if (bp !== 10_000) throw new SplitError('percent_sum_mismatch');
       const owed = allocateByWeights(
         amountMinor,
         input.entries.map((e) => ({ userId: e.userId, weight: e.percentBp })),
@@ -87,7 +89,7 @@ export function computeOwed(amountMinor: number, input: OwedInput): { userId: st
     case 'shares': {
       assertUniqueUsers(input.entries);
       for (const e of input.entries) {
-        if (!Number.isSafeInteger(e.shares) || e.shares < 0) throw new Error('invalid shares');
+        if (!Number.isSafeInteger(e.shares) || e.shares < 0) throw new SplitError('invalid_shares');
       }
       const owed = allocateByWeights(
         amountMinor,
@@ -100,23 +102,23 @@ export function computeOwed(amountMinor: number, input: OwedInput): { userId: st
 
 function assertUniqueUsers(entries: ReadonlyArray<{ userId: string }>): void {
   if (new Set(entries.map((e) => e.userId)).size !== entries.length) {
-    throw new Error('duplicate participant');
+    throw new SplitError('duplicate_participant');
   }
 }
 
 /** The server-side (and client-side) gate: Σpaid = Σowed = amount, all >= 0. */
 export function validateSplits(amountMinor: number, splits: ReadonlyArray<SplitEntry>): void {
-  if (splits.length === 0) throw new Error('no splits');
-  if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) throw new Error('invalid amount');
+  if (splits.length === 0) throw new SplitError('no_splits');
+  if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) throw new SplitError('invalid_amount');
   assertUniqueUsers(splits);
   let paid = 0;
   let owed = 0;
   for (const s of splits) {
-    if (!Number.isSafeInteger(s.paidMinor) || s.paidMinor < 0) throw new Error('invalid paid');
-    if (!Number.isSafeInteger(s.owedMinor) || s.owedMinor < 0) throw new Error('invalid owed');
+    if (!Number.isSafeInteger(s.paidMinor) || s.paidMinor < 0) throw new SplitError('invalid_paid');
+    if (!Number.isSafeInteger(s.owedMinor) || s.owedMinor < 0) throw new SplitError('invalid_owed');
     paid += s.paidMinor;
     owed += s.owedMinor;
   }
-  if (paid !== amountMinor) throw new Error('paid amounts do not sum to total');
-  if (owed !== amountMinor) throw new Error('owed amounts do not sum to total');
+  if (paid !== amountMinor) throw new SplitError('paid_sum_mismatch');
+  if (owed !== amountMinor) throw new SplitError('owed_sum_mismatch');
 }

@@ -19,6 +19,7 @@ import {
 import { clearInvalidEntry, noteInvalidEntry } from './coverage';
 import { currentEpoch, keyForEpoch } from './groupKeys';
 import { uuid } from './uuid';
+import { AppError } from './i18n/errors';
 
 /**
  * The ciphertext envelope (design §4.2). Content is sealed on its way out and
@@ -69,7 +70,7 @@ export async function sealExpense(input: UpsertExpense): Promise<SealedEntity & 
   const epoch = await currentEpoch(input.groupId);
   const key = epoch === null ? null : await keyForEpoch(input.groupId, epoch);
   if (epoch === null || !key) {
-    throw new Error('No key for this group yet — wait for it to sync, then try again.');
+    throw new AppError('app.noKeyYet');
   }
 
   // The invariant the server used to hold (design §3.1). It cannot see inside
@@ -210,10 +211,10 @@ interface PaymentContent {
 
 /** Throws with a sentence a person can act on, like validateSplits does. */
 function validatePayment(p: PaymentContent): void {
-  if (!Number.isSafeInteger(p.amountMinor) || p.amountMinor <= 0) throw new Error('payment amount is not a positive number');
-  if (p.fromUser === p.toUser) throw new Error('payment goes from someone to themselves');
+  if (!Number.isSafeInteger(p.amountMinor) || p.amountMinor <= 0) throw new AppError('app.paymentAmount');
+  if (p.fromUser === p.toUser) throw new AppError('app.paymentSelf');
   if (p.settledMinor !== null && (!Number.isSafeInteger(p.settledMinor) || p.settledMinor < 0)) {
-    throw new Error('settled amount is not a valid number');
+    throw new AppError('app.settledAmount');
   }
 }
 
@@ -224,7 +225,7 @@ export async function sealPayment(input: UpsertPayment): Promise<SealedEntity & 
   const epoch = await currentEpoch(input.groupId);
   const key = epoch === null ? null : await keyForEpoch(input.groupId, epoch);
   if (epoch === null || !key) {
-    throw new Error('No key for this group yet — wait for it to sync, then try again.');
+    throw new AppError('app.noKeyYet');
   }
   const content: PaymentContent = {
     fromUser: input.fromUser,
@@ -308,7 +309,7 @@ export async function sealComment(
 ): Promise<{ keyEpoch: number; iv: string; ct: string }> {
   const epoch = await currentEpoch(groupId);
   const key = epoch === null ? null : await keyForEpoch(groupId, epoch);
-  if (epoch === null || !key) throw new Error('No key for this group yet — wait for it to sync.');
+  if (epoch === null || !key) throw new AppError('app.noKeyYet');
   const sealed = await sealJson(key, { text }, commentAad(id, groupId, epoch));
   return { keyEpoch: epoch, iv: toBase64Url(sealed.iv), ct: toBase64Url(sealed.ciphertext) };
 }
@@ -363,7 +364,7 @@ export async function sealAttachment(
   bytes: Uint8Array,
 ): Promise<Uint8Array> {
   const key = await keyForEpoch(groupId, keyEpoch);
-  if (!key) throw new Error('No key for this group yet — wait for it to sync.');
+  if (!key) throw new AppError('app.noKeyYet');
   const sealed = await seal(key, bytes, attachmentAad(id, groupId, keyEpoch));
   const out = new Uint8Array(IV_BYTES + sealed.ciphertext.length);
   out.set(sealed.iv, 0);

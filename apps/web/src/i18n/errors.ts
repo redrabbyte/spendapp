@@ -1,5 +1,5 @@
-import { isApiErrorCode, type ApiErrorCode } from '@spendapp/shared';
-import { activeLanguage, translate, type MessageKey } from './index';
+import { isApiErrorCode, isSplitErrorCode, type ApiErrorCode } from '@spendapp/shared';
+import { activeLanguage, translate, type MessageKey, type TranslateOptions, type Translator } from './index';
 
 /**
  * Turning a wire code into something worth reading.
@@ -46,4 +46,29 @@ const KEYS: Record<ApiErrorCode, MessageKey> = {
 export function messageForApiError(code: string): string {
   const key = isApiErrorCode(code) ? KEYS[code] : 'error.unexpected';
   return translate(activeLanguage(), key);
+}
+
+/**
+ * An error this app raised itself, carrying the message key rather than the
+ * message. Thrown from modules with no access to a hook — the crypto layer,
+ * the sync engine, form validation — and rendered by the twenty components
+ * that already print `err.message`.
+ *
+ * The sentence is built at construction, in the language selected then. An
+ * error is transient and is read immediately, so that is the right moment;
+ * anything stored and read later keeps a code instead (see SplitError).
+ */
+export class AppError extends Error {
+  constructor(
+    public readonly key: MessageKey,
+    public readonly values: TranslateOptions = {},
+  ) {
+    super(translate(activeLanguage(), key, values));
+    this.name = 'AppError';
+  }
+}
+
+/** The stored reason a split was rejected, turned into a sentence on render. */
+export function describeSplitError(t: Translator, reason: string): string {
+  return isSplitErrorCode(reason) ? t(`split.${reason}`) : reason;
 }

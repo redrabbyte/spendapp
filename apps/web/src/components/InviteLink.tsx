@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { AppError } from '../i18n/errors';
 
 /**
  * navigator.clipboard needs a secure context, and this app is often reached
@@ -25,7 +26,7 @@ async function copyText(text: string): Promise<void> {
   ta.setSelectionRange(0, text.length); // iOS ignores select() on its own
   const ok = document.execCommand('copy');
   document.body.removeChild(ta);
-  if (!ok) throw new Error('copy rejected');
+  if (!ok) throw new AppError('app.copyFailed');
 }
 
 const icon = 'h-4 w-4';

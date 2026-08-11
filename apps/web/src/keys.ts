@@ -14,6 +14,7 @@ import {
 } from '@spendapp/shared';
 import { api } from './api';
 import { localDb } from './db';
+import { AppError } from './i18n/errors';
 
 /**
  * Account keys, client side (design §4.1). The password never leaves this
@@ -196,14 +197,14 @@ export async function deriveAuthKeyFor(username: string, password: string): Prom
 }
 
 async function deriveFor(password: string, params: LoginParams): Promise<{ authKey: string; kek: Uint8Array }> {
-  if (!params.kdfSalt) throw new Error('missing key parameters');
+  if (!params.kdfSalt) throw new AppError('app.missingKeyParams');
   const master = await deriveMasterKey(password, fromBase64Url(params.kdfSalt), params.kdfParams ?? DEFAULT_KDF);
   const [authKey, kek] = await Promise.all([deriveAuthKey(master), deriveKek(master)]);
   return { authKey: toBase64Url(authKey), kek };
 }
 
 async function unlockWith(kek: Uint8Array, user: SessionUser): Promise<UnlockedKeys> {
-  if (!user.wrappedPrivateKey || !user.publicKey) throw new Error('This account has no stored keys.');
+  if (!user.wrappedPrivateKey || !user.publicKey) throw new AppError('app.noStoredKeys');
   try {
     // Fails loudly on a wrong password rather than caching a KEK that opens
     // nothing — GCM authentication is what makes that detectable at all.
@@ -212,7 +213,7 @@ async function unlockWith(kek: Uint8Array, user: SessionUser): Promise<UnlockedK
   } catch {
     // WebCrypto throws a DOMException whose message is empty in Chromium, so
     // surfacing it verbatim gives the user a blank error box.
-    throw new Error('Wrong password — that did not unlock your data.');
+    throw new AppError('app.wrongPassword');
   }
 }
 

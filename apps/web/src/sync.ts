@@ -24,6 +24,7 @@ import {
 } from './groupKeys';
 import { localDb, type OutboxItem } from './db';
 import { uuid } from './uuid';
+import { AppError } from './i18n/errors';
 
 const BATCH = 200;
 
@@ -423,7 +424,7 @@ export async function addPhotoLocal(expense: ExpenseDto, file: Blob, meId: strin
   // Pin the epoch now, not at upload time: the row goes to the server long
   // before the bytes do, and both have to name the same key.
   const keyEpoch = await currentEpoch(expense.groupId);
-  if (keyEpoch === null) throw new Error('No key for this group yet — wait for it to sync, then try again.');
+  if (keyEpoch === null) throw new AppError('app.noKeyYet');
   const blob = await compressImage(file);
   const id = uuid();
   const now = new Date().toISOString();

@@ -9,6 +9,7 @@ import {
 import { api } from './api';
 import { localDb } from './db';
 import { loadKeys } from './keys';
+import { AppError } from './i18n/errors';
 
 /**
  * Group keys, client side (design §4.2). A member holds a *keyring* — one key
@@ -97,7 +98,7 @@ export function forgetGroupKeys(groupId?: string): void {
  */
 export async function mintGroupKey(): Promise<{ key: Uint8Array; wrapped: { epk: string; iv: string; ct: string } }> {
   const account = await loadKeys();
-  if (!account) throw new Error('Your keys are locked — log in again to create a group.');
+  if (!account) throw new AppError('app.keysLocked');
   const key = generateGroupKey();
   return { key, wrapped: await wrapFor(account.publicKey, key) };
 }
@@ -116,7 +117,7 @@ export async function adoptGroupKey(groupId: string, epoch: number, key: Uint8Ar
  */
 export async function shareKeyring(groupId: string, userId: string, publicKeyB64: string): Promise<number> {
   const ring = await getKeyring(groupId);
-  if (!ring || ring.size === 0) throw new Error('You hold no keys for this group yet.');
+  if (!ring || ring.size === 0) throw new AppError('app.noGroupKeys');
   const publicKey = fromBase64Url(publicKeyB64);
   const wraps = await Promise.all(
     [...ring].map(async ([epoch, key]) => ({ userId, epoch, ...(await wrapFor(publicKey, key)) })),
@@ -147,7 +148,7 @@ export async function rotateGroupKey(groupId: string): Promise<{ epoch: number; 
   const epoch = Math.max(...ring.keys()) + 1;
   const { members } = await api<{ members: MemberKey[] }>(`/api/groups/${groupId}/member-keys`);
   const withKeys = members.filter((m) => m.publicKey);
-  if (withKeys.length === 0) throw new Error('Nobody left in this group has a key to rotate to.');
+  if (withKeys.length === 0) throw new AppError('app.nobodyToRotateTo');
 
   const key = generateGroupKey();
   const wraps = await Promise.all(

@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import type { MemberDto } from '@spendapp/shared';
 import { localDb } from '../db';
+import { describeSplitError } from '../i18n/errors';
 import { useT } from '../i18n/useT';
 
 /**
@@ -31,7 +32,10 @@ export function InvalidEntries({ groupId, members }: { groupId: string; members:
       <ul className="mt-1 list-inside list-disc">
         {bad.map((e) => (
           <li key={e.id}>
-            {t('invalid.item', { author: nameOf(e.author), reason: e.reason })}
+            {/* The reason was stored as a code when the entry was checked, so
+                it is put into words here, in whatever language is selected
+                now — not the one that happened to be on at validation time. */}
+            {t('invalid.item', { author: nameOf(e.author), reason: describeSplitError(t, e.reason) })}
           </li>
         ))}
       </ul>

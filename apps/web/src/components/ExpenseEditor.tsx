@@ -19,6 +19,7 @@ import type { FxCacheRow } from '../db';
 import { getRates, suggestRate } from '../fx';
 import { upsertExpenseLocal } from '../sync';
 import { uuid } from '../uuid';
+import { AppError } from '../i18n/errors';
 
 /** decimal string for form inputs, without the currency suffix */
 const toInput = (minor: number, ccy: string): string => formatMinor(minor, ccy).split(' ')[0]!;
@@ -117,7 +118,7 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
             .filter((id) => percent[id]?.trim())
             .map((id) => {
               const v = Number(percent[id]!.replace(',', '.'));
-              if (!Number.isFinite(v) || v < 0) throw new Error('invalid percentage');
+              if (!Number.isFinite(v) || v < 0) throw new AppError('app.badPercentage');
               return { userId: id, percentBp: Math.round(v * 100) };
             }),
         };
@@ -128,7 +129,7 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
             .filter((id) => shares[id]?.trim())
             .map((id) => {
               const v = Number(shares[id]);
-              if (!Number.isInteger(v) || v < 0) throw new Error('shares must be whole numbers');
+              if (!Number.isInteger(v) || v < 0) throw new AppError('app.badShares');
               return { userId: id, shares: v };
             }),
         };
@@ -326,7 +327,7 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
       }
       const paidSum = [...paidMap.values()].reduce((a, b) => a + b, 0);
       if (paidSum !== amountMinor) {
-        throw new Error(`paid amounts sum to ${toInput(paidSum, currency)}, expected ${toInput(amountMinor, currency)}`);
+        throw new AppError('app.paidSum', { paid: toInput(paidSum, currency), total: toInput(amountMinor, currency) });
       }
 
       const owedMap = new Map(owed.map((o) => [o.userId, o.owedMinor]));
@@ -339,7 +340,7 @@ export function ExpenseEditor({ group, members, meId, existing, onDone }: Props)
 
       let rateToDefault: string | null = null;
       if (currency !== def) {
-        if (!RATE_REGEX.test(rateStr.trim())) throw new Error(`enter a valid conversion rate to ${def}`);
+        if (!RATE_REGEX.test(rateStr.trim())) throw new AppError('app.needRate', { currency: def });
         rateToDefault = rateStr.trim();
       }
 

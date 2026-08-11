@@ -51,3 +51,45 @@ export type ApiErrorCode = (typeof API_ERRORS)[number];
 
 export const isApiErrorCode = (v: unknown): v is ApiErrorCode =>
   typeof v === 'string' && (API_ERRORS as readonly string[]).includes(v);
+
+/**
+ * Why a split or an amount was refused.
+ *
+ * Codes rather than sentences for the same reason the API sends codes, and one
+ * more: a failing entry's reason is *stored* in the local mirror and rendered
+ * later, so a sentence written at validation time would be frozen in whatever
+ * language was selected the moment it was checked.
+ */
+export const SPLIT_ERRORS = [
+  'no_participants',
+  'invalid_weight',
+  'invalid_total',
+  'weights_sum_zero',
+  'duplicate_participant',
+  'exact_sum_mismatch',
+  'percent_sum_mismatch',
+  'invalid_shares',
+  'no_splits',
+  'invalid_amount',
+  'invalid_paid',
+  'invalid_owed',
+  'paid_sum_mismatch',
+  'owed_sum_mismatch',
+] as const;
+
+export type SplitErrorCode = (typeof SPLIT_ERRORS)[number];
+
+export const isSplitErrorCode = (v: unknown): v is SplitErrorCode =>
+  typeof v === 'string' && (SPLIT_ERRORS as readonly string[]).includes(v);
+
+/**
+ * Carries the code as its message, so anything that only knows how to print an
+ * Error still shows something stable and greppable rather than "[object
+ * Object]" — and anything that knows better can translate it.
+ */
+export class SplitError extends Error {
+  constructor(public readonly code: SplitErrorCode) {
+    super(code);
+    this.name = 'SplitError';
+  }
+}

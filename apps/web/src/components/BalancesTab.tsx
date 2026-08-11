@@ -23,6 +23,7 @@ import type { FxCacheRow } from '../db';
 import { deletePaymentLocal, upsertExpenseLocal, upsertPaymentLocal } from '../sync';
 import { uuid } from '../uuid';
 import { useMoney } from '../i18n/useMoney';
+import { AppError } from '../i18n/errors';
 
 const toInput = (minor: number, ccy: string): string => formatMinor(minor, ccy).split(' ')[0]!;
 const trimRate = (r: number): string => r.toFixed(8).replace(/0+$/, '').replace(/\.$/, '');
@@ -244,7 +245,7 @@ function PaymentForm({
     e.preventDefault();
     setError(null);
     try {
-      if (fromUser === toUser) throw new Error('payer and receiver must differ');
+      if (fromUser === toUser) throw new AppError('app.samePayer');
       const amountMinor = parseToMinor(amount, payCcy);
       let settlesCurrency: string | null = null;
       let settledMinor: number | null = null;
@@ -256,7 +257,7 @@ function PaymentForm({
         const paidMajor = amountMinor / 10 ** minorUnitExponent(payCcy);
         const settledMajor = settledMinor / 10 ** minorUnitExponent(draft.currency);
         rate = trimRate(settledMajor / paidMajor);
-        if (!RATE_REGEX.test(rate) || Number(rate) <= 0) throw new Error('amounts give an invalid rate');
+        if (!RATE_REGEX.test(rate) || Number(rate) <= 0) throw new AppError('app.badRate');
       }
       const input: UpsertPayment = {
         id: uuid(),
@@ -397,8 +398,8 @@ function ConvertSection({
     setError(null);
     setDone(null);
     try {
-      if (!from || from === to) throw new Error('pick two different currencies');
-      if (useGlobalRate && !RATE_REGEX.test(rate)) throw new Error('invalid rate');
+      if (!from || from === to) throw new AppError('app.pickTwoCurrencies');
+      if (useGlobalRate && !RATE_REGEX.test(rate)) throw new AppError('app.invalidRate');
       const def = group.defaultCurrency;
       // The frozen rate after conversion: null if now the default currency,
       // otherwise the fx suggestion for the new currency → default.
