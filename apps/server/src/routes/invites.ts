@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, isNull, lt, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { config } from '../config.js';
 import { db, schema } from '../db/index.js';
@@ -89,12 +89,16 @@ export async function inviteRoutes(app: FastifyInstance): Promise<void> {
 
     // Spent links stop admitting people. The pending and rejected branches
     // above have already returned, so one person retrying cannot burn a use.
-    const counts = await db
-      .select({ maxUses: schema.invites.maxUses, useCount: schema.invites.useCount })
-      .from(schema.invites)
-      .where(eq(schema.invites.token, token))
-      .limit(1);
-    if (counts[0] && counts[0].useCount >= counts[0].maxUses) {
+    //
+    // Claimed by the same statement that checks it. Reading the count and then
+    // incrementing it let two people arriving together both see room on a
+    // single-use link and both get in — the row is only ever held by whichever
+    // update the database applies first.
+    const [claimed] = await db
+      .update(schema.invites)
+      .set({ useCount: sql`use_count + 1` })
+      .where(and(eq(schema.invites.token, token), lt(schema.invites.useCount, schema.invites.maxUses)));
+    if (claimed.affectedRows === 0) {
       return reply.code(410).send({ error: 'invite_spent' });
     }
 
@@ -114,12 +118,6 @@ export async function inviteRoutes(app: FastifyInstance): Promise<void> {
       .onDuplicateKeyUpdate({
         set: { status: 'pending', inviteToken: token, claimMemberId: claim, requestedAt: now, decidedBy: null, decidedAt: null },
       });
-
-    // Bumped only for a genuinely new asker, for the same reason.
-    await db
-      .update(schema.invites)
-      .set({ useCount: sql`use_count + 1` })
-      .where(eq(schema.invites.token, token));
 
     const [admins, actor] = await Promise.all([
       activeAdminIds(invite.groupId),
