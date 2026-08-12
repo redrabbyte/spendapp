@@ -37,7 +37,9 @@ function NotificationRouter() {
   useEffect(() => {
     const onNavigate = (e: Event) => {
       const url = (e as CustomEvent<string>).detail;
-      if (typeof url === 'string' && url.startsWith('/')) navigate(url);
+      // `//host` starts with a slash and is not local — the second slash is
+      // what makes it an origin, so a bare startsWith check lets it through.
+      if (typeof url === 'string' && url.startsWith('/') && !url.startsWith('//')) navigate(url);
     };
     window.addEventListener('app:navigate', onNavigate);
     return () => window.removeEventListener('app:navigate', onNavigate);

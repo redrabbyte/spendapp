@@ -4,6 +4,7 @@
 declare const self: ServiceWorkerGlobalScope;
 
 import { isNotificationKind, type PushPayload } from '@spendapp/shared';
+import { safeNavTarget } from './swNav';
 import { ExpirationPlugin } from 'workbox-expiration';
 import { createHandlerBoundToURL, precacheAndRoute } from 'workbox-precaching';
 import { NavigationRoute, registerRoute } from 'workbox-routing';
@@ -77,9 +78,12 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const path = (event.notification.data as { url?: string } | undefined)?.url ?? '/';
-  // Absolute, so string comparison against client.url is meaningful.
-  const target = new URL(path, self.registration.scope).href;
+  // Off-origin destinations fall back home: openWindow() would otherwise launch
+  // the attacker's page inside the installed app, with no address bar to show it.
+  const { path, href: target } = safeNavTarget(
+    (event.notification.data as { url?: string } | undefined)?.url,
+    self.registration.scope,
+  );
   event.waitUntil(
     (async () => {
       const all = (await self.clients.matchAll({
