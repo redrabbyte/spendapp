@@ -1,3 +1,5 @@
+import type { SplitMeta } from './schemas.js';
+
 /**
  * Per-currency balances. Currencies are never merged: the result is one
  * balance map per currency. Positive balance = the group owes this user.
@@ -111,6 +113,55 @@ export function resolveSplits(
     } else {
       out.set(userId, { userId, paidMinor: s.paidMinor, owedMinor: s.owedMinor });
     }
+  }
+  return [...out.values()];
+}
+
+/**
+ * The same, for the record of how a split was arrived at.
+ *
+ * It travels with the entry so the editor can reopen an expense the way it was
+ * entered, which means it names people too — and an editor handed a retired id
+ * has no row for it, drops the share, and re-splits the money among whoever is
+ * left. Resolving it first is what keeps the claimer's half where it belongs.
+ */
+export function resolveSplitMeta(meta: SplitMeta, resolve: (userId: string) => string): SplitMeta {
+  switch (meta.mode) {
+    case 'equal':
+      return { mode: 'equal', userIds: [...new Set(meta.userIds.map(resolve))] };
+    case 'exact':
+      return {
+        mode: 'exact',
+        entries: fold(meta.entries, resolve, (a, b) => ({ ...a, amountMinor: a.amountMinor + b.amountMinor })),
+      };
+    case 'percent':
+      return {
+        mode: 'percent',
+        entries: fold(meta.entries, resolve, (a, b) => ({ ...a, percentBp: a.percentBp + b.percentBp })),
+      };
+    case 'shares':
+      return {
+        mode: 'shares',
+        entries: fold(meta.entries, resolve, (a, b) => ({ ...a, shares: a.shares + b.shares })),
+      };
+  }
+}
+
+/**
+ * A claimer already named on the same expense merges with the name they took
+ * over, the way the splits themselves do — two rows for one person would be
+ * rejected as a duplicate participant.
+ */
+function fold<E extends { userId: string }>(
+  entries: ReadonlyArray<E>,
+  resolve: (userId: string) => string,
+  add: (a: E, b: E) => E,
+): E[] {
+  const out = new Map<string, E>();
+  for (const e of entries) {
+    const userId = resolve(e.userId);
+    const at = out.get(userId);
+    out.set(userId, at ? add(at, e) : { ...e, userId });
   }
   return [...out.values()];
 }

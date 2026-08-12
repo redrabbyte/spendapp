@@ -72,6 +72,32 @@ export interface CoverageRow {
 }
 
 /**
+ * One entry's content key, wrapped to this account (design §4.8) — how a
+ * single inherited entry is readable without handing over the epoch it sits
+ * in. Stored as it arrived; `id` is the entry it opens.
+ */
+export interface EntryGrantRow {
+  id: string;
+  groupId: string;
+  entryType: 'expense' | 'payment';
+  entryId: string;
+  epk: string;
+  iv: string;
+  ct: string;
+}
+
+/**
+ * An entry's own content key, as this device last sealed or opened it
+ * (design §4.8). Kept so editing an entry reuses its key instead of minting a
+ * new one, which would silently break every grant already issued for it.
+ */
+export interface EntryKeyRow {
+  id: string;
+  groupId: string;
+  key: Uint8Array;
+}
+
+/**
  * The account's unwrapped keys. Cached deliberately (design §1): without them
  * here the app cannot decrypt anything on a cold start, so it would be useless
  * offline. The trade is explicit — this protects data on the server, not on an
@@ -104,6 +130,8 @@ class LocalDb extends Dexie {
   keys!: Table<KeyRow, string>;
   groupKeys!: Table<GroupKeyRow, string>;
   coverage!: Table<CoverageRow, string>;
+  entryGrants!: Table<EntryGrantRow, string>;
+  entryKeys!: Table<EntryKeyRow, string>;
 
   constructor() {
     super('spendapp');
@@ -134,6 +162,13 @@ class LocalDb extends Dexie {
     this.version(7).stores({
       coverage: 'groupId',
     });
+    // Wraps as they arrived, not the keys they open: re-unwrapping on load
+    // costs one ECDH and keeps the account key the only thing that can read
+    // them, the same bargain groupKeys already makes for its own rows.
+    this.version(8).stores({
+      entryGrants: 'id, groupId',
+      entryKeys: 'id, groupId',
+    });
   }
 }
 
@@ -160,6 +195,8 @@ export async function forgetGroupLocally(groupId: string): Promise<void> {
       localDb.cursors,
       localDb.groupKeys,
       localDb.coverage,
+      localDb.entryGrants,
+      localDb.entryKeys,
     ],
     async () => {
       // Blobs are keyed by attachment id, so collect those before the rows go.
@@ -171,6 +208,8 @@ export async function forgetGroupLocally(groupId: string): Promise<void> {
       await localDb.activity.where('groupId').equals(groupId).delete();
       await localDb.members.where('groupId').equals(groupId).delete();
       await localDb.groupKeys.delete(groupId);
+      await localDb.entryGrants.where('groupId').equals(groupId).delete();
+      await localDb.entryKeys.where('groupId').equals(groupId).delete();
       await localDb.coverage.delete(groupId);
       await localDb.cursors.delete(groupId);
       await localDb.groups.delete(groupId);

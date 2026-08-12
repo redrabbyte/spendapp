@@ -76,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (user) startSyncLoop();
+    if (user) startSyncLoop(user.id);
   }, [user]);
 
   // A session the server has ended, found by whatever spoke to it first.

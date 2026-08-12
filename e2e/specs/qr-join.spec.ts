@@ -69,16 +69,8 @@ test('the joiner shows a code carrying their public key and nothing secret', asy
   expect(api.rejected).toHaveLength(0);
 });
 
-test('scanning a code admits them and wraps the keyring to the scanned key', async ({ page, api }) => {
-  seedGroup(api, GROUP, 'Trip', [
-    { userId: ME.id, displayName: ME.displayName, isPlaceholder: false, role: 'admin' },
-  ]);
-  await seedGroupKey(api, GROUP, 0);
-  await seedGroupKey(api, GROUP, 1); // two epochs: the whole ring must go over
-
-  const code = JSON.stringify({ v: 1, u: JOINER, k: TEST_PUBLIC_KEY, n: 'Sam' });
-  // Stand in for a camera and a decoder. The component's job is what happens
-  // after a frame decodes, and that is what this exercises.
+/** Stand in for a camera and a decoder: what happens after a frame decodes. */
+async function fakeCamera(page: import('@playwright/test').Page, raw: string) {
   await page.addInitScript((raw: string) => {
     Object.defineProperty(navigator, 'mediaDevices', {
       configurable: true,
@@ -107,7 +99,16 @@ test('scanning a code admits them and wraps the keyring to the scanned key', asy
       }
     }
     (window as unknown as { BarcodeDetector: unknown }).BarcodeDetector = FakeDetector;
-  }, code);
+  }, raw);
+}
+
+test('scanning a code admits them and wraps the keyring to the scanned key', async ({ page, api }) => {
+  seedGroup(api, GROUP, 'Trip', [
+    { userId: ME.id, displayName: ME.displayName, isPlaceholder: false, role: 'admin' },
+  ]);
+  await seedGroupKey(api, GROUP, 0);
+  await seedGroupKey(api, GROUP, 1); // two epochs: the whole ring must go over
+  await fakeCamera(page, JSON.stringify({ v: 1, u: JOINER, k: TEST_PUBLIC_KEY, n: 'Sam' }));
 
   await signIn(page);
   await page.goto(`/g/${GROUP}?tab=members`);
@@ -128,6 +129,72 @@ test('scanning a code admits them and wraps the keyring to the scanned key', asy
   for (const w of forSam) {
     expect([...(await unwrapForTestIdentity(w))]).toEqual([...groupKeyFor(w.epoch)]);
   }
+});
+
+test('the from-today box on a scan hands over nothing from before it', async ({ page, api }) => {
+  seedGroup(api, GROUP, 'Trip', [
+    { userId: ME.id, displayName: ME.displayName, isPlaceholder: false, role: 'admin' },
+  ]);
+  await seedGroupKey(api, GROUP, 0);
+  await seedGroupKey(api, GROUP, 1);
+  await fakeCamera(page, JSON.stringify({ v: 1, u: JOINER, k: TEST_PUBLIC_KEY, n: 'Sam' }));
+
+  await signIn(page);
+  await page.goto(`/g/${GROUP}?tab=members`);
+  await page.getByRole('button', { name: /scan someone/i }).click();
+  await page.getByRole('checkbox', { name: /from today/i }).check();
+  await page.getByRole('button', { name: 'Add Sam' }).click();
+
+  await expect.poll(() => api.admitted.length).toBe(1);
+  await expect(page.getByText(/Sam is in/i)).toBeVisible();
+
+  // The cut has to be a key boundary, so admitting mints one: a fresh epoch,
+  // and pointedly not a single key from before it (design §4.7).
+  const forSam = api.publishedWraps.filter((w) => w.userId === JOINER);
+  expect(forSam.map((w) => w.epoch).sort()).toEqual([2]);
+
+  // And it is the same key the group is now writing under, not a private one
+  // that would leave them reading nothing at all.
+  const mine = api.publishedWraps.find((w) => w.userId === ME.id && w.epoch === 2)!;
+  expect([...(await unwrapForTestIdentity(forSam[0]!))]).toEqual([...(await unwrapForTestIdentity(mine))]);
+});
+
+test('scanning back the only departed member asks nothing, it just says so', async ({ page, api }) => {
+  // A select with one option is a question with one answer. When the returning
+  // person is the only name there is, there is nothing to choose.
+  seedGroup(api, GROUP, 'Trip', [
+    { userId: ME.id, displayName: ME.displayName, isPlaceholder: false, role: 'admin' },
+    { userId: JOINER, displayName: 'Sam', isPlaceholder: false },
+  ]);
+  await seedGroupKey(api, GROUP, 0);
+  api.members.get(GROUP)!.find((m) => m.userId === JOINER)!.leftAt = '2026-08-01T00:00:00.000Z';
+  await fakeCamera(page, JSON.stringify({ v: 1, u: JOINER, k: TEST_PUBLIC_KEY, n: 'Sam' }));
+
+  await signIn(page);
+  await page.goto(`/g/${GROUP}?tab=members`);
+  await page.getByRole('button', { name: /scan someone/i }).click();
+
+  await expect(page.getByText(/they were here before, so they come back as sam/i)).toBeVisible();
+  await expect(page.getByRole('combobox')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Add Sam' })).toBeVisible();
+});
+
+test('the choice comes back as soon as there is another name to take over', async ({ page, api }) => {
+  seedGroup(api, GROUP, 'Trip', [
+    { userId: ME.id, displayName: ME.displayName, isPlaceholder: false, role: 'admin' },
+    { userId: JOINER, displayName: 'Sam', isPlaceholder: false },
+    { userId: 'aaaa0000-0000-4000-8000-0000000000c1', displayName: 'Robin', isPlaceholder: true },
+  ]);
+  await seedGroupKey(api, GROUP, 0);
+  api.members.get(GROUP)!.find((m) => m.userId === JOINER)!.leftAt = '2026-08-01T00:00:00.000Z';
+  await fakeCamera(page, JSON.stringify({ v: 1, u: JOINER, k: TEST_PUBLIC_KEY, n: 'Sam' }));
+
+  await signIn(page);
+  await page.goto(`/g/${GROUP}?tab=members`);
+  await page.getByRole('button', { name: /scan someone/i }).click();
+
+  await expect(page.getByRole('combobox')).toBeVisible();
+  await expect(page.getByRole('option', { name: 'Robin' })).toBeAttached();
 });
 
 test('an admin sees the same digits the joiner is shown', async ({ page, api }) => {

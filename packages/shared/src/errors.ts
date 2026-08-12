@@ -45,7 +45,9 @@ export const API_ERRORS = [
   'not_claimable',
   'already_claimed',
   'still_in_group',
+  'not_a_placeholder',
   'no_wraps_for_members',
+  'no_entries_in_group',
 
   // invites
   'invite_invalid',

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { sealedEntitySchema, uuid, type SplitMeta } from './schemas.js';
+import { b64url, sealedEntitySchema, uuid, type SplitMeta } from './schemas.js';
 
 /**
  * Sync protocol. Every mutation envelope carries a schema version `v`; the
@@ -7,7 +7,17 @@ import { sealedEntitySchema, uuid, type SplitMeta } from './schemas.js';
  * what it queued, then update. Bump MUTATION_SCHEMA_VERSION on breaking
  * changes and add an adapter server-side.
  */
-export const SYNC_PROTOCOL = { current: 1, minSupported: 1 } as const;
+/**
+ * 2 raised the floor for per-entry keys (design §4.8). A client from before
+ * them cannot read an entry that carries one — it would try the epoch key
+ * against content sealed with something else, fail, and show a coverage gap.
+ * Silent, and indistinguishable from data loss.
+ *
+ * Refusing those clients outright is the alternative to letting each group
+ * wait for its slowest member, which a member who never syncs again would
+ * make permanent. They are told to update, and the app updates itself.
+ */
+export const SYNC_PROTOCOL = { current: 2, minSupported: 2 } as const;
 export const MUTATION_SCHEMA_VERSION = 1;
 
 const envelope = {
@@ -237,7 +247,7 @@ export type ExpenseWire = Omit<
   | 'rateToDefault'
   | 'splitMeta'
   | 'splits'
-> & { keyEpoch: number; iv: string; ct: string };
+> & { keyEpoch: number; iv: string; ct: string; keyIv?: string | null; keyCt?: string | null };
 
 /** A payment as the app uses it: readable, because it was decrypted on the way in. */
 export interface PaymentDto {
@@ -272,7 +282,7 @@ export type PaymentWire = Omit<
   | 'settledMinor'
   | 'paidOn'
   | 'note'
-> & { keyEpoch: number; iv: string; ct: string };
+> & { keyEpoch: number; iv: string; ct: string; keyIv?: string | null; keyCt?: string | null };
 
 export interface AttachmentDto {
   id: string;
@@ -316,11 +326,29 @@ export interface WrappedKeyDto {
   chainCt?: string | null;
 }
 
+/**
+ * One entry's content key, wrapped to the requesting user (design §4.8).
+ *
+ * How somebody reads a single entry without being given the epoch it sits in —
+ * the entries a claim carries, granted one at a time. Same sealed-box shape as
+ * a group key wrap, and just as opaque to the server.
+ */
+export interface EntryGrantDto {
+  groupId: string;
+  entryType: 'expense' | 'payment';
+  entryId: string;
+  epk: string;
+  iv: string;
+  ct: string;
+}
+
 export interface GroupChanges {
   group: GroupDto;
   members: MemberDto[];
   /** Every epoch this user can open. Sent whole; it is a handful of rows. */
   keys: WrappedKeyDto[];
+  /** Single entries this user was granted. Sent whole, like the keyring. */
+  entryGrants: EntryGrantDto[];
   /**
    * Somebody left after the newest epoch was minted, so the key they held is
    * still the one being written under. Whichever member's client sees this and

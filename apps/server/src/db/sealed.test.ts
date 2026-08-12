@@ -23,6 +23,10 @@ const columnsOf = (table: Parameters<typeof getTableColumns>[0]): string[] =>
 
 describe('sealed tables hold no readable content', () => {
   it('expenses are an envelope and nothing else', () => {
+    // key_iv/key_ct are this entry's own content key sealed under the group's
+    // epoch key (design §4.8). Ciphertext under a key the server has never
+    // held, like the wrap beside it — so it reads nothing new, and it is what
+    // lets a single entry be handed to somebody without the epoch it sits in.
     expect(columnsOf(schema.expenses)).toEqual([
       'created_at',
       'created_by',
@@ -31,7 +35,9 @@ describe('sealed tables hold no readable content', () => {
       'group_id',
       'id',
       'iv',
+      'key_ct',
       'key_epoch',
+      'key_iv',
       'updated_at',
       'updated_by',
       'version',
@@ -50,7 +56,9 @@ describe('sealed tables hold no readable content', () => {
       'group_id',
       'id',
       'iv',
+      'key_ct', // as on expenses (design §4.8)
       'key_epoch',
+      'key_iv',
       'updated_at',
       'version',
     ]);
@@ -83,6 +91,23 @@ describe('sealed tables hold no readable content', () => {
       'ct',
       'epk',
       'epoch',
+      'group_id',
+      'iv',
+      'user_id',
+    ]);
+  });
+
+  it('entry grants are wraps only — the narrow twin of group keys', () => {
+    // Nothing here says what the entry *is*. entry_type is a routing label, so
+    // the client knows which AAD to try; the rest is a sealed box the server
+    // can neither open nor produce, because making one takes the epoch key.
+    expect(columnsOf(schema.entryGrants)).toEqual([
+      'created_at',
+      'ct',
+      'entry_id',
+      'entry_type',
+      'epk',
+      'granted_by',
       'group_id',
       'iv',
       'user_id',

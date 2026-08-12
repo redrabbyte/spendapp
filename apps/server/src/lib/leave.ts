@@ -1,4 +1,4 @@
-import { and, eq, isNull, ne } from 'drizzle-orm';
+import { and, eq, isNull, ne, sql } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { bumpGroupVersion, isAdmin, logActivity } from './groups.js';
 import { notifyGroup, notifyUsers } from './notify.js';
@@ -39,11 +39,39 @@ export async function leaveGroup(userId: string, groupId: string): Promise<'left
     return 'deleted';
   }
 
-  // Somebody has to be able to approve joins after this.
+  /**
+   * Somebody has to be able to approve joins after this — and preferably
+   * somebody who can still hand the group's past to whoever they approve.
+   *
+   * Being an admin grants no keys; the role is a column and the keyring is
+   * not. So an admin admitted on a from-today link can approve joins and yet
+   * be unable to give anyone the early history, or to give a returning member
+   * their own back. Oldest-joined alone does not avoid that: a from-today
+   * member can predate a full-history one. Whoever can read the earliest
+   * epoch the group still has goes first, oldest-joined among them, and the
+   * old rule stands when nobody can.
+   */
+  const deepest = await db
+    .select({ userId: schema.groupKeys.userId })
+    .from(schema.groupKeys)
+    .where(
+      and(
+        eq(schema.groupKeys.groupId, groupId),
+        eq(
+          schema.groupKeys.epoch,
+          sql`(select min(epoch) from ${schema.groupKeys} where group_id = ${groupId})`,
+        ),
+      ),
+    );
+  const canReadFromTheStart = new Set(deepest.map((r) => r.userId));
+  const byDepthThenAge = (a: (typeof realRemaining)[number], b: (typeof realRemaining)[number]) => {
+    const deep = Number(canReadFromTheStart.has(b.userId)) - Number(canReadFromTheStart.has(a.userId));
+    return deep !== 0 ? deep : a.joinedAt.getTime() - b.joinedAt.getTime();
+  };
   const heir =
     realRemaining.some((m) => m.role === 'admin') || !(await isAdmin(userId, groupId))
       ? null
-      : [...realRemaining].sort((a, b) => a.joinedAt.getTime() - b.joinedAt.getTime())[0]!;
+      : [...realRemaining].sort(byDepthThenAge)[0]!;
 
   const now = new Date();
   await db.transaction(async (tx) => {

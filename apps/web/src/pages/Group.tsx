@@ -281,6 +281,7 @@ export function GroupPage() {
           payments={payments}
           meId={user.id}
           nameOf={nameOf}
+          resolve={resolve}
         />
       )}
 

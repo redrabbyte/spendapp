@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { test as base, type BrowserContext, type Route } from '@playwright/test';
 import {
   admitSchema,
+  grantEntriesSchema,
   deriveKek,
   deriveMasterKey,
   publicKeyFor,
@@ -17,10 +18,12 @@ import {
   deriveAuthKey,
   registerSchema,
   seal,
+  SYNC_PROTOCOL,
   syncRequestSchema,
   toBase64Url,
   usernameSchema,
   type AttachmentDto,
+  type EntryGrantDto,
   type ExpenseWire,
   type GroupChanges,
   type PaymentWire,
@@ -115,12 +118,25 @@ export interface ApiState {
   mutations: Mutation[];
   /** Everyone admitted by a scan, with the key that was actually scanned. */
   admitted: { groupId: string; userId: string; publicKey: string; claimMemberId?: string | null }[];
+  /** Public keys the server holds, by user id — what a rotation wraps to. */
+  publicKeys: Map<string, string>;
+  /** Entry grants by groupId: one entry's key wrapped to one member (§4.8). */
+  entryGrants: Map<string, (EntryGrantDto & { userId: string })[]>;
+  /** Epochs a member held before leaving, by `groupId:userId`; what admit reports back. */
+  heldEpochs: Map<string, number[]>;
   /** Every wrap published to the server, so a spec can open one and check it. */
   publishedWraps: { groupId: string; userId: string; epoch: number; epk: string; iv: string; ct: string }[];
   /** What the last invite created asked for; false = history-scoped (§4.7). */
   lastInviteShareHistory: boolean | null;
   /** When true, key-coverage reports the signed-in user as the only holder. */
   soleKeyHolder: boolean;
+  /**
+   * Epochs some *other* current member can still open. Keyed by `groupId` for
+   * the coverage question — whether a gap is a gap, since an epoch nobody
+   * holds is gone rather than withheld — and by `groupId:userId` for the
+   * readership one, which is about a named member being short of an entry.
+   */
+  othersHold: Map<string, number[]>;
   /** What `GET /api/privacy` serves. `installed: false` means the placeholder. */
   policy: { version: string; text: string; installed: boolean };
   /** The policy version the signed-in account has accepted, or null for none. */
@@ -164,9 +180,13 @@ export function createState(overrides: Partial<ApiState> = {}): ApiState {
     activity: [],
     mutations: [],
     admitted: [],
+    publicKeys: new Map(),
+    entryGrants: new Map(),
+    heldEpochs: new Map(),
     publishedWraps: [],
     lastInviteShareHistory: null,
     soleKeyHolder: false,
+    othersHold: new Map(),
     policy: { version: 'test-policy-1', text: 'We keep as little as we can.', installed: true },
     acceptedPolicyVersion: 'test-policy-1',
     deletionPreview: [],
@@ -215,6 +235,31 @@ const expenseAad = (id: string, groupId: string, epoch: number): Uint8Array =>
 const paymentAad = (id: string, groupId: string, epoch: number): Uint8Array =>
   new TextEncoder().encode(`payment|${id}|${groupId}|${epoch}`);
 
+const entryKeyAad = (type: string, id: string, groupId: string, epoch: number): Uint8Array =>
+  new TextEncoder().encode(`entrykey|${type}|${id}|${groupId}|${epoch}`);
+
+/**
+ * The key an entry's content is actually sealed with (design §4.8).
+ *
+ * An entry carries its own key, wrapped under the group's epoch key, so a spec
+ * reading the money has to unwrap that first. A mutation with no wrapper was
+ * sealed under the epoch key itself and is read that way — which is what keeps
+ * these helpers working for rows written before per-entry keys.
+ */
+async function contentKey(
+  type: 'expense' | 'payment',
+  d: { id: string; groupId: string; keyIv?: string | null; keyCt?: string | null },
+  epoch: number,
+  epochKey: Uint8Array,
+): Promise<Uint8Array> {
+  if (!d.keyIv || !d.keyCt) return epochKey;
+  return open(
+    epochKey,
+    { iv: fromBase64Url(d.keyIv), ciphertext: fromBase64Url(d.keyCt) },
+    entryKeyAad(type, d.id, d.groupId, epoch),
+  );
+}
+
 /**
  * Open an uploaded receipt file. The IV is the file's own first 12 bytes, so
  * this is also the assertion that the client laid the file out as agreed.
@@ -250,9 +295,9 @@ export async function openSealedPayment(
   epoch = 0,
   key?: Uint8Array,
 ): Promise<Record<string, unknown>> {
-  const d = data as { id: string; groupId: string; iv: string; ct: string };
+  const d = data as { id: string; groupId: string; iv: string; ct: string; keyIv?: string; keyCt?: string };
   return openJson(
-    key ?? groupKeyFor(epoch),
+    await contentKey('payment', d, epoch, key ?? groupKeyFor(epoch)),
     { iv: fromBase64Url(d.iv), ciphertext: fromBase64Url(d.ct) },
     paymentAad(d.id, d.groupId, epoch),
   );
@@ -264,9 +309,9 @@ export async function openSealedExpense(
   epoch = 0,
   key?: Uint8Array,
 ): Promise<Record<string, unknown>> {
-  const d = data as { id: string; groupId: string; iv: string; ct: string };
+  const d = data as { id: string; groupId: string; iv: string; ct: string; keyIv?: string; keyCt?: string };
   return openJson(
-    key ?? groupKeyFor(epoch),
+    await contentKey('expense', d, epoch, key ?? groupKeyFor(epoch)),
     { iv: fromBase64Url(d.iv), ciphertext: fromBase64Url(d.ct) },
     expenseAad(d.id, d.groupId, epoch),
   );
@@ -316,6 +361,21 @@ export function seedGroup(
 }
 
 /** One expense paid entirely by `payer`, owed entirely by them too. Returns its id. */
+/** An even split that still adds up, remainder to the payer. */
+function splitEvenly(
+  payer: string,
+  others: readonly string[],
+  amountMinor: number,
+): { userId: string; paidMinor: number; owedMinor: number }[] {
+  const heads = [payer, ...others];
+  const share = Math.floor(amountMinor / heads.length);
+  return heads.map((userId, i) => ({
+    userId,
+    paidMinor: userId === payer ? amountMinor : 0,
+    owedMinor: i === 0 ? amountMinor - share * (heads.length - 1) : share,
+  }));
+}
+
 export async function seedExpense(
   state: ApiState,
   groupId: string,
@@ -323,15 +383,25 @@ export async function seedExpense(
   payer: string,
   amountMinor = 1000,
   epoch = 0,
+  /** Others in the split besides the payer, so an entry can *name* somebody. */
+  sharedWith: readonly string[] = [],
 ): Promise<string> {
   const now = '2026-07-01T12:00:00.000Z';
   const list = state.expenses.get(groupId) ?? [];
   const id = randomUUID();
+  // Every entry carries a key of its own (design §4.8), wrapped under the
+  // epoch key — so the client resolves it exactly as it would for its own.
+  const entryKey = new Uint8Array(32).fill(0x5e);
+  const wrap = await seal(
+    groupKeyFor(epoch),
+    entryKey,
+    new TextEncoder().encode(`entrykey|expense|${id}|${groupId}|${epoch}`),
+  );
   // Genuinely sealed with the same key seedGroupKey hands the client, so the
   // decrypt path runs for real. Callers must seedGroupKey first or the client
   // has nothing to open it with — which is exactly the production rule.
   const sealed = await sealJson(
-    groupKeyFor(epoch),
+    entryKey,
     {
       description,
       category: 'general',
@@ -340,8 +410,13 @@ export async function seedExpense(
       currency: 'EUR',
       amountMinor,
       rateToDefault: null,
-      splitMeta: { mode: 'exact', entries: [{ userId: payer, amountMinor }] },
-      splits: [{ userId: payer, paidMinor: amountMinor, owedMinor: amountMinor }],
+      // Names everyone in the split, not just the payer. The editor reopens an
+      // entry from its meta, so a meta that disagrees with the splits makes a
+      // seeded entry unusable for testing anything about editing one.
+      splitMeta: { mode: 'equal', userIds: [payer, ...sharedWith] },
+      // Σowed has to equal the amount or the client refuses it on the way in,
+      // so a shared entry splits the total rather than adding to it.
+      splits: splitEvenly(payer, sharedWith, amountMinor),
     },
     expenseAad(id, groupId, epoch),
   );
@@ -351,6 +426,8 @@ export async function seedExpense(
     keyEpoch: epoch,
     iv: toBase64Url(sealed.iv),
     ct: toBase64Url(sealed.ciphertext),
+    keyIv: toBase64Url(wrap.iv),
+    keyCt: toBase64Url(wrap.ciphertext),
     createdBy: payer,
     createdAt: now,
     updatedBy: payer,
@@ -400,6 +477,7 @@ function changesFor(state: ApiState, cursors: Record<string, number> = {}): Reco
       group,
       members: members.filter((m) => m.version > cursor),
       keys: state.groupKeys.get(id) ?? [],
+      entryGrants: (state.entryGrants.get(id) ?? []).filter((g) => g.userId === ME.id),
       rotationPending: false,
       expenses: expenses.filter((e) => e.version > cursor),
       payments: payments.filter((p) => p.version > cursor),
@@ -607,6 +685,8 @@ export async function installApi(context: BrowserContext, state: ApiState): Prom
       if (!data) return;
       const groupId = admitMatch[1]!;
       state.admitted.push({ groupId, ...data });
+      // Admitting registers the key, so the next rotation can wrap to them.
+      state.publicKeys.set(data.userId, data.publicKey);
       const list = state.members.get(groupId) ?? [];
       list.push({
         groupId,
@@ -620,7 +700,13 @@ export async function installApi(context: BrowserContext, state: ApiState): Prom
       state.members.set(groupId, list);
       // The fixture's stored key for every account is the test identity, so a
       // scan of anything else legitimately reports a mismatch.
-      return json(route, { status: 'admitted', keyMatches: data.publicKey === TEST_PUBLIC_KEY });
+      return json(route, {
+        status: 'admitted',
+        keyMatches: data.publicKey === TEST_PUBLIC_KEY,
+        // What they could already read before they left, which returning gives
+        // back even on a from-today admit (design §4.7).
+        heldEpochs: state.heldEpochs.get(`${groupId}:${data.userId}`) ?? null,
+      });
     }
     const decideMatch = /^\/api\/groups\/([^/]+)\/join-requests\/([^/]+)$/.exec(path);
     if (decideMatch && method === 'POST') {
@@ -638,6 +724,9 @@ export async function installApi(context: BrowserContext, state: ApiState): Prom
           : queue.filter((r) => r.userId !== userId),
       );
       if (decision === 'approve') {
+        // Their key is on file — that is why approve can hand it back — so a
+        // rotation from here on can wrap to them.
+        state.publicKeys.set(userId, TEST_PUBLIC_KEY);
         const list = state.members.get(groupId) ?? [];
         const req = queue.find((r) => r.userId === userId);
         list.push({
@@ -671,6 +760,19 @@ export async function installApi(context: BrowserContext, state: ApiState): Prom
       return json(route, { status: 'unclaimed' });
     }
 
+    const restoreMatch = /^\/api\/groups\/([^/]+)\/members\/([^/]+)\/restore$/.exec(path);
+    if (restoreMatch && method === 'POST') {
+      const [, groupId, userId] = restoreMatch as unknown as [string, string, string];
+      const list = state.members.get(groupId) ?? [];
+      const version = bump(state, groupId);
+      state.members.set(
+        groupId,
+        // The id is kept, which is the whole point: the splits go on naming it.
+        list.map((m) => (m.userId === userId ? { ...m, leftAt: null, version } : m)),
+      );
+      return json(route, { status: 'restored' });
+    }
+
     const removeMatch = /^\/api\/groups\/([^/]+)\/members\/([^/]+)$/.exec(path);
     if (removeMatch && method === 'DELETE') {
       const [, groupId, userId] = removeMatch as unknown as [string, string, string];
@@ -692,11 +794,25 @@ export async function installApi(context: BrowserContext, state: ApiState): Prom
           .map((m) => ({
             userId: m.userId,
             displayName: m.displayName,
-            // Only the signed-in identity has a key in these fixtures; the
-            // rest stand in for members who have not logged in since §4.1.
-            publicKey: m.userId === ME.id ? TEST_PUBLIC_KEY : null,
+            // The signed-in identity, plus anyone whose key the server was
+            // handed. The rest stand in for members who have not logged in
+            // since §4.1, and have no key to wrap to.
+            publicKey: m.userId === ME.id ? TEST_PUBLIC_KEY : (state.publicKeys.get(m.userId) ?? null),
           })),
       });
+    }
+
+    const grantsMatch = /^\/api\/groups\/([^/]+)\/entry-grants$/.exec(path);
+    if (grantsMatch && method === 'POST') {
+      const data = check(grantEntriesSchema, body());
+      if (!data) return;
+      const groupId = grantsMatch[1]!;
+      const list = state.entryGrants.get(groupId) ?? [];
+      for (const g of data.grants) {
+        list.push({ groupId, entryType: g.entryType, entryId: g.entryId, epk: g.epk, iv: g.iv, ct: g.ct, userId: g.userId });
+      }
+      state.entryGrants.set(groupId, list);
+      return json(route, { granted: data.grants.length, skipped: 0 });
     }
 
     const keysMatch = /^\/api\/groups\/([^/]+)\/keys$/.exec(path);
@@ -706,7 +822,11 @@ export async function installApi(context: BrowserContext, state: ApiState): Prom
       const groupId = keysMatch[1]!;
       state.publishedWraps.push(...data.wraps.map((w) => ({ groupId, ...w })));
       if (data.mint) {
-        const already = (state.groupKeys.get(groupId) ?? []).length > 0;
+        // First-writer-wins on the epoch, not on the group: a rotation always
+        // lands in a group that already has keys, so anything coarser would
+        // report every rotation as a lost race.
+        const epochs = new Set(data.wraps.map((w) => w.epoch));
+        const already = (state.groupKeys.get(groupId) ?? []).some((k) => epochs.has(k.epoch));
         if (!already) {
           for (const w of data.wraps) {
             if (w.userId !== ME.id) continue; // only ours is readable back
@@ -737,13 +857,43 @@ export async function installApi(context: BrowserContext, state: ApiState): Prom
       return json(route, { token: 'tok', path: '/invite/tok', shareHistory });
     }
 
+    /**
+     * Who can read what (design §4.8). `othersHold` doubles as "which epochs
+     * the other member has", so a spec can put somebody in the group who is
+     * short of an entry and watch this device notice.
+     */
+    const readershipMatch = /^\/api\/groups\/([^/]+)\/readership$/.exec(path);
+    if (readershipMatch) {
+      const groupId = readershipMatch[1]!;
+      const mine = (state.groupKeys.get(groupId) ?? []).map((k) => k.epoch);
+      const members = (state.members.get(groupId) ?? [])
+        .filter((m) => !m.isPlaceholder && m.leftAt === null)
+        .map((m) => ({
+          userId: m.userId,
+          publicKey: TEST_PUBLIC_KEY,
+          epochs: m.userId === ME.id ? mine : (state.othersHold.get(`${groupId}:${m.userId}`) ?? []),
+        }));
+      const grants = (state.entryGrants.get(groupId) ?? []).map((g) => ({
+        userId: g.userId,
+        entryId: g.entryId,
+      }));
+      return json(route, { members, grants });
+    }
+
     const coverageMatch = /^\/api\/groups\/([^/]+)\/key-coverage$/.exec(path);
     if (coverageMatch) {
-      const epochs = (state.groupKeys.get(coverageMatch[1]!) ?? []).map((k) => ({
-        epoch: k.epoch,
-        holders: state.soleKeyHolder ? 1 : 2,
-        mine: true,
+      const groupId = coverageMatch[1]!;
+      const mine = (state.groupKeys.get(groupId) ?? []).map((k) => k.epoch);
+      const theirs = state.othersHold.get(groupId) ?? [];
+      const epochs = [...new Set([...mine, ...theirs])].sort((a, b) => a - b).map((epoch) => ({
+        epoch,
+        // Me, if I hold it, plus one stand-in for everybody else who does.
+        holders: (mine.includes(epoch) ? 1 : 0) + (theirs.includes(epoch) ? 1 : 0),
+        mine: mine.includes(epoch),
       }));
+      // The one case that is about *me* being the last holder, not about who
+      // else there is: leaving would take these with me.
+      if (state.soleKeyHolder) return json(route, { epochs: epochs.map((e) => ({ ...e, holders: 1 })) });
       return json(route, { epochs });
     }
     // Following a link only ever *asks* — an admin still has to approve, so
@@ -938,7 +1088,7 @@ export async function installApi(context: BrowserContext, state: ApiState): Prom
         }
       }
       return json(route, {
-        protocol: { current: 1, minSupported: 1 },
+        protocol: SYNC_PROTOCOL,
         results: data.mutations.map((m) => ({ id: m.id, status: 'applied' as const })),
         changes: changesFor(state, data.cursors),
       });

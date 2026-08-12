@@ -1,8 +1,12 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { deriveSas, formatSas, fromBase64Url, type MemberDto } from '@spendapp/shared';
+import { aliasResolver, deriveSas, formatSas, fromBase64Url, type MemberDto } from '@spendapp/shared';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { api } from '../api';
-import { forgetGroupLocally } from '../db';
+import { claimScope, entriesNaming, mergeEntries, nameLooksDifferent, type ClaimScope } from '../claim';
+import { strandedNames } from '../departed';
+import { grantEntries } from '../entryKeys';
+import { forgetGroupLocally, localDb } from '../db';
 import { holdsFullHistory } from '../coverage';
 import { rotateGroupKey, shareKeyring } from '../groupKeys';
 import { addPlaceholderLocal, syncNow } from '../sync';
@@ -68,6 +72,8 @@ interface JoinRequest {
   inviteTokenHash: string;
   /** Epochs they could open when they last left; absent unless they were here before. */
   heldEpochs?: number[] | null;
+  /** This account has been in this group before, under the same id. */
+  previouslyMember?: boolean;
   /** False means approving must rotate instead of handing over the keyring. */
   shareHistory: boolean;
   /** 'rejected' rows are recent declines, kept listed so they can be undone. */
@@ -142,12 +148,39 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
   const [keyHandoff, setKeyHandoff] = useState<string | null>(null);
   const [orphanEpochs, setOrphanEpochs] = useState<number[]>([]);
   const navigate = useNavigate();
+  // Only this device can say what a claim carries: the entries are readable
+  // here and nowhere else. Used both to warn the admin before they decide and
+  // to work out which epochs have to travel with the approval.
+  const ledger = useLiveQuery(
+    async () => ({
+      expenses: await localDb.expenses.where('groupId').equals(groupId).toArray(),
+      payments: await localDb.payments.where('groupId').equals(groupId).toArray(),
+    }),
+    [groupId],
+  );
+  // Splits keep naming a claimed placeholder, so every question of the form
+  // "which entries are this person's" has to follow the alias or it misses
+  // exactly the half a claim moved.
+  const resolve = useMemo(() => aliasResolver(members), [members]);
+  const claimCarries = useCallback(
+    (claimMemberId: string | null): ClaimScope =>
+      !claimMemberId || !ledger
+        ? { naming: 0, grantable: [] }
+        : claimScope(claimMemberId, ledger.expenses, ledger.payments, resolve),
+    [ledger, resolve],
+  );
 
   const active = members.filter((m) => m.leftAt === null);
   // Names somebody has taken over. They have `leftAt` set, so every other
   // section filters them out — which is how a wrong claim used to become
   // invisible as well as permanent.
   const takenOver = members.filter((m) => m.aliasOf);
+  // Removed names the ledger still uses. Only this device can tell: the server
+  // cannot read a split, so it does not know the name is owed anything.
+  const stranded = useMemo(
+    () => (ledger ? strandedNames(members, ledger.expenses, ledger.payments) : []),
+    [members, ledger],
+  );
   const nameOf = (id: string) => members.find((m) => m.userId === id)?.displayName ?? t('members.someone');
   const users = active.filter((m) => !m.isPlaceholder);
   const placeholders = active.filter((m) => m.isPlaceholder);
@@ -241,14 +274,48 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
           // already read, and it leaves their own splits — which still name
           // them, and which everyone else can see — unreadable to them, so
           // their balance would be wrong rather than merely partial.
-          let restored = 0;
-          if (request.heldEpochs?.length && res.publicKey) {
-            restored = await shareKeyring(groupId, userId, res.publicKey, request.heldEpochs);
+          // Their own past, plus whatever the name they are taking over is
+          // part of. Claiming rewrites a ledger identity, so handing over the
+          // debts without the entries behind them is a bargain nobody can
+          // check — and the admin has already agreed to the claim.
+          //
+          // Unless they said not to: the key opens the whole epoch, so an
+          // admin who is not willing to show the rest of that stretch can send
+          // the debts across unreadable instead. Their own past is not part of
+          // that choice — nothing is being disclosed by giving it back.
+          /**
+           * Everything that is theirs, one entry at a time (design §4.8):
+           * whatever the name they are taking over is in, and whatever names
+           * *them*. The second is not the same as the epochs they held — an
+           * entry written while they were away can still name them, because
+           * whoever was offline when they left went on splitting with them.
+           * That entry sits under an epoch they never had, so nothing but a
+           * grant reaches it. Each costs nothing else.
+           */
+          const scope = claimCarries(request.claimMemberId);
+          const mine = ledger ? entriesNaming(userId, ledger.expenses, ledger.payments, resolve) : [];
+          const handOver = mergeEntries(scope.grantable, mine);
+          if (handOver.length > 0 && res.publicKey) {
+            await grantEntries(groupId, userId, res.publicKey, handOver);
           }
+          // And the epochs they could open before, which returning gives back
+          // (§4.7) — the stretch they were away for stays shut.
+          const wanted = [...new Set(request.heldEpochs ?? [])];
+          const owed = wanted.length;
+          let restored = 0;
+          if (owed > 0 && res.publicKey) {
+            restored = await shareKeyring(groupId, userId, res.publicKey, wanted);
+          }
+          // Nobody can hand back what they do not hold themselves. An admin
+          // who joined from-today has none of the older epochs, so the person
+          // returning gets less of their own past than they had — and is owed
+          // that said out loud rather than left to notice a gap.
           setKeyHandoff(
-            restored > 0
-              ? t('members.scopedRestored', { count: restored })
-              : t(rotated ? 'members.scopedAdded' : 'members.scopedNoKey'),
+            restored < owed
+              ? t('members.scopedRestoredPartly', { restored, owed })
+              : restored > 0
+                ? t('members.scopedRestored', { count: restored })
+                : t(rotated ? 'members.scopedAdded' : 'members.scopedNoKey'),
           );
         } catch (err) {
           setKeyHandoff(t('members.scopedRotateFailed', { reason: (err as Error).message }));
@@ -268,6 +335,27 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
       if (decision === 'approve' && res.publicKey) {
         try {
           await shareKeyring(groupId, userId, res.publicKey);
+          /**
+           * And the entries they are in, one at a time (design §4.8).
+           *
+           * The ring above already covers everything this device can read, so
+           * for a whole-history admin these grants are a duplicate. They are
+           * not for that case. An admin who joined partway through can only
+           * pass on the epochs they hold, and a returning member who used to
+           * hold more comes back to a ledger missing entries with their own
+           * name in them — approved on a link that said full history.
+           *
+           * A grant does not care which epoch an entry sits in. So whatever
+           * the approver can read and the joiner is party to comes across,
+           * even when the epoch behind it cannot. What no current member can
+           * read is beyond saving by anyone, which is what the warning before
+           * leaving is for.
+           */
+          const owed = mergeEntries(
+            claimCarries(request?.claimMemberId ?? null).grantable,
+            ledger ? entriesNaming(userId, ledger.expenses, ledger.payments, resolve) : [],
+          );
+          if (owed.length > 0) await grantEntries(groupId, userId, res.publicKey, owed);
           // Only a full-keyring member can grant full history (design §4.7).
           // Saying nothing here would quietly produce a second partial member
           // and leave both of them believing they see the whole ledger.
@@ -319,6 +407,19 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
     setError(null);
     try {
       await api(`/api/groups/${groupId}/members/${userId}/unclaim`, { method: 'POST' });
+      await syncNow();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setDeciding(null);
+    }
+  }
+
+  async function restore(userId: string) {
+    setDeciding(userId);
+    setError(null);
+    try {
+      await api(`/api/groups/${groupId}/members/${userId}/restore`, { method: 'POST' });
       await syncNow();
     } catch (err) {
       setError((err as Error).message);
@@ -407,6 +508,22 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
                   </span>
                 )}
                 <SasDigits groupId={groupId} request={r} />
+                {r.previouslyMember && (
+                  <span className="text-xs text-slate-500 dark:text-slate-400">{t('members.wasHereBefore')}</span>
+                )}
+                {r.claimMemberId && nameLooksDifferent(nameOf(r.claimMemberId), r.displayName) && (
+                  <span className="text-xs font-medium text-amber-700 dark:text-amber-500">
+                    {t('members.claimNameDiffers', { claimed: nameOf(r.claimMemberId), asker: r.displayName })}
+                  </span>
+                )}
+                {r.claimMemberId && claimCarries(r.claimMemberId).naming > 0 && (
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    {t('members.claimBringsEntries', {
+                      count: claimCarries(r.claimMemberId).naming,
+                      name: nameOf(r.claimMemberId),
+                    })}
+                  </span>
+                )}
                 {confirmApprove === r.userId && (
                   <span className="text-xs font-medium text-amber-700 dark:text-amber-500">
                     {t('members.approveAsk')}
@@ -551,6 +668,27 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
             </div>
           ))}
           <p className="text-xs text-slate-400">{t('members.undoNote')}</p>
+        </section>
+      )}
+
+      {stranded.length > 0 && (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-sm font-medium text-slate-500 dark:text-slate-400">{t('members.stranded')}</h2>
+          {stranded.map((m) => (
+            <div key={m.userId} className={row}>
+              <span>{m.displayName}</span>
+              {meIsAdmin && (
+                <button
+                  disabled={deciding === m.userId}
+                  onClick={() => void restore(m.userId)}
+                  className={`${smallButton} border border-slate-300 text-slate-600 dark:border-slate-600 dark:text-slate-300`}
+                >
+                  {t('members.putBack')}
+                </button>
+              )}
+            </div>
+          ))}
+          <p className="text-xs text-slate-400">{t('members.strandedNote')}</p>
         </section>
       )}
 

@@ -12,6 +12,8 @@ import {
 } from '@spendapp/shared';
 import { api, ApiError } from './api';
 import { openExpense, openPayment, sealAttachment, sealComment, sealExpense, sealPayment } from './envelope';
+import { absorbEntryGrants, loadStoredGrants } from './entryKeys';
+import { reconcileReadership } from './readership';
 import { noteMissingEpochs, refreshCoverage } from './coverage';
 import { KEYS_CACHED_EVENT } from './keys';
 import {
@@ -32,6 +34,27 @@ const BATCH = 200;
 
 let syncing = false;
 let runAgain = false;
+/**
+ * Whether this device has heard from the server since it last failed to.
+ *
+ * False at startup and after every failed attempt, which is what being offline
+ * looks like from in here. While it is false, anything queued is assumed to
+ * have been written without knowing whether the group has rotated since.
+ */
+let heardFromServer = false;
+
+/**
+ * Pull before pushing, when there is queued work and we may have missed a
+ * rotation while it was being written.
+ *
+ * The keys ride back in the same response as the acks, so a single round trip
+ * uploads the queue *before* it can learn the epoch moved — which is precisely
+ * the case re-sealing exists for, and precisely the one it would miss. Asking
+ * first costs one extra round trip, and only on the first sync after a failure
+ * or a cold start. An app that has been talking to the server all along is
+ * already current and pushes in one trip as before.
+ */
+export const shouldPullFirst = (queued: number, heard: boolean): boolean => queued > 0 && !heard;
 
 /**
  * The server has told us this session is over.
@@ -43,6 +66,16 @@ let runAgain = false;
  */
 export const SESSION_ENDED_EVENT = 'app:session-ended';
 let sessionEnded = false;
+
+/**
+ * The server will not talk to this build any more (design §4.8).
+ *
+ * A 426 used to fall into the same branch as being offline: logged to the
+ * console and retried forever. The app went on looking fine and quietly stopped
+ * syncing, which is the worst way to deliver a required update. Announced now,
+ * so the shell can fetch the new worker and reload.
+ */
+export const CLIENT_OUTDATED_EVENT = 'app:client-outdated';
 
 /**
  * Stop syncing now, without waiting to be told by a 401.
@@ -95,8 +128,15 @@ export async function syncNow(): Promise<void> {
   }
   syncing = true;
   try {
-    const outbox = await localDb.outbox.orderBy('seq').limit(BATCH).toArray();
-    await freshenQueuedEpochs(outbox);
+    // Grants persisted from an earlier session, in case this pass decrypts
+    // before the server has re-sent them. A no-op once they are in hand.
+    await loadStoredGrants();
+    const queued = await localDb.outbox.orderBy('seq').limit(BATCH).toArray();
+    // Nothing is sent on a pull-first pass; the queue waits for the run that
+    // follows, by which point it can be moved onto the epoch now in hand.
+    const pullFirst = shouldPullFirst(queued.length, heardFromServer);
+    const outbox = pullFirst ? [] : queued;
+    if (!pullFirst) await freshenQueuedEpochs(outbox);
     const cursorRows = await localDb.cursors.toArray();
     const res = await api<SyncResponse>('/api/sync', {
       method: 'POST',
@@ -140,6 +180,18 @@ export async function syncNow(): Promise<void> {
     // promise. Rows that will not open are dropped rather than stored blank.
     let rewound = false;
     for (const [groupId, ch] of Object.entries(res.changes)) {
+      // Grants before rows, for the same reason keys go before rows: an entry
+      // must never arrive ahead of the thing that opens it (design §4.8).
+      if (ch.entryGrants?.length) {
+        const brought = await absorbEntryGrants(ch.entryGrants);
+        // A granted entry is almost always older than the cursor — that is the
+        // point of granting it — so the rows it names will not be offered
+        // again unless this group is asked for from the start.
+        if (brought > 0) {
+          await localDb.cursors.put({ groupId, version: 0 });
+          rewound = true;
+        }
+      }
       if (!ch.keys?.length) continue;
       // What this group had already given up on before these keys arrived.
       const dropped = (await localDb.coverage.get(groupId))?.missingEpochs ?? [];
@@ -155,6 +207,11 @@ export async function syncNow(): Promise<void> {
         rewound = true;
       }
     }
+    // Current as of this response, so the queue can be moved onto the epoch it
+    // just learned about.
+    heardFromServer = true;
+    if (pullFirst) runAgain = true;
+
     if (rewound) {
       runAgain = true;
       return; // re-pull from the rewound cursors before touching the mirror
@@ -257,6 +314,24 @@ export async function syncNow(): Promise<void> {
     // first, file second — never an orphan file, design §9).
     await uploadPendingBlobs();
 
+    /**
+     * Somebody joined or came back, which is the one thing that leaves a
+     * member unable to read an entry with their own name in it (design §4.8).
+     * A new entry never does — it is written under the epoch everybody holds.
+     *
+     * Whoever can read the entry is the only one who can fix it, and the
+     * server cannot say who that is, so every device checks its own. Never
+     * allowed to break the sync it rode in on.
+     */
+    for (const [groupId, ch] of Object.entries(res.changes)) {
+      if (!ch.members?.length || !meId) continue;
+      try {
+        if (await reconcileReadership(groupId, meId)) runAgain = true;
+      } catch {
+        /* offline, or a member whose key is not on file yet */
+      }
+    }
+
     if (remaining.length > 0) runAgain = true; // more than one batch queued
   } catch (err) {
     if (err instanceof ApiError && err.status === 401) {
@@ -267,7 +342,18 @@ export async function syncNow(): Promise<void> {
       window.dispatchEvent(new Event(SESSION_ENDED_EVENT));
       return;
     }
-    // Offline or server hiccup: keep the queue, try again on the next trigger.
+    if (err instanceof ApiError && err.status === 426) {
+      // Also definite, and also not worth retrying: this build cannot read what
+      // the server now serves. Stop, and ask for the update rather than
+      // spinning against a floor that will not move.
+      sessionEnded = true;
+      window.dispatchEvent(new Event(CLIENT_OUTDATED_EVENT));
+      return;
+    }
+    // Offline or server hiccup: keep the queue, try again on the next trigger —
+    // and assume the group may have moved on without us in the meantime, so
+    // the next attempt asks before it pushes.
+    heardFromServer = false;
     console.debug('sync deferred:', (err as Error).message);
   } finally {
     // Not when another pass is already queued. The rewind above returns before
@@ -301,7 +387,15 @@ function applyPollCadence(): void {
 }
 
 /** Sync triggers per design §6: start, online, foreground, push, poll. */
-export function startSyncLoop(): void {
+/**
+ * Who is signed in, for the one thing sync does that needs to know: working
+ * out which entries *other* members cannot read (design §4.8). Set when the
+ * loop starts, which is when somebody signs in.
+ */
+let meId: string | null = null;
+
+export function startSyncLoop(id?: string): void {
+  if (id) meId = id;
   // Called again whenever somebody signs in, so a fresh session revives a loop
   // that a 401 stopped — the listeners below are still registered.
   sessionEnded = false;

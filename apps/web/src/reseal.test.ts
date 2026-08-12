@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { fromBase64Url, generateGroupKey, open, seal, toBase64Url, type Mutation } from '@spendapp/shared';
 import { resealMutation, type KeyLookup } from './reseal';
+import { shouldPullFirst } from './sync';
 
 /**
  * Moving a queued write onto the current epoch.
@@ -151,5 +152,106 @@ describe('moving a queued write onto the current epoch', () => {
     } as unknown as Mutation;
     const next = (await resealMutation(att, 3, keyFor))!;
     expect((next.data as unknown as { keyEpoch: number }).keyEpoch).toBe(3);
+  });
+});
+
+/**
+ * An entry sealed with its own key (design §4.8). What matters on a rotation
+ * is not that the entry still opens — it is that it opens under the *same*
+ * entry key, because a grant already handed to somebody is a copy of that key
+ * and minting a fresh one would revoke it without anybody asking.
+ */
+const entryKeyAad = (t: string, id: string, g: string, e: number) => utf8(`entrykey|${t}|${id}|${g}|${e}`);
+
+async function queuedWithEntryKey(epoch: number, entryKey: Uint8Array): Promise<Mutation> {
+  const epochKey = KEYS.get(epoch)!;
+  const wrapped = await seal(epochKey, entryKey, entryKeyAad('expense', ID, GROUP, epoch));
+  return {
+    id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    v: 1,
+    type: 'expense.upsert',
+    groupId: GROUP,
+    clientTs: '2026-08-12T10:00:00.000Z',
+    data: {
+      id: ID,
+      groupId: GROUP,
+      keyEpoch: epoch,
+      // Content under the entry key; the wrapper under the epoch key.
+      ...(await sealAt(entryKey, expenseAad(ID, GROUP, epoch), CONTENT)),
+      keyIv: toBase64Url(wrapped.iv),
+      keyCt: toBase64Url(wrapped.ciphertext),
+      snapshot: {
+        activityId: ACTIVITY,
+        ...(await sealAt(epochKey, snapshotAad(ACTIVITY, GROUP, epoch), SNAP)),
+      },
+    },
+  } as unknown as Mutation;
+}
+
+describe('moving an entry that carries its own key', () => {
+  it('keeps the entry key, so a grant already given still opens it', async () => {
+    const entryKey = generateGroupKey();
+    const next = await resealMutation(await queuedWithEntryKey(2, entryKey), 3, keyFor);
+    const d = (next as unknown as { data: Record<string, string> }).data;
+
+    // The wrapper now opens under epoch 3 — and yields the very same key.
+    const carried = await open(
+      KEYS.get(3)!,
+      { iv: fromBase64Url(d.keyIv!), ciphertext: fromBase64Url(d.keyCt!) },
+      entryKeyAad('expense', ID, GROUP, 3),
+    );
+    expect([...carried]).toEqual([...entryKey]);
+    // Which is what makes the content readable to a grant holder afterwards.
+    expect(await readAt(entryKey, expenseAad(ID, GROUP, 3), d as unknown as { iv: string; ct: string })).toBe(CONTENT);
+  });
+
+  it('leaves the old wrapper unopenable, so the departed epoch buys nothing', async () => {
+    const entryKey = generateGroupKey();
+    const next = await resealMutation(await queuedWithEntryKey(2, entryKey), 3, keyFor);
+    const d = (next as unknown as { data: Record<string, string> }).data;
+    await expect(
+      open(
+        KEYS.get(2)!,
+        { iv: fromBase64Url(d.keyIv!), ciphertext: fromBase64Url(d.keyCt!) },
+        entryKeyAad('expense', ID, GROUP, 2),
+      ),
+    ).rejects.toThrow();
+  });
+
+  it('declines rather than half-moving when the wrapper will not open', async () => {
+    const m = await queuedWithEntryKey(2, generateGroupKey());
+    (m as unknown as { data: { keyCt: string } }).data.keyCt = toBase64Url(new Uint8Array(48).fill(1));
+    expect(await resealMutation(m, 3, keyFor)).toBeNull();
+  });
+
+  it('still moves a mutation queued before entry keys existed', async () => {
+    // No wrapper: sealed under the epoch key itself, and moved that way.
+    const next = await resealMutation(await queuedExpense(2), 3, keyFor);
+    const d = (next as unknown as { data: Record<string, string> }).data;
+    expect(d.keyCt).toBeUndefined();
+    expect(await readAt(KEYS.get(3)!, expenseAad(ID, GROUP, 3), d as unknown as { iv: string; ct: string })).toBe(
+      CONTENT,
+    );
+  });
+});
+
+describe('asking before pushing', () => {
+  it('pulls first when there is queued work and we may have missed a rotation', () => {
+    // The case the whole exercise is for: written offline, uploaded on
+    // reconnect. Keys ride back in the same response as the acks, so pushing
+    // straight away would upload the queue before it could learn the epoch
+    // moved.
+    expect(shouldPullFirst(1, false)).toBe(true);
+  });
+
+  it('pushes straight away once the server has been heard from', () => {
+    // An app that has been online all along is already current; making every
+    // write cost two round trips would be a poor trade for nothing.
+    expect(shouldPullFirst(1, true)).toBe(false);
+  });
+
+  it('does not bother when there is nothing queued', () => {
+    expect(shouldPullFirst(0, false)).toBe(false);
+    expect(shouldPullFirst(0, true)).toBe(false);
   });
 });

@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import argon2 from 'argon2';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { SYNC_PROTOCOL } from '@spendapp/shared';
 import { buildApp } from '../app.js';
 import { db, schema } from '../db/index.js';
 
@@ -251,7 +252,7 @@ d('publishing group keys', () => {
       method: 'POST',
       url: '/api/sync',
       headers: hdrs(raw),
-      payload: { protocolVersion: 1, cursors: {}, mutations: [] },
+      payload: { protocolVersion: SYNC_PROTOCOL.current, cursors: {}, mutations: [] },
     });
     const { changes } = sync.json() as {
       changes: Record<string, { keys: { epoch: number; chainIv: string | null; chainCt: string | null }[] }>;
@@ -277,7 +278,7 @@ d('publishing group keys', () => {
       method: 'POST',
       url: '/api/sync',
       headers: hdrs(raw),
-      payload: { protocolVersion: 1, cursors: {}, mutations: [] },
+      payload: { protocolVersion: SYNC_PROTOCOL.current, cursors: {}, mutations: [] },
     });
     const { changes } = sync.json() as {
       changes: Record<string, { keys: { epoch: number; chainIv: string | null }[] }>;
@@ -352,7 +353,7 @@ d('leaving a group', () => {
       method: 'POST',
       url: '/api/sync',
       headers: hdrs(raw),
-      payload: { protocolVersion: 1, cursors: {}, mutations: [] },
+      payload: { protocolVersion: SYNC_PROTOCOL.current, cursors: {}, mutations: [] },
     });
     const { changes } = sync.json() as { changes: Record<string, { keys: { epoch: number }[] }> };
     expect(changes[GROUP]!.keys).toEqual([]);
@@ -451,7 +452,7 @@ d('asking for a rotation after somebody leaves', () => {
       method: 'POST',
       url: '/api/sync',
       headers: hdrs(raw),
-      payload: { protocolVersion: 1, cursors: {}, mutations: [] },
+      payload: { protocolVersion: SYNC_PROTOCOL.current, cursors: {}, mutations: [] },
     });
     const { changes } = sync.json() as { changes: Record<string, { rotationPending: boolean }> };
     return changes[GROUP]!.rotationPending;
@@ -504,5 +505,95 @@ d('asking for a rotation after somebody leaves', () => {
       payload: { wraps: [wrap(ADA, 0)] },
     });
     expect(await pending()).toBe(true);
+  });
+});
+
+d('handing on the admin role', () => {
+  beforeEach(reset);
+
+  const wrap = (userId: string, epoch: number) => ({ userId, epoch, epk: b64(32), iv: b64(12), ct: b64(48) });
+
+  async function holds(userId: string, epochs: number[]) {
+    const raw = await session(ADA);
+    await app!.inject({
+      method: 'POST',
+      url: `/api/groups/${GROUP}/keys`,
+      headers: hdrs(raw),
+      payload: { wraps: epochs.map((e) => wrap(userId, e)) },
+    });
+  }
+
+  const roleOf = async (userId: string) =>
+    (
+      await db
+        .select({ role: schema.groupMembers.role })
+        .from(schema.groupMembers)
+        .where(and(eq(schema.groupMembers.groupId, GROUP), eq(schema.groupMembers.userId, userId)))
+    )[0]!.role;
+
+  it('passes it to somebody who can still hand on the group past', async () => {
+    // Grace joined first but on a from-today link, so she cannot read the
+    // start. Alan joined later with the whole ring. Oldest-joined alone would
+    // pick Grace and leave the group with an admin who can grant nobody the
+    // early history — not even a returning member their own.
+    await db
+      .insert(schema.groupMembers)
+      .values({ groupId: GROUP, userId: OUTSIDER, role: 'member', joinedAt: new Date(Date.now() + 60_000) })
+      .onDuplicateKeyUpdate({ set: { leftAt: null } });
+    await holds(ADA, [0, 1, 2]);
+    await holds(GRACE, [2]);
+    await holds(OUTSIDER, [0, 1, 2]);
+
+    const raw = await session(ADA);
+    await app!.inject({ method: 'POST', url: `/api/groups/${GROUP}/leave`, headers: hdrs(raw) });
+
+    expect(await roleOf(OUTSIDER)).toBe('admin');
+    expect(await roleOf(GRACE)).toBe('member');
+  });
+
+  it('falls back to oldest-joined when nobody can read the start', async () => {
+    await db
+      .insert(schema.groupMembers)
+      .values({ groupId: GROUP, userId: OUTSIDER, role: 'member', joinedAt: new Date(Date.now() + 60_000) })
+      .onDuplicateKeyUpdate({ set: { leftAt: null } });
+    await holds(ADA, [0, 1, 2]);
+    await holds(GRACE, [2]);
+    await holds(OUTSIDER, [2]);
+
+    const raw = await session(ADA);
+    await app!.inject({ method: 'POST', url: `/api/groups/${GROUP}/leave`, headers: hdrs(raw) });
+
+    expect(await roleOf(GRACE)).toBe('admin');
+  });
+
+  it('hands on nothing when an admin already remains', async () => {
+    await db
+      .update(schema.groupMembers)
+      .set({ role: 'admin' })
+      .where(and(eq(schema.groupMembers.groupId, GROUP), eq(schema.groupMembers.userId, GRACE)));
+    await holds(ADA, [0]);
+
+    const raw = await session(ADA);
+    await app!.inject({ method: 'POST', url: `/api/groups/${GROUP}/leave`, headers: hdrs(raw) });
+    expect(await roleOf(GRACE)).toBe('admin');
+  });
+
+  it('grants no keys with the role — admin and access are separate', async () => {
+    // Being made an admin must not hand anybody history they were not given.
+    await holds(GRACE, [2]);
+    const raw = await session(ADA);
+    const res = await app!.inject({
+      method: 'POST',
+      url: `/api/groups/${GROUP}/members/${GRACE}/role`,
+      headers: hdrs(raw),
+      payload: { role: 'admin' },
+    });
+    expect(res.statusCode).toBe(200);
+
+    const held = await db
+      .select({ epoch: schema.groupKeys.epoch })
+      .from(schema.groupKeys)
+      .where(and(eq(schema.groupKeys.groupId, GROUP), eq(schema.groupKeys.userId, GRACE)));
+    expect(held.map((r) => r.epoch)).toEqual([2]);
   });
 });

@@ -1,4 +1,4 @@
-import { toBase64Url, sealJson } from '@spendapp/shared';
+import { seal, toBase64Url, sealJson } from '@spendapp/shared';
 import { ME, expect, groupKeyFor, seedExpense, seedGroup, seedGroupKey, signIn, test } from '../fixtures/api';
 
 const GROUP = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa';
@@ -13,8 +13,17 @@ const BAD = 'bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb';
 
 /** An expense that decrypts perfectly and is nonsense: owed is half the total. */
 async function seedCorruptExpense(api: import('../fixtures/api').ApiState): Promise<void> {
-  const sealed = await sealJson(
+  // Sealed the way every entry is (design §4.8): under a key of its own, with
+  // that key wrapped to the epoch. The point of this fixture is an entry that
+  // decrypts *perfectly* and is still nonsense, so it has to be well-formed.
+  const entryKey = new Uint8Array(32).fill(0x5e);
+  const wrap = await seal(
     groupKeyFor(0),
+    entryKey,
+    new TextEncoder().encode(`entrykey|expense|${BAD}|${GROUP}|0`),
+  );
+  const sealed = await sealJson(
+    entryKey,
     {
       description: 'Rigged dinner',
       category: 'general',
@@ -35,6 +44,8 @@ async function seedCorruptExpense(api: import('../fixtures/api').ApiState): Prom
     keyEpoch: 0,
     iv: toBase64Url(sealed.iv),
     ct: toBase64Url(sealed.ciphertext),
+    keyIv: toBase64Url(wrap.iv),
+    keyCt: toBase64Url(wrap.ciphertext),
     createdBy: ME.id,
     createdAt: '2026-07-02T12:00:00.000Z',
     updatedBy: ME.id,

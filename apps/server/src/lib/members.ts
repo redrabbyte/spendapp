@@ -111,6 +111,61 @@ export async function claimableMembers(groupId: string): Promise<ClaimableMember
 }
 
 /**
+ * Put a removed placeholder back, so a name the ledger still uses can be
+ * taken over again.
+ *
+ * Removal asks only whether anything names them at that moment, and the
+ * answer can change afterwards — a revert restores the split as it was
+ * written, an offline device syncs an entry that named them. The name is then
+ * owed money with nobody able to claim it, and re-adding is no help because
+ * adding makes a new id, which is not the id in the split.
+ *
+ * Which entries name whom is unknowable here: the server cannot read a split.
+ * So this only restores, and the admin asking has read the ledger on their own
+ * device. Nothing else changes — the row keeps its id, so every split pointing
+ * at it goes on meaning the same name.
+ */
+export async function restorePlaceholder(adminId: string, groupId: string, targetId: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    const rows = await tx
+      .select({
+        leftAt: schema.groupMembers.leftAt,
+        aliasOf: schema.groupMembers.aliasOf,
+        isPlaceholder: schema.users.isPlaceholder,
+        displayName: schema.users.displayName,
+      })
+      .from(schema.groupMembers)
+      .innerJoin(schema.users, eq(schema.users.id, schema.groupMembers.userId))
+      .where(and(eq(schema.groupMembers.groupId, groupId), eq(schema.groupMembers.userId, targetId)))
+      .for('update');
+    const row = rows[0];
+    if (!row) throw new ApiError('not_a_member', 404);
+    // A real account is not restored by an admin: coming back is their
+    // decision and their keys, and it goes through the join path.
+    if (!row.isPlaceholder) throw new ApiError('not_a_placeholder', 409);
+    if (!row.leftAt) throw new ApiError('still_in_group', 409);
+    // A taken-over name is not stranded — its entries resolve to the claimer.
+    // Undoing that is unclaim's job, and doing both here would hide it.
+    if (row.aliasOf) throw new ApiError('already_claimed', 409);
+
+    const version = await bumpGroupVersion(tx, groupId);
+    await tx
+      .update(schema.groupMembers)
+      .set({ leftAt: null, version })
+      .where(and(eq(schema.groupMembers.groupId, groupId), eq(schema.groupMembers.userId, targetId)));
+    await logActivity(tx, {
+      groupId,
+      version,
+      actorId: adminId,
+      type: 'member.restored',
+      entityType: 'member',
+      entityId: targetId,
+      payload: { displayName: row.displayName },
+    });
+  });
+}
+
+/**
  * Undo a claim: the name goes back to standing on its own, and its entries
  * resolve to it again rather than to whoever took it.
  *
@@ -242,11 +297,25 @@ export async function claimPlaceholder(userId: string, groupId: string, targetId
     const now = new Date();
     const version = await bumpGroupVersion(tx, groupId);
 
-    // The claimer becomes a member in their own right...
+    /**
+     * The claimer becomes a member in their own right.
+     *
+     * Resurrecting the row means everything not reset here carries over, and
+     * the role is on it: a former admin who left and came back arrived as an
+     * admin again, without anybody granting it — the group approved a member
+     * and got an administrator. Being let back in is not the same decision as
+     * being given the role, so it starts over and whoever is admin now can
+     * hand it back deliberately.
+     *
+     * heldEpochs goes for the same reason: it described what they could open
+     * when they left, the approval that is running has already used it, and a
+     * stale copy on a live membership is a claim about access that is no
+     * longer true.
+     */
     await tx
       .insert(schema.groupMembers)
       .values({ groupId, userId, joinedAt: now, role: 'member', version })
-      .onDuplicateKeyUpdate({ set: { leftAt: null, version } });
+      .onDuplicateKeyUpdate({ set: { leftAt: null, role: 'member', heldEpochs: null, version } });
 
     // ...and the old identity retires, pointing at them. Every existing split,
     // payment and activity row keeps referencing the old id; readers follow the

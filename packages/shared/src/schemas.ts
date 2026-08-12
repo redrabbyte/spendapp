@@ -32,7 +32,7 @@ export const usernameSchema = z
   );
 
 /** base64url, as everything binary crosses the wire (design §4.1). */
-const b64url = (max: number) => z.string().regex(/^[A-Za-z0-9_-]+$/, 'base64url').max(max);
+export const b64url = (max: number) => z.string().regex(/^[A-Za-z0-9_-]+$/, 'base64url').max(max);
 const key32 = b64url(64); // 32 bytes → 43 chars
 
 export const kdfParamsSchema = z.object({
@@ -148,6 +148,30 @@ export const publishKeysSchema = z.object({
 });
 
 /**
+ * Granting single entries (design §4.8): one entry's content key, wrapped to
+ * one member. What a claim hands over now, instead of the epoch those entries
+ * happen to sit in.
+ *
+ * Capped like key publishing. A claim on a name that appears in hundreds of
+ * entries is a real thing, so the ceiling is the same 500 and the client sends
+ * more than one batch if it has to.
+ */
+export const grantEntriesSchema = z.object({
+  grants: z
+    .array(
+      z
+        .object({
+          userId: uuid,
+          entryId: uuid,
+          entryType: z.enum(['expense', 'payment']),
+        })
+        .merge(wrappedKeySchema),
+    )
+    .min(1)
+    .max(500),
+});
+
+/**
  * What a joiner's QR code carries, and what a scanner may believe (design
  * §4.2). No secret is in here: the public key is the half meant to be handed
  * out, and the scan is what binds it to a face.
@@ -211,6 +235,21 @@ export const sealedEntitySchema = z.object({
   keyEpoch: z.number().int().min(0).max(100_000),
   iv: b64url(32),
   ct: b64url(200_000),
+  /**
+   * This entry's own content key, sealed under the epoch key (design §4.8).
+   *
+   * A group key opens an epoch, so handing one over to let somebody read the
+   * single entry they inherited hands them everything written in the same
+   * stretch. An entry key can be handed over on its own. The epoch still gates
+   * it, so history scoping is unchanged — this only adds a second, narrower
+   * door into one entry.
+   *
+   * Required. The columns behind it are not null, so an entry arriving without
+   * one is refused here rather than at the constraint, where it would be a 500
+   * instead of a plain "that is not a valid entry".
+   */
+  keyIv: b64url(32),
+  keyCt: b64url(255),
 });
 export type SealedEntity = z.infer<typeof sealedEntitySchema>;
 

@@ -8,6 +8,7 @@ import { AuthProvider } from './auth';
 // since the event fires once and is lost if nothing is listening.
 import './install';
 import { SettingsProvider } from './settings';
+import { CLIENT_OUTDATED_EVENT } from './sync';
 import './styles.css';
 
 /**
@@ -57,6 +58,24 @@ const updateSW = registerSW({
     document.addEventListener('visibilitychange', check);
     window.addEventListener('focus', check);
   },
+});
+
+/**
+ * The server has refused this build (design §4.8). Unlike the prompt above
+ * there is nothing to weigh — nothing syncs until the update lands — so the
+ * new worker is fetched at once and the page reloads either way: a plain
+ * reload is the fallback when this is already the newest worker on offer, in
+ * which case the deploy is mid-flight and the next load will pick it up.
+ */
+window.addEventListener(CLIENT_OUTDATED_EVENT, () => {
+  void (async () => {
+    try {
+      await updateSW(true);
+    } catch {
+      /* no waiting worker to activate; the reload below is the whole attempt */
+    }
+    location.reload();
+  })();
 });
 
 createRoot(document.getElementById('root')!).render(

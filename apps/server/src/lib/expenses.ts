@@ -49,6 +49,8 @@ export async function applyExpenseUpsert(
       keyEpoch: input.keyEpoch,
       iv: input.iv,
       ct: input.ct,
+      keyIv: input.keyIv,
+      keyCt: input.keyCt,
       updatedBy: userId,
       updatedAt: now,
       version,
@@ -127,3 +129,4 @@ export async function applyExpenseDelete(
   if (!expense.deletedAt) notifyGroup(expense.groupId, userId, 'expense.deleted');
   return { ok: true }; // deleting twice is not an error
 }
+

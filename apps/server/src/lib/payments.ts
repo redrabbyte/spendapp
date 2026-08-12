@@ -46,6 +46,8 @@ export async function applyPaymentUpsert(
       keyEpoch: input.keyEpoch,
       iv: input.iv,
       ct: input.ct,
+      keyIv: input.keyIv,
+      keyCt: input.keyCt,
       updatedAt: now,
       version,
       deletedAt: null,

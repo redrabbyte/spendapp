@@ -54,9 +54,6 @@ export const de: Catalogue = {
   'push.prompt.later': 'Jetzt nicht',
 
   'gap.title': 'Es wird nur ein Teil dieser Gruppe angezeigt.',
-  'gap.expenses': 'Einträge von vor deinem Beitritt werden hier nicht aufgeführt.',
-  'gap.balances': 'Diese Salden umfassen nur, was du lesen kannst. Dein eigener Stand stimmt genau — du warst an keiner früheren Aufteilung beteiligt, aber Schulden zwischen anderen von vor deinem Beitritt fehlen.',
-  'gap.charts': 'Diese Auswertungen umfassen nur, was du lesen kannst; Summen und Kategorien beginnen also mit deinem Beitritt.',
   'gap.activity': 'Der Verlauf beginnt mit deinem Beitritt. Frühere Einträge, Kommentare und Belege werden nicht angezeigt.',
   'gap.members': 'Du bist erst später dazugekommen und kannst den vollen Verlauf dieser Gruppe deshalb nicht an neue Mitglieder weitergeben.',
 
@@ -229,6 +226,8 @@ export const de: Catalogue = {
   'editor.singlePayer': 'einer zahlt',
   'editor.multiplePayers': 'mehrere zahlen',
   'editor.totalOfPayers': 'Gesamt ist die Summe davon — {amount} {currency}.',
+  'editor.namesWhoLeft':
+    'Dieser Eintrag enthält {names}, die die Gruppe inzwischen verlassen haben. Das ist richtig, wenn sie damals dabei waren — prüfe, ob es nicht ein Gerät war, das es noch nicht wusste.',
   'editor.split': 'Aufteilen',
   'editor.mode.equal': 'gleichmäßig',
   'editor.mode.exact': 'genaue Beträge',
@@ -391,6 +390,7 @@ export const de: Catalogue = {
   'activity.payment.deleted': 'hat eine Zahlung gelöscht',
   'activity.member.added': 'hat {name} hinzugefügt',
   'activity.member.claimed': 'hat {name} übernommen',
+  'activity.member.restored': 'hat {name} zurückgeholt',
   'activity.import.created': {
     one: 'hat {count} Eintrag aus {source} importiert',
     other: 'hat {count} Einträge aus {source} importiert',
@@ -473,6 +473,11 @@ export const de: Catalogue = {
   'members.waiting': 'Warten auf Freigabe ({count})',
   'members.wantsToTakeOver': 'möchte {name} übernehmen',
   'members.aPlaceholder': 'einen Platzhalter',
+  'members.wasHereBefore': 'Dieses Konto war schon einmal in dieser Gruppe.',
+  'members.claimNameDiffers':
+    'Sie möchten {claimed} übernehmen, haben sich aber als {asker} angemeldet. Gib das nur frei, wenn du weißt, dass das dieselbe Person ist.',
+  'members.claimBringsEntries':
+    'Die Übernahme von {name} umfasst {count} Einträge. Mit der Freigabe können sie diese lesen, sodass der übernommene Saldo nachvollziehbar ist.',
   'members.approve': 'Freigeben',
   'members.approveAsk': 'Lies die Ziffern zuerst vor. Mit der Freigabe gibst du die Schlüssel zu allem heraus, was diese Gruppe aufgezeichnet hat.',
   'members.approveConfirm': 'Die Ziffern stimmen',
@@ -496,6 +501,10 @@ export const de: Catalogue = {
   'members.undo': 'Rückgängig',
   'members.undoNote':
     'Rückgängig gibt dem Namen seine eigenen Einträge zurück und lässt die Person, die ihn übernommen hat, als sie selbst in der Gruppe. So wird eine falsche Wahl korrigiert — danach ist der Name wieder übernehmbar.',
+  'members.stranded': 'Entfernt, aber noch in den Einträgen',
+  'members.putBack': 'Zurückholen',
+  'members.strandedNote':
+    'Diese Namen wurden entfernt, kommen aber noch in Einträgen vor. Ihr Anteil gehört damit niemandem und kann von niemandem übernommen werden. Zurückgeholt wird daraus wieder ein gewöhnlicher, freier Name.',
   'members.notSignedUp': 'Noch nicht registriert',
   'members.noPlaceholders':
     'Noch niemand. Trag hier Leute ein, um Ausgaben mit ihnen zu teilen, bevor sie ein Konto haben.',
@@ -514,6 +523,8 @@ export const de: Catalogue = {
   'members.deleteForGood': 'Gruppe endgültig löschen',
   'members.confirmLeave': 'Ja, Gruppe verlassen',
   'members.leave': 'Gruppe verlassen',
+  'members.scopedRestoredPartly':
+    'Hinzugefügt, aber nur {restored} von {owed} früheren Zeiträumen sind zurück — dieses Gerät hat die übrigen nicht. Ein Mitglied, das weiter zurück lesen kann, kann sie wiederherstellen.',
   'members.scopedRestored':
     'Hinzugefügt. Sie können die Einträge lesen, an denen sie früher beteiligt waren, und alles ab heute — aber nichts aus der Zeit ihrer Abwesenheit.',
   'members.scopedAdded':
@@ -534,7 +545,7 @@ export const de: Catalogue = {
   // --- following an invite link --------------------------------------------
   'invitePage.invitedBy': '{name} lädt dich in eine Gruppe ein',
   'invitePage.wasMember':
-    'Du warst schon einmal als {name} in dieser Gruppe. Beim Wiedereintritt bekommst du diesen Namen zurück, mit allem, was darunter eingetragen ist — unten gibt es nichts auszuwählen.',
+    'Du warst schon einmal als {name} in dieser Gruppe. Beim Wiedereintritt bekommst du diesen Namen zurück, mit allem, was darunter eingetragen ist. Was du unten auswählst, kommt zusätzlich dazu und ersetzt das nicht.',
   'invitePage.fromToday':
     'Diese Einladung teilt die Gruppe ab heute. Alles bisher Eingetragene bleibt verschlüsselt — du siehst diese Beträge nicht, und Salden zwischen anderen sind für dich unvollständig. Dein eigener Saldo stimmt trotzdem genau, weil du an keiner dieser Aufteilungen beteiligt warst.',
   'invitePage.requestSent':
@@ -544,9 +555,11 @@ export const de: Catalogue = {
   'invitePage.willOpen':
     'Diese Seite öffnet die Gruppe von selbst, sobald freigegeben wurde. Du bekommst außerdem eine Benachrichtigung, du kannst sie also gefahrlos schließen.',
   'invitePage.backToGroups': 'Zurück zu deinen Gruppen',
-  'invitePage.takeOverInstead': 'Stattdessen den Namen von jemand anderem übernehmen?',
+  'invitePage.alsoYou': 'Du kommst als {name} zurück. War einer dieser Namen auch du?',
   'invitePage.areYouOne': 'Bist du eine dieser Personen?',
-  'invitePage.rejoinAs': 'Nein — wieder als {name} beitreten',
+  'invitePage.rejoinAs': 'Nein — nur {name}',
+  'invitePage.claimAddsTo':
+    'Das kommt zur Rückkehr als {name} hinzu: deine eigenen Einträge kommen so oder so zurück, der übernommene Name wird ergänzt.',
   'invitePage.joinAsNew': 'Nein — als jemand Neues beitreten',
   'invitePage.claimAlso': '{name} (auch {names})',
   'invitePage.claimLeft': '{name} — hat die Gruppe verlassen',
@@ -555,6 +568,7 @@ export const de: Catalogue = {
   'invitePage.claimNote':
     'Wer einen Namen auswählt, übernimmt die Ausgaben, die darunter schon eingetragen sind. Namen mit „hat die Gruppe verlassen“ gehörten einem echten Konto — übernimm so einen nur, wenn er deiner war und du nicht mehr hineinkommst. Als jemand Neues beizutreten geht immer, auch wenn noch Namen frei sind.',
   'invitePage.joinAsThisPerson': 'Als diese Person beitreten',
+  'invitePage.rejoinAndTakeOver': 'Wieder beitreten und den Namen übernehmen',
   'invitePage.rejoin': 'Gruppe wieder beitreten',
   'invitePage.join': 'Gruppe beitreten',
   'invitePage.logInToJoin': 'Zum Beitreten anmelden oder registrieren',
@@ -566,15 +580,19 @@ export const de: Catalogue = {
   'scan.notAJoinCode': 'Das ist kein SpendApp-Beitrittscode.',
   'scan.alreadyMember': '{name} ist schon in dieser Gruppe.',
   'scan.addPrompt': '{name} zu dieser Gruppe hinzufügen?',
-  'scan.returning': 'Diese Person war schon einmal hier — hinzufügen als:',
+  'scan.returningAlso': 'Diese Person kommt als {name} zurück. Ist einer dieser Namen auch sie?',
+  'scan.returningOnly': 'Diese Person war schon einmal hier und kommt als {name} mit ihren eigenen Einträgen zurück.',
   'scan.pickExisting': 'Ist das eine der schon aufgeführten Personen?',
-  'scan.asBefore': '{name}, wie vorher — mit den alten Einträgen',
+  'scan.justThem': 'Nein — nur {name}',
   'scan.someoneNew': 'Jemand Neues',
   'scan.labelAlso': '{name} (auch {names})',
   'scan.labelLeft': '{name} — hat die Gruppe verlassen',
   'scan.ownEntriesNote':
     'Dieses Konto kann nicht als Fremder zu seinen eigenen Einträgen zurückkommen: die Einträge hängen am Konto selbst, eine Rückkehr führt sie also immer wieder zusammen. Nur ein anderes Konto kann hier neu anfangen.',
+  'scan.fromToday':
+    'Ab heute beginnen — sie können nichts lesen, was die Gruppe vorher aufgezeichnet hat, außer Einträgen, die ohnehin ihre sind.',
   'scan.add': '{name} hinzufügen',
+  'scan.addAndClaim': '{name} hinzufügen und {claimed} übernehmen',
   'scan.admitted': '{name} ist dabei und kann den Verlauf der Gruppe lesen.',
   'scan.admittedKeyMismatch':
     '{name} ist dabei, aber der Schlüssel auf dem Server stimmt nicht mit dem gescannten überein. Die Gruppe ist lesbar, weil du sie auf den gescannten Schlüssel verpackt hast — bitte sie trotzdem, ihr Konto zu prüfen.',
@@ -623,7 +641,9 @@ export const de: Catalogue = {
   'error.not_claimable': 'Dieser Name kann nicht übernommen werden.',
   'error.already_claimed': 'Jemand hat diesen Namen bereits übernommen.',
   'error.still_in_group': 'Diese Person ist noch in dieser Gruppe.',
+  'error.not_a_placeholder': 'Das ist ein echtes Konto, kein eingetragener Name.',
   'error.no_wraps_for_members': 'Niemandem konnte Zugriff gegeben werden — versuch es noch einmal.',
+  'error.no_entries_in_group': 'Diese Einträge gehören nicht zu dieser Gruppe.',
   'error.invite_invalid': 'Dieser Einladungslink gilt nicht mehr.',
   'error.invite_spent': 'Dieser Einladungslink wurde schon benutzt.',
   'error.join_declined': 'Deine Beitrittsanfrage wurde abgelehnt.',

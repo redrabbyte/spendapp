@@ -1,12 +1,12 @@
 import { and, eq, gt, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { admitSchema, publishKeysSchema } from '@spendapp/shared';
+import { admitSchema, grantEntriesSchema, publishKeysSchema } from '@spendapp/shared';
 import { db, schema } from '../db/index.js';
 import { isApiError } from '../lib/api-error.js';
 import { activeAdminIds, bumpGroupVersion, isAdmin, isMember, logActivity } from '../lib/groups.js';
 import { leaveGroup } from '../lib/leave.js';
-import { claimPlaceholder, unclaimMember } from '../lib/members.js';
+import { claimPlaceholder, restorePlaceholder, unclaimMember } from '../lib/members.js';
 import { notifyGroup, notifyUsers } from '../lib/notify.js';
 
 const decisionSchema = z.object({ decision: z.enum(['approve', 'reject']) });
@@ -51,6 +51,10 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
         // A from-today approval restores exactly these and nothing else, so a
         // returning member's own splits read again while the gap stays shut.
         heldEpochs: schema.groupMembers.heldEpochs,
+        // A membership row that outlived the membership: this account has been
+        // in the group before under this same id. Worth putting in front of the
+        // admin, who is otherwise approving a stranger's name.
+        previousJoinedAt: schema.groupMembers.joinedAt,
         // Which invite they followed decides whether approving hands over the
         // whole keyring or forces a rotation (design §4.7). The approving
         // client needs to know before it acts, not after.
@@ -85,11 +89,12 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
       );
 
     return {
-      requests: rows.map((r) => ({
+      requests: rows.map(({ previousJoinedAt, ...r }) => ({
         ...r,
         requestedAt: r.requestedAt.toISOString(),
         decidedAt: r.decidedAt?.toISOString() ?? null,
         shareHistory: r.shareHistory ?? true, // invite gone: fall back to the norm
+        previouslyMember: previousJoinedAt !== null,
       })),
     };
   });
@@ -176,7 +181,10 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
         await tx
           .insert(schema.groupMembers)
           .values({ groupId, userId, joinedAt: now, role: 'member', version })
-          .onDuplicateKeyUpdate({ set: { leftAt: null, version } }); // rejoin resurrects membership
+          // Rejoining resurrects the old row (see members.ts): the role and
+          // the recorded epochs are reset with it, or a former admin comes
+          // back as one without anybody deciding to grant it.
+          .onDuplicateKeyUpdate({ set: { leftAt: null, role: 'member', heldEpochs: null, version } });
         await logActivity(tx, {
           groupId,
           version,
@@ -255,7 +263,7 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
         await tx
           .insert(schema.groupMembers)
           .values({ groupId, userId, joinedAt: now, role: 'member', version })
-          .onDuplicateKeyUpdate({ set: { leftAt: null, version } });
+          .onDuplicateKeyUpdate({ set: { leftAt: null, role: 'member', heldEpochs: null, version } });
         await logActivity(tx, {
           groupId,
           version,
@@ -282,7 +290,19 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
       );
 
     notifyGroup(groupId, userId, 'member.joined', `/g/${groupId}?tab=members`);
-    return { status: 'admitted' as const, keyMatches: joiner.publicKey === publicKey };
+    // What they could open when they last left, if they were here before. The
+    // scan can hand a from-today welcome just as a link can, and the admitting
+    // client needs this to give a returning member their own past back with it.
+    const [row] = await db
+      .select({ heldEpochs: schema.groupMembers.heldEpochs })
+      .from(schema.groupMembers)
+      .where(and(eq(schema.groupMembers.groupId, groupId), eq(schema.groupMembers.userId, userId)))
+      .limit(1);
+    return {
+      status: 'admitted' as const,
+      keyMatches: joiner.publicKey === publicKey,
+      heldEpochs: (row?.heldEpochs as number[] | null) ?? null,
+    };
   });
 
   /**
@@ -408,10 +428,156 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
   });
 
   /**
+   * Grant single entries (design §4.8).
+   *
+   * The narrow counterpart to publishing keys: instead of handing over an
+   * epoch, this hands over the keys to named entries and nothing else. Used
+   * when a claim is approved, so somebody inherits the debts they are being
+   * given *and* the entries behind them, without also getting everything else
+   * written in the same stretch.
+   *
+   * The server stores the wraps unread. It cannot check that a wrap holds the
+   * key it claims to, and it cannot make one — producing it takes the epoch
+   * key, which it has never held.
+   */
+  app.post('/api/groups/:groupId/entry-grants', { preHandler: app.requireUser }, async (req, reply) => {
+    const { groupId } = req.params as { groupId: string };
+    if (!(await isMember(req.user!.id, groupId))) return reply.code(404).send({ error: 'not_found' });
+
+    const parsed = grantEntriesSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid_input' });
+
+    // Only to people actually in the group, for the same reason keys are: this
+    // would otherwise be a way to hand a group's entries to any account.
+    const members = await db
+      .select({ userId: schema.groupMembers.userId })
+      .from(schema.groupMembers)
+      .where(and(eq(schema.groupMembers.groupId, groupId), isNull(schema.groupMembers.leftAt)));
+    const allowed = new Set(members.map((m) => m.userId));
+    const wanted = parsed.data.grants.filter((g) => allowed.has(g.userId));
+    if (wanted.length === 0) return reply.code(400).send({ error: 'no_wraps_for_members' });
+
+    // And only for entries that are actually in this group. Without this a
+    // member of one group could name an entry id from another and have its key
+    // filed against a group they can read.
+    const ids = [...new Set(wanted.map((g) => g.entryId))];
+    const [inGroupExpenses, inGroupPayments] = await Promise.all([
+      db
+        .select({ id: schema.expenses.id })
+        .from(schema.expenses)
+        .where(and(eq(schema.expenses.groupId, groupId), inArray(schema.expenses.id, ids))),
+      db
+        .select({ id: schema.payments.id })
+        .from(schema.payments)
+        .where(and(eq(schema.payments.groupId, groupId), inArray(schema.payments.id, ids))),
+    ]);
+    const here = new Set([...inGroupExpenses, ...inGroupPayments].map((r) => r.id));
+    const grants = wanted.filter((g) => here.has(g.entryId));
+    if (grants.length === 0) return reply.code(400).send({ error: 'no_entries_in_group' });
+
+    const now = new Date();
+    await db
+      .insert(schema.entryGrants)
+      .values(
+        grants.map((g) => ({
+          entryId: g.entryId,
+          userId: g.userId,
+          groupId,
+          entryType: g.entryType,
+          epk: g.epk,
+          iv: g.iv,
+          ct: g.ct,
+          grantedBy: req.user!.id,
+          createdAt: now,
+        })),
+      )
+      // Overwriting a grant is safe in a way overwriting a peer's group-key
+      // wrap is not: the entry key underneath is stable, so a re-grant carries
+      // the same key and a failed hand-off is simply retried.
+      .onDuplicateKeyUpdate({
+        set: { epk: sql`values(epk)`, iv: sql`values(iv)`, ct: sql`values(ct)` },
+      });
+
+    return { granted: grants.length, skipped: parsed.data.grants.length - grants.length };
+  });
+
+  /**
+   * Take a grant back. Undoing a claim calls this: it stops the entries being
+   * served to them from here on, which is all revocation ever means once
+   * something has been read.
+   */
+  app.delete('/api/groups/:groupId/entry-grants/:userId', { preHandler: app.requireUser }, async (req, reply) => {
+    const { groupId, userId } = req.params as { groupId: string; userId: string };
+    if (!(await isAdmin(req.user!.id, groupId))) return reply.code(404).send({ error: 'not_found' });
+    await db
+      .delete(schema.entryGrants)
+      .where(and(eq(schema.entryGrants.groupId, groupId), eq(schema.entryGrants.userId, userId)));
+    return { revoked: true };
+  });
+
+  /**
    * Public keys of everyone currently in the group, so a member's client can
    * wrap a group key to all of them. Public by design — these are the halves
    * meant to be handed out, and membership is already visible to members.
    */
+  /**
+   * Who can currently read what (design §4.8).
+   *
+   * An entry names the people it splits between, and only a device holding the
+   * entry can see those names — the server cannot. So the server cannot know
+   * that somebody is missing an entry with their own name in it, and the
+   * member who *can* see that is whichever one holds the entry. This gives
+   * them the other half: which epochs each member holds, and which single
+   * entries each has been granted. Everything else follows client-side.
+   *
+   * It discloses no content and nothing the server was not already storing —
+   * a member list, a count of wraps, and which rows those wraps point at.
+   * What it prevents is two people in the same expense disagreeing about what
+   * they owe each other because one of them cannot open it.
+   */
+  app.get('/api/groups/:groupId/readership', { preHandler: app.requireUser }, async (req, reply) => {
+    const { groupId } = req.params as { groupId: string };
+    if (!(await isMember(req.user!.id, groupId))) return reply.code(404).send({ error: 'not_found' });
+
+    const [members, epochs, grants] = await Promise.all([
+      db
+        .select({
+          userId: schema.groupMembers.userId,
+          publicKey: schema.users.publicKey,
+        })
+        .from(schema.groupMembers)
+        .innerJoin(schema.users, eq(schema.users.id, schema.groupMembers.userId))
+        .where(
+          and(
+            eq(schema.groupMembers.groupId, groupId),
+            isNull(schema.groupMembers.leftAt),
+            eq(schema.users.isPlaceholder, false),
+          ),
+        ),
+      db
+        .select({ userId: schema.groupKeys.userId, epoch: schema.groupKeys.epoch })
+        .from(schema.groupKeys)
+        .where(eq(schema.groupKeys.groupId, groupId)),
+      db
+        .select({ userId: schema.entryGrants.userId, entryId: schema.entryGrants.entryId })
+        .from(schema.entryGrants)
+        .where(eq(schema.entryGrants.groupId, groupId)),
+    ]);
+
+    const byMember = new Map<string, number[]>();
+    for (const r of epochs) byMember.set(r.userId, [...(byMember.get(r.userId) ?? []), r.epoch]);
+    return {
+      members: members
+        .filter((m) => m.publicKey)
+        .map((m) => ({
+          userId: m.userId,
+          publicKey: m.publicKey!,
+          epochs: (byMember.get(m.userId) ?? []).sort((a, b) => a - b),
+        })),
+      grants,
+    };
+  });
+
   app.get('/api/groups/:groupId/member-keys', { preHandler: app.requireUser }, async (req, reply) => {
     const { groupId } = req.params as { groupId: string };
     if (!(await isMember(req.user!.id, groupId))) return reply.code(404).send({ error: 'not_found' });
@@ -454,6 +620,23 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(err.statusCode).send({ error: err.code });
     }
     return { status: 'unclaimed' as const };
+  });
+
+  /**
+   * Put a removed placeholder back, because the ledger still names it and a
+   * name nobody can take over is a debt with nobody attached. Admin-only: the
+   * admin is the one who can read the splits and see that it is stranded.
+   */
+  app.post('/api/groups/:groupId/members/:userId/restore', { preHandler: app.requireUser }, async (req, reply) => {
+    const { groupId, userId } = req.params as { groupId: string; userId: string };
+    if (!(await isAdmin(req.user!.id, groupId))) return reply.code(404).send({ error: 'not_found' });
+    try {
+      await restorePlaceholder(req.user!.id, groupId, userId);
+    } catch (err) {
+      if (!isApiError(err)) throw err; // the handler logs it and says nothing
+      return reply.code(err.statusCode).send({ error: err.code });
+    }
+    return { status: 'restored' as const };
   });
 
   /**

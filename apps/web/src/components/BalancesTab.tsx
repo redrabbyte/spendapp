@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import {
   COMMON_CURRENCIES,
-  aliasResolver,
   computeBalances,
   resolveSplits,
   convertExpense,
@@ -72,29 +71,34 @@ interface Props {
   payments: PaymentDto[];
   meId: string;
   nameOf: (id: string) => string;
+  /**
+   * Follows a claimed placeholder to the account that took it over. Handed in
+   * rather than built here, because it can only be built from *every* member
+   * row and this tab is given the current ones: claiming retires the
+   * placeholder, so a resolver made from the active list would find no aliases
+   * at all and quietly resolve nothing (design §3.4).
+   */
+  resolve: (id: string) => string;
 }
 
-export function BalancesTab({ group, members, expenses, payments, meId, nameOf }: Props) {
+export function BalancesTab({ group, members, expenses, payments, meId, nameOf, resolve }: Props) {
   const t = useT();
   const locale = useLocale();
-  // Claiming a placeholder aliases it rather than rewriting history, so every
-  // split and payment still names the retired id and has to be resolved here.
-  // Without this the claimer's money stays attributed to nobody (design §3.4).
-  const resolve = useMemo(() => aliasResolver(members), [members]);
-  const livePayments = useMemo(
-    () =>
-      payments
-        .filter((p) => !p.deletedAt)
-        .map((p) => ({ ...p, fromUser: resolve(p.fromUser), toUser: resolve(p.toUser) })),
-    [payments, resolve],
-  );
-  const resolvedExpenses = useMemo(
-    () => expenses.map((e) => ({ ...e, splits: resolveSplits(e.splits, resolve) })),
-    [expenses, resolve],
-  );
+  const livePayments = useMemo(() => payments.filter((p) => !p.deletedAt), [payments]);
+  /**
+   * Resolved for the sum and nowhere else. Claiming does not rewrite history —
+   * the split goes on naming the placeholder — so a resolved copy must never
+   * reach anything that writes: converting a currency or deleting a payment
+   * would put the claimer's id where the placeholder's was, and rewrite the
+   * ledger as a side effect of adding it up.
+   */
   const balances = useMemo(
-    () => computeBalances(resolvedExpenses, livePayments),
-    [resolvedExpenses, livePayments],
+    () =>
+      computeBalances(
+        expenses.map((e) => ({ ...e, splits: resolveSplits(e.splits, resolve) })),
+        livePayments.map((p) => ({ ...p, fromUser: resolve(p.fromUser), toUser: resolve(p.toUser) })),
+      ),
+    [expenses, livePayments, resolve],
   );
   const [draft, setDraft] = useState<PaymentDraft | null>(null);
   const money = useMoney();

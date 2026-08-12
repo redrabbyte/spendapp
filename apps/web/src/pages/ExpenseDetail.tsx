@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { aliasResolver, convertExpense, resolveSplits, type UpsertExpense } from '@spendapp/shared';
+import {
+  aliasResolver,
+  convertExpense,
+  resolveSplitMeta,
+  resolveSplits,
+  type UpsertExpense,
+} from '@spendapp/shared';
 import { openComment } from '../envelope';
 import { useAuth } from '../auth';
 import { localDb, type FxCacheRow } from '../db';
@@ -10,6 +16,7 @@ import { addCommentLocal, deleteExpenseLocal, upsertExpenseLocal } from '../sync
 import { AttachmentRow } from '../components/Attachments';
 import { VersionLog } from '../components/ActivityTab';
 import { ExpenseEditor } from '../components/ExpenseEditor';
+import { departedInSplit } from '../departed';
 import { SyncPendingBadge } from '../components/SyncPendingBadge';
 import { usePendingExpenseIds } from '../pending';
 import { formatExpenseDate, useSettings } from '../settings';
@@ -43,6 +50,13 @@ export function ExpenseDetailPage() {
   );
 
   const resolve = useMemo(() => aliasResolver(members ?? []), [members]);
+  // Usually right — leaving does not settle what you owe — but sometimes a
+  // device that had not heard they left named them anyway, and only a person
+  // can tell the two apart.
+  const gone = useMemo(
+    () => (expense ? departedInSplit(expense.splits, members ?? []) : []),
+    [expense, members],
+  );
   const nameOf = useMemo(() => {
     const map = new Map((members ?? []).map((m) => [m.userId, m.displayName]));
     return (id: string) => map.get(resolve(id)) ?? map.get(id) ?? t('group.formerMember');
@@ -53,6 +67,21 @@ export function ExpenseDetailPage() {
   const shownSplits = useMemo(
     () => (expense ? resolveSplits(expense.splits, resolve) : []),
     [expense, resolve],
+  );
+
+  /**
+   * The editor only knows the current members, and a taken-over placeholder is
+   * not one — so it has no row for that share, drops it, and re-splits the
+   * money among whoever is left. Handing it the resolved entry means the share
+   * arrives under the account that owns it now, which is also the only name the
+   * editor could honestly show it under.
+   */
+  const editable = useMemo(
+    () =>
+      expense
+        ? { ...expense, splits: shownSplits, splitMeta: resolveSplitMeta(expense.splitMeta, resolve) }
+        : undefined,
+    [expense, shownSplits, resolve],
   );
 
   const activeMembers = useMemo(() => (members ?? []).filter((m) => m.leftAt === null), [members]);
@@ -172,6 +201,11 @@ export function ExpenseDetailPage() {
       </header>
 
       {convError && <p className="text-sm text-red-600 dark:text-red-400">{convError}</p>}
+      {gone.length > 0 && (
+        <p className="rounded bg-amber-50 p-2 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
+          {t('editor.namesWhoLeft', { names: gone.map((m) => m.displayName).join(', ') })}
+        </p>
+      )}
       {expense.note && <p className="rounded bg-slate-50 dark:bg-slate-800/60 p-2 text-sm text-slate-700 dark:text-slate-200">{expense.note}</p>}
 
       <section>
@@ -226,7 +260,7 @@ export function ExpenseDetailPage() {
               group={group}
               members={activeMembers}
               meId={user.id}
-              existing={expense}
+              existing={editable}
               onDone={() => setEditing(false)}
             />
           </div>

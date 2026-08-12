@@ -57,9 +57,6 @@ export const en = {
   'push.prompt.later': 'Not now',
 
   'gap.title': 'Showing only part of this group.',
-  'gap.expenses': 'Entries written before you joined are not listed here.',
-  'gap.balances': 'These balances cover only what you can read. Your own position is exact — you were in none of the earlier splits — but debts between other people from before you joined are not included.',
-  'gap.charts': 'These charts cover only what you can read, so totals and categories start from when you joined.',
   'gap.activity': 'The history starts when you joined. Earlier entries, comments and receipts are not shown.',
   'gap.members': 'You joined partway through, so you cannot pass this group’s full history on to anyone new.',
 
@@ -236,6 +233,8 @@ export const en = {
   'editor.singlePayer': 'single payer',
   'editor.multiplePayers': 'multiple payers',
   'editor.totalOfPayers': 'Total is the sum of these — {amount} {currency}.',
+  'editor.namesWhoLeft':
+    'This entry includes {names}, who has since left the group. That is right if they were there when it happened — check it is not a device that had not heard yet.',
   'editor.split': 'Split',
   'editor.mode.equal': 'equally',
   'editor.mode.exact': 'exact amounts',
@@ -399,6 +398,7 @@ export const en = {
   'activity.payment.deleted': 'deleted a payment',
   'activity.member.added': 'added {name}',
   'activity.member.claimed': 'took over {name}',
+  'activity.member.restored': 'put {name} back',
   'activity.import.created': {
     one: 'imported {count} entry from {source}',
     other: 'imported {count} entries from {source}',
@@ -483,6 +483,11 @@ export const en = {
   'members.waiting': 'Waiting for approval ({count})',
   'members.wantsToTakeOver': 'wants to take over {name}',
   'members.aPlaceholder': 'a placeholder',
+  'members.wasHereBefore': 'This account has been in this group before.',
+  'members.claimNameDiffers':
+    'They are asking to take over {claimed}, but they signed up as {asker}. Only approve if you know those are the same person.',
+  'members.claimBringsEntries':
+    'Taking over {name} carries {count} entries. Approving lets them read those, so the balance they inherit is one they can check.',
   'members.approve': 'Approve',
   'members.approveAsk': 'Read the digits out first. Approving hands over the keys to everything this group has recorded.',
   'members.approveConfirm': 'The digits match',
@@ -506,6 +511,10 @@ export const en = {
   'members.undo': 'Undo',
   'members.undoNote':
     'Undo gives the name back its own entries and leaves the person who took it in the group as themselves. It is how a wrong pick gets fixed — the name is claimable again afterwards.',
+  'members.stranded': 'Removed, but still in the ledger',
+  'members.putBack': 'Put back',
+  'members.strandedNote':
+    'These names were removed and entries still name them, so their share belongs to nobody and nobody can take it over. Putting one back makes it an ordinary unclaimed name again.',
   'members.notSignedUp': 'Not signed up yet',
   'members.noPlaceholders': 'Nobody yet. Add people here to split expenses with them before they have an account.',
   'members.unclaimed': 'unclaimed',
@@ -525,6 +534,8 @@ export const en = {
   'members.leave': 'Leave group',
   // What happened to the keys after a decision. Said separately from the
   // decision itself, because by then the person is already a member.
+  'members.scopedRestoredPartly':
+    'Added, but only {restored} of the {owed} earlier entries they could read before are back — this device does not hold the rest. A member who can read further back can restore them.',
   'members.scopedRestored':
     'Added. They can read the entries they were part of before, and everything from today — but nothing from while they were away.',
   'members.scopedAdded':
@@ -542,7 +553,7 @@ export const en = {
   // --- following an invite link --------------------------------------------
   'invitePage.invitedBy': '{name} invited you to join',
   'invitePage.wasMember':
-    'You were in this group before as {name}. Rejoining puts you back under that name with everything already recorded against it — there is nothing to pick below.',
+    'You were in this group before as {name}. Rejoining puts you back under that name with everything already recorded against it. Anything you pick below is taken over as well as that, not instead of it.',
   'invitePage.fromToday':
     'This invite shares the group from today onwards. Whatever has been recorded so far stays sealed — you will not see those amounts, and balances between other people will be incomplete for you. Your own balance will still be exact, because you were in none of those splits.',
   'invitePage.requestSent': 'Request sent. An admin of this group has to approve it before you can see anything.',
@@ -551,10 +562,12 @@ export const en = {
   'invitePage.willOpen':
     'This page opens the group by itself the moment they approve. You will get a notification too, so it is safe to close.',
   'invitePage.backToGroups': 'Back to your groups',
-  'invitePage.takeOverInstead': 'Taking over somebody else’s name instead?',
+  'invitePage.alsoYou': 'You come back as {name}. Was one of these names also you?',
   'invitePage.areYouOne': 'Are you one of these people?',
-  'invitePage.rejoinAs': 'No — rejoin as {name}',
+  'invitePage.rejoinAs': 'No — just {name}',
   'invitePage.joinAsNew': 'No — join as someone new',
+  'invitePage.claimAddsTo':
+    'This is on top of coming back as {name}: your own entries return either way, and the name you take over is added to them.',
   'invitePage.claimAlso': '{name} (also {names})',
   'invitePage.claimLeft': '{name} — left this group',
   'invitePage.nameClash':
@@ -562,6 +575,7 @@ export const en = {
   'invitePage.claimNote':
     'Picking a name takes over the expenses already recorded against it. Names marked “left this group” belonged to a real account — take one over only if it was yours and you cannot get back into it. Joining as someone new is always available, even while other names are still unclaimed.',
   'invitePage.joinAsThisPerson': 'Join as this person',
+  'invitePage.rejoinAndTakeOver': 'Rejoin, and take that name over',
   'invitePage.rejoin': 'Rejoin group',
   'invitePage.join': 'Join group',
   'invitePage.logInToJoin': 'Log in or register to join',
@@ -573,15 +587,19 @@ export const en = {
   'scan.notAJoinCode': 'That code is not a SpendApp join code.',
   'scan.alreadyMember': '{name} is already in this group.',
   'scan.addPrompt': 'Add {name} to this group?',
-  'scan.returning': 'They have been here before — add them as:',
+  'scan.returningAlso': 'They come back as {name}. Is one of these names also them?',
+  'scan.returningOnly': 'They were here before, so they come back as {name} with their own entries.',
   'scan.pickExisting': 'Are they one of the people already listed?',
-  'scan.asBefore': '{name}, as before — with their old entries',
+  'scan.justThem': 'No — just {name}',
   'scan.someoneNew': 'Someone new',
   'scan.labelAlso': '{name} (also {names})',
   'scan.labelLeft': '{name} — left this group',
   'scan.ownEntriesNote':
     'There is no way to bring this account back as a stranger to its own entries: those entries are addressed by the account itself, so returning always reunites them. Only a different account can start clean here.',
+  'scan.fromToday':
+    'Start them from today — they will not be able to read anything the group recorded before now, apart from entries that are already theirs.',
   'scan.add': 'Add {name}',
+  'scan.addAndClaim': 'Add {name}, taking over {claimed}',
   'scan.admitted': '{name} is in, and can read the group’s history.',
   'scan.admittedKeyMismatch':
     '{name} is in, but the key on the server does not match the one you scanned. They can read the group because you wrapped it to the scanned key — but ask them to check their account.',
@@ -635,7 +653,9 @@ export const en = {
   'error.not_claimable': 'That name cannot be taken over.',
   'error.already_claimed': 'Somebody has already taken that name over.',
   'error.still_in_group': 'That person is still in this group.',
+  'error.not_a_placeholder': 'That is a real account, not a name somebody typed.',
   'error.no_wraps_for_members': 'Nobody could be given access — try again.',
+  'error.no_entries_in_group': 'Those entries are not in this group.',
   'error.invite_invalid': 'This invite link is not valid any more.',
   'error.invite_spent': 'This invite link has already been used.',
   'error.join_declined': 'Your request to join was declined.',

@@ -105,6 +105,8 @@ function describe(t: Translator, money: MoneyFormatter, a: ActivityDto, snapshot
       return t('activity.member.added', { name: named });
     case 'member.claimed':
       return t('activity.member.claimed', { name: named });
+    case 'member.restored':
+      return t('activity.member.restored', { name: named });
     case 'import.created': {
       const p = a.payload as ImportPayload;
       return t('activity.import.created', {

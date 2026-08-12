@@ -16,7 +16,9 @@ import {
   type UpsertExpense,
   type UpsertPayment,
 } from '@spendapp/shared';
+import { attachmentAad, commentAad, expenseAad, paymentAad, snapshotAad } from './aad';
 import { clearInvalidEntry, noteInvalidEntry } from './coverage';
+import { entryKeyFor, mintEntryKey } from './entryKeys';
 import { currentEpoch, keyForEpoch } from './groupKeys';
 import { uuid } from './uuid';
 import { AppError } from './i18n/errors';
@@ -45,8 +47,7 @@ interface ExpenseContent {
  * from one row and replayed into another, and it would decrypt cleanly — the
  * ciphertext alone says nothing about which entity it belongs to.
  */
-const aad = (id: string, groupId: string, keyEpoch: number): Uint8Array =>
-  new TextEncoder().encode(`expense|${id}|${groupId}|${keyEpoch}`);
+
 
 const contentOf = (i: UpsertExpense): ExpenseContent => ({
   description: i.description,
@@ -79,13 +80,17 @@ export async function sealExpense(input: UpsertExpense): Promise<SealedEntity & 
   // keeps a corrupt split from reaching a group at all.
   validateSplits(input.amountMinor, input.splits);
 
-  const sealed = await sealJson(key, contentOf(input), aad(input.id, input.groupId, epoch));
+  // The entry gets its own key, so it can later be handed to one person
+  // without handing over the epoch (design §4.8). The wrapper travels with it.
+  const entry = await mintEntryKey('expense', input.id, input.groupId, epoch, key);
+  const sealed = await sealJson(entry.key, contentOf(input), expenseAad(input.id, input.groupId, epoch));
   return {
     id: input.id,
     groupId: input.groupId,
     keyEpoch: epoch,
     iv: toBase64Url(sealed.iv),
     ct: toBase64Url(sealed.ciphertext),
+    ...entry.wrap,
     // Every write carries a snapshot of the version it creates, so the log can
     // offer "revert to this" without the server ever holding a readable copy
     // (design §11). Sealed here rather than at the call sites, so no write path
@@ -100,8 +105,7 @@ export async function sealExpense(input: UpsertExpense): Promise<SealedEntity & 
  * still open — which is exactly the kind of silent history rewrite the log is
  * supposed to make impossible.
  */
-const snapshotAad = (activityId: string, groupId: string, keyEpoch: number): Uint8Array =>
-  new TextEncoder().encode(`snapshot|${activityId}|${groupId}|${keyEpoch}`);
+
 
 async function sealSnapshot(
   groupId: string,
@@ -148,14 +152,17 @@ export async function openSnapshot<T>(
  * they are in the mirror.
  */
 export async function openExpense(wire: ExpenseWire): Promise<ExpenseDto | null> {
-  const key = await keyForEpoch(wire.groupId, wire.keyEpoch);
+  // Whatever opens this one entry: a grant, the epoch key by way of the
+  // entry's own wrapper, or — for a row written before per-entry keys — the
+  // epoch key itself (design §4.8).
+  const key = await entryKeyFor('expense', wire.id, wire.groupId, wire.keyEpoch, wire);
   if (!key) return null;
 
   try {
     const content = await openJson<ExpenseContent>(
       key,
       { iv: fromBase64Url(wire.iv), ciphertext: fromBase64Url(wire.ct) },
-      aad(wire.id, wire.groupId, wire.keyEpoch),
+      expenseAad(wire.id, wire.groupId, wire.keyEpoch),
     );
     // Read-side half of §3.1. Nothing between the author's device and this one
     // checked the money, so a modified client — or a bug — can put an entry
@@ -218,8 +225,7 @@ function validatePayment(p: PaymentContent): void {
   }
 }
 
-const paymentAad = (id: string, groupId: string, keyEpoch: number): Uint8Array =>
-  new TextEncoder().encode(`payment|${id}|${groupId}|${keyEpoch}`);
+
 
 export async function sealPayment(input: UpsertPayment): Promise<SealedEntity & { snapshot: SealedSnapshot }> {
   const epoch = await currentEpoch(input.groupId);
@@ -239,19 +245,21 @@ export async function sealPayment(input: UpsertPayment): Promise<SealedEntity & 
     note: input.note,
   };
   validatePayment(content); // same gate on the way out as on the way in
-  const sealed = await sealJson(key, content, paymentAad(input.id, input.groupId, epoch));
+  const entry = await mintEntryKey('payment', input.id, input.groupId, epoch, key);
+  const sealed = await sealJson(entry.key, content, paymentAad(input.id, input.groupId, epoch));
   return {
     id: input.id,
     groupId: input.groupId,
     keyEpoch: epoch,
     iv: toBase64Url(sealed.iv),
     ct: toBase64Url(sealed.ciphertext),
+    ...entry.wrap,
     snapshot: await sealSnapshot(input.groupId, epoch, key, input),
   };
 }
 
 export async function openPayment(wire: PaymentWire): Promise<PaymentDto | null> {
-  const key = await keyForEpoch(wire.groupId, wire.keyEpoch);
+  const key = await entryKeyFor('payment', wire.id, wire.groupId, wire.keyEpoch, wire);
   if (!key) return null;
   try {
     const content = await openJson<PaymentContent>(
@@ -299,8 +307,7 @@ export async function openPayment(wire: PaymentWire): Promise<PaymentDto | null>
 // so the server can still refuse a comment on an expense in another group.
 // ---------------------------------------------------------------------------
 
-const commentAad = (id: string, groupId: string, keyEpoch: number): Uint8Array =>
-  new TextEncoder().encode(`comment|${id}|${groupId}|${keyEpoch}`);
+
 
 export async function sealComment(
   id: string,
@@ -349,8 +356,7 @@ export async function openComment(
 
 const IV_BYTES = 12;
 
-const attachmentAad = (id: string, groupId: string, keyEpoch: number): Uint8Array =>
-  new TextEncoder().encode(`attachment|${id}|${groupId}|${keyEpoch}`);
+
 
 /**
  * Seal image bytes under a *given* epoch rather than the current one: the

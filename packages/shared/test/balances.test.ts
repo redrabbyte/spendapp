@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { aliasResolver, computeBalances, resolveSplits } from '../src/balances.js';
+import { aliasResolver, computeBalances, resolveSplitMeta, resolveSplits } from '../src/balances.js';
 import { computeOwed } from '../src/split.js';
 import { simplifyDebts } from '../src/simplify.js';
 
@@ -173,5 +173,59 @@ describe('placeholder aliases', () => {
     expect(eur.get('real')).toBe(-500);
     expect(eur.get('other')).toBe(500);
     expect([...eur.values()].reduce((a, b) => a + b, 0)).toBe(0);
+  });
+
+  /**
+   * The editor reopens an expense from its meta and only knows current
+   * members, so a retired id in there is a share it silently drops and
+   * re-splits among whoever is left.
+   */
+  describe('the record of how a split was made', () => {
+    const resolve = aliasResolver(claimed);
+
+    it('renames a participant in an equal split', () => {
+      expect(resolveSplitMeta({ mode: 'equal', userIds: ['ghost', 'other'] }, resolve)).toEqual({
+        mode: 'equal',
+        userIds: ['real', 'other'],
+      });
+    });
+
+    it('lists the claimer once when they were on both sides of it', () => {
+      // computeOwed rejects a duplicate participant, so a doubled id is not a
+      // cosmetic problem — the expense stops being editable at all.
+      expect(resolveSplitMeta({ mode: 'equal', userIds: ['ghost', 'real'] }, resolve)).toEqual({
+        mode: 'equal',
+        userIds: ['real'],
+      });
+    });
+
+    it('adds up the two halves of an exact split', () => {
+      expect(
+        resolveSplitMeta(
+          { mode: 'exact', entries: [{ userId: 'ghost', amountMinor: 300 }, { userId: 'real', amountMinor: 700 }] },
+          resolve,
+        ),
+      ).toEqual({ mode: 'exact', entries: [{ userId: 'real', amountMinor: 1000 }] });
+    });
+
+    it('adds up percentages and shares the same way', () => {
+      expect(
+        resolveSplitMeta(
+          { mode: 'percent', entries: [{ userId: 'ghost', percentBp: 2500 }, { userId: 'real', percentBp: 2500 }] },
+          resolve,
+        ),
+      ).toEqual({ mode: 'percent', entries: [{ userId: 'real', percentBp: 5000 }] });
+      expect(
+        resolveSplitMeta(
+          { mode: 'shares', entries: [{ userId: 'ghost', shares: 1 }, { userId: 'other', shares: 2 }] },
+          resolve,
+        ),
+      ).toEqual({ mode: 'shares', entries: [{ userId: 'real', shares: 1 }, { userId: 'other', shares: 2 }] });
+    });
+
+    it('leaves a group where nobody has claimed anything untouched', () => {
+      const meta = { mode: 'exact' as const, entries: [{ userId: 'other', amountMinor: 100 }] };
+      expect(resolveSplitMeta(meta, aliasResolver([{ userId: 'other', aliasOf: null }]))).toEqual(meta);
+    });
   });
 });

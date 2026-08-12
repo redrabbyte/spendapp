@@ -168,8 +168,14 @@ export function InvitePage() {
         <>
           {info.claimable.length > 0 && (
             <div className="flex w-full flex-col gap-1 text-left">
+              {/* Taking over a name is *added* to coming back as yourself —
+                  the server resurrects your own membership and aliases the
+                  claimed row, and the key grant is the union of both. Framing
+                  it as an alternative told people they had to give one up. */}
               <label htmlFor="claim" className="text-sm font-medium text-slate-500 dark:text-slate-400">
-                {info.wasMember ? t('invitePage.takeOverInstead') : t('invitePage.areYouOne')}
+                {info.wasMember
+                  ? t('invitePage.alsoYou', { name: info.wasMember.displayName })
+                  : t('invitePage.areYouOne')}
               </label>
               <select
                 id="claim"
@@ -193,6 +199,11 @@ export function InvitePage() {
                   {t('invitePage.nameClash', { name: nameMatch.displayName })}
                 </p>
               )}
+              {info.wasMember && claim !== AS_NEW && (
+                <p className="text-xs text-slate-400">
+                  {t('invitePage.claimAddsTo', { name: info.wasMember.displayName })}
+                </p>
+              )}
               <p className="text-xs text-slate-400">{t('invitePage.claimNote')}</p>
             </div>
           )}
@@ -202,7 +213,9 @@ export function InvitePage() {
             className="rounded bg-teal-700 px-6 py-2 font-medium text-white disabled:opacity-50"
           >
             {claim !== AS_NEW
-              ? t('invitePage.joinAsThisPerson')
+              ? info.wasMember
+                ? t('invitePage.rejoinAndTakeOver')
+                : t('invitePage.joinAsThisPerson')
               : info.wasMember
                 ? t('invitePage.rejoin')
                 : t('invitePage.join')}

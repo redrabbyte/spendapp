@@ -185,6 +185,35 @@ export const groupKeys = mysqlTable(
   ],
 );
 
+/**
+ * One entry's content key, wrapped to one member (design §4.8).
+ *
+ * The narrow counterpart to group_keys: that table hands over an epoch, this
+ * one hands over a single entry. Stored unread like every other wrap — the
+ * server cannot open one and cannot make one, because producing it takes the
+ * epoch key it has never held.
+ */
+export const entryGrants = mysqlTable(
+  'entry_grants',
+  {
+    entryId: id('entry_id').notNull(),
+    /** Recipient. The wrap only opens with this user's private key. */
+    userId: id('user_id').notNull(),
+    groupId: id('group_id').notNull(),
+    entryType: varchar('entry_type', { length: 10 }).notNull(), // 'expense' | 'payment'
+    epk: varchar('epk', { length: 64 }).notNull(),
+    iv: varchar('iv', { length: 32 }).notNull(),
+    ct: varchar('ct', { length: 255 }).notNull(),
+    grantedBy: id('granted_by').notNull(),
+    createdAt: ts('created_at').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.entryId, t.userId] }),
+    // "every entry I was granted in this group", which is what sync asks.
+    index('eg_group_user').on(t.groupId, t.userId),
+  ],
+);
+
 export const invites = mysqlTable('invites', {
   /**
    * sha256 of the token, hex. The link is a bearer capability, so holding this
@@ -228,6 +257,14 @@ export const expenses = mysqlTable(
     keyEpoch: int('key_epoch').notNull(),
     iv: varchar('iv', { length: 32 }).notNull(),
     ct: text('ct').notNull(),
+    /**
+     * This entry's own content key, sealed under the epoch key (design §4.8).
+     * Not null: every entry has one, which is what lets a single entry be
+     * handed to somebody without the epoch it sits in. The columns were
+     * nullable while old rows were brought across, and are not any more.
+     */
+    keyIv: varchar('key_iv', { length: 32 }).notNull(),
+    keyCt: varchar('key_ct', { length: 255 }).notNull(),
     createdBy: id('created_by').notNull(),
     createdAt: ts('created_at').notNull(),
     updatedBy: id('updated_by').notNull(),
@@ -252,6 +289,9 @@ export const payments = mysqlTable(
     keyEpoch: int('key_epoch').notNull(),
     iv: varchar('iv', { length: 32 }).notNull(),
     ct: text('ct').notNull(),
+    /** As on expenses: this entry's content key under the epoch key (§4.8). */
+    keyIv: varchar('key_iv', { length: 32 }).notNull(),
+    keyCt: varchar('key_ct', { length: 255 }).notNull(),
     createdBy: id('created_by').notNull(),
     createdAt: ts('created_at').notNull(),
     updatedAt: ts('updated_at').notNull(),

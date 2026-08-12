@@ -1,4 +1,5 @@
 import { fromBase64Url, open, seal, toBase64Url, type Mutation } from '@spendapp/shared';
+import { commentAad, entryKeyAad, expenseAad, paymentAad, snapshotAad, type EntryType } from './aad';
 
 /**
  * Move a queued mutation onto a newer epoch.
@@ -22,19 +23,15 @@ import { fromBase64Url, open, seal, toBase64Url, type Mutation } from '@spendapp
 /** A group key for an epoch, or null when this device does not hold it. */
 export type KeyLookup = (epoch: number) => Promise<Uint8Array | null>;
 
+/** The entry-key wrapper a queued mutation carries, when it has one. */
+interface EntryKeyWrap {
+  keyIv?: string | null;
+  keyCt?: string | null;
+}
+
 interface Sealed {
   iv: string;
   ct: string;
-}
-
-const expenseAad = (id: string, groupId: string, e: number) => utf8(`expense|${id}|${groupId}|${e}`);
-const paymentAad = (id: string, groupId: string, e: number) => utf8(`payment|${id}|${groupId}|${e}`);
-const commentAad = (id: string, groupId: string, e: number) => utf8(`comment|${id}|${groupId}|${e}`);
-const snapshotAad = (activityId: string, groupId: string, e: number) =>
-  utf8(`snapshot|${activityId}|${groupId}|${e}`);
-
-function utf8(s: string): Uint8Array {
-  return new TextEncoder().encode(s);
 }
 
 const sameBytes = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((x, i) => x === b[i]);
@@ -107,12 +104,61 @@ export async function resealMutation(
     const [oldKey, newKey] = await Promise.all([keyFor(from), keyFor(toEpoch)]);
     if (!oldKey || !newKey) return null; // cannot open or cannot seal: leave it be
 
-    const d = data as unknown as Sealed & {
-      id: string;
-      groupId: string;
-      snapshot?: { activityId: string; iv: string; ct: string };
-    };
-    const entity = await move(d, (e) => aadFor(d.id, d.groupId, e), from, toEpoch, oldKey, newKey);
+    const d = data as unknown as Sealed &
+      EntryKeyWrap & {
+        id: string;
+        groupId: string;
+        snapshot?: { activityId: string; iv: string; ct: string };
+      };
+
+    /**
+     * An entry carries its own key (design §4.8), and that key must not change
+     * here: a grant already handed to somebody is a copy of it, and minting a
+     * fresh one on a rotation would revoke every grant on the entry without
+     * anybody asking. So the key is opened under the old epoch and re-wrapped
+     * under the new one, and only the wrapper moves.
+     *
+     * A comment has no key of its own — it is sealed under the epoch, as
+     * before — and neither does a mutation queued by a client from before this
+     * existed. Both fall through to the old behaviour.
+     */
+    const entryType: EntryType | null =
+      mutation.type === 'expense.upsert' || mutation.type === 'expense.restore'
+        ? 'expense'
+        : mutation.type === 'payment.upsert' || mutation.type === 'payment.restore'
+          ? 'payment'
+          : null;
+    let entryKey: Uint8Array | null = null;
+    let rewrapped: { keyIv: string; keyCt: string } | undefined;
+    if (entryType && d.keyIv && d.keyCt) {
+      entryKey = await open(
+        oldKey,
+        { iv: fromBase64Url(d.keyIv), ciphertext: fromBase64Url(d.keyCt) },
+        entryKeyAad(entryType, d.id, d.groupId, from),
+      );
+      const sealedKey = await seal(newKey, entryKey, entryKeyAad(entryType, d.id, d.groupId, toEpoch));
+      rewrapped = { keyIv: toBase64Url(sealedKey.iv), keyCt: toBase64Url(sealedKey.ciphertext) };
+      // Prove the new wrapper before it replaces the old one, for the same
+      // reason the content is proved: this queue is the only copy.
+      const check = await open(
+        newKey,
+        { iv: fromBase64Url(rewrapped.keyIv), ciphertext: fromBase64Url(rewrapped.keyCt) },
+        entryKeyAad(entryType, d.id, d.groupId, toEpoch),
+      );
+      if (!sameBytes(check, entryKey)) throw new Error('re-wrap did not round-trip');
+    }
+
+    // The content is sealed with the entry key where there is one, and its AAD
+    // still names the epoch — so the content moves too, verified as always.
+    const contentKey = entryKey ?? oldKey;
+    const entity = await move(
+      d,
+      (e) => aadFor(d.id, d.groupId, e),
+      from,
+      toEpoch,
+      contentKey,
+      entryKey ?? newKey,
+    );
 
     // The version snapshot rides along and is bound to its own log row, so it
     // has to move too — keeping its activityId, which the mutation still names.
@@ -132,7 +178,13 @@ export async function resealMutation(
 
     return {
       ...mutation,
-      data: { ...(data as object), keyEpoch: toEpoch, ...entity, ...(snapshot ? { snapshot } : {}) },
+      data: {
+        ...(data as object),
+        keyEpoch: toEpoch,
+        ...entity,
+        ...(rewrapped ?? {}),
+        ...(snapshot ? { snapshot } : {}),
+      },
     } as Mutation;
   } catch {
     // Including a failed verification. The original is still queued and still

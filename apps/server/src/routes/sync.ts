@@ -18,40 +18,55 @@ import { applyExpenseDelete, applyExpenseUpsert } from '../lib/expenses.js';
 import { applyPaymentDelete, applyPaymentUpsert } from '../lib/payments.js';
 
 export async function syncRoutes(app: FastifyInstance): Promise<void> {
-  app.post('/api/sync', { preHandler: app.requireUser }, async (req, reply) => {
-    const parsed = syncRequestSchema.safeParse(req.body);
-    if (!parsed.success) return reply.code(400).send({ error: 'invalid_input' });
-    const { protocolVersion, cursors, mutations } = parsed.data;
-    if (protocolVersion < SYNC_PROTOCOL.minSupported) {
-      return reply.code(426).send({ error: 'client_update_required', protocol: SYNC_PROTOCOL });
-    }
-    const userId = req.user!.id;
+  app.post(
+    '/api/sync',
+    {
+      /**
+       * Ahead of authentication on purpose (design §4.8). Whether a build can
+       * read what this server serves has nothing to do with who is holding it,
+       * and a client told 401 first would send its reader to a login screen to
+       * be refused again on the other side. Told to update, it updates.
+       */
+      preValidation: async (req, reply) => {
+        const claimed = (req.body as { protocolVersion?: unknown } | null)?.protocolVersion;
+        if (typeof claimed === 'number' && claimed < SYNC_PROTOCOL.minSupported) {
+          return reply.code(426).send({ error: 'client_update_required', protocol: SYNC_PROTOCOL });
+        }
+      },
+      preHandler: app.requireUser,
+    },
+    async (req, reply) => {
+      const parsed = syncRequestSchema.safeParse(req.body);
+      if (!parsed.success) return reply.code(400).send({ error: 'invalid_input' });
+      const { cursors, mutations } = parsed.data;
+      const userId = req.user!.id;
 
-    // Push: apply queued mutations in order, idempotently.
-    const results: MutationResult[] = [];
-    const alreadyProcessed = await processedIds(mutations);
-    for (const m of mutations) {
-      if (alreadyProcessed.has(m.id)) {
-        results.push({ id: m.id, status: 'applied' }); // replay of a delivered batch
-        continue;
+      // Push: apply queued mutations in order, idempotently.
+      const results: MutationResult[] = [];
+      const alreadyProcessed = await processedIds(mutations);
+      for (const m of mutations) {
+        if (alreadyProcessed.has(m.id)) {
+          results.push({ id: m.id, status: 'applied' }); // replay of a delivered batch
+          continue;
+        }
+        results.push(await applyMutation(userId, m, req.log));
       }
-      results.push(await applyMutation(userId, m, req.log));
-    }
 
-    // Pull: everything that changed in each of my groups since its cursor.
-    const memberships = await db
-      .select({ groupId: schema.groupMembers.groupId })
-      .from(schema.groupMembers)
-      .where(and(eq(schema.groupMembers.userId, userId), isNull(schema.groupMembers.leftAt)));
-    const changes: Record<string, GroupChanges> = {};
-    for (const { groupId } of memberships) {
-      const change = await collectGroupChanges(groupId, cursors[groupId] ?? 0, userId);
-      if (change) changes[groupId] = change;
-    }
+      // Pull: everything that changed in each of my groups since its cursor.
+      const memberships = await db
+        .select({ groupId: schema.groupMembers.groupId })
+        .from(schema.groupMembers)
+        .where(and(eq(schema.groupMembers.userId, userId), isNull(schema.groupMembers.leftAt)));
+      const changes: Record<string, GroupChanges> = {};
+      for (const { groupId } of memberships) {
+        const change = await collectGroupChanges(groupId, cursors[groupId] ?? 0, userId);
+        if (change) changes[groupId] = change;
+      }
 
-    const response: SyncResponse = { protocol: SYNC_PROTOCOL, results, changes };
-    return response;
-  });
+      const response: SyncResponse = { protocol: SYNC_PROTOCOL, results, changes };
+      return response;
+    },
+  );
 }
 
 async function processedIds(mutations: Mutation[]): Promise<Set<string>> {
@@ -173,6 +188,21 @@ async function collectGroupChanges(
     .from(schema.groupKeys)
     .where(and(eq(schema.groupKeys.groupId, groupId), eq(schema.groupKeys.userId, userId)));
 
+  // Single entries this user was granted (design §4.8), sent whole for the
+  // same reason the keyring is: missing one means holding ciphertext with no
+  // way to notice the key existed.
+  const entryGrants = await db
+    .select({
+      groupId: schema.entryGrants.groupId,
+      entryType: schema.entryGrants.entryType,
+      entryId: schema.entryGrants.entryId,
+      epk: schema.entryGrants.epk,
+      iv: schema.entryGrants.iv,
+      ct: schema.entryGrants.ct,
+    })
+    .from(schema.entryGrants)
+    .where(and(eq(schema.entryGrants.groupId, groupId), eq(schema.entryGrants.userId, userId)));
+
   /**
    * Has anybody left since the newest epoch was minted?
    *
@@ -245,6 +275,10 @@ async function collectGroupChanges(
       version: group.version,
     },
     keys,
+    entryGrants: entryGrants.map((g) => ({
+      ...g,
+      entryType: g.entryType === 'payment' ? ('payment' as const) : ('expense' as const),
+    })),
     rotationPending,
     members: members.map((m) => ({
       groupId: m.groupId,
@@ -262,6 +296,8 @@ async function collectGroupChanges(
       keyEpoch: e.keyEpoch,
       iv: e.iv,
       ct: e.ct,
+      keyIv: e.keyIv,
+      keyCt: e.keyCt,
       createdBy: e.createdBy,
       createdAt: e.createdAt.toISOString(),
       updatedBy: e.updatedBy,
@@ -275,6 +311,8 @@ async function collectGroupChanges(
       keyEpoch: p.keyEpoch,
       iv: p.iv,
       ct: p.ct,
+      keyIv: p.keyIv,
+      keyCt: p.keyCt,
       createdBy: p.createdBy,
       updatedAt: p.updatedAt.toISOString(),
       version: p.version,
