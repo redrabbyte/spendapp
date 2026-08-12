@@ -228,6 +228,9 @@ export async function changePassword(username: string, currentPassword: string, 
     publicKey: identity.publicKey,
     privateKey: identity.privateKey,
   });
-  await api('/api/auth/rekey', { method: 'POST', body: upload });
+  // Unlocking already proved the old password here, but the server cannot see
+  // that; without this it would take a new password from any live session.
+  const currentAuthKey = await deriveAuthKeyFor(username, currentPassword);
+  await api('/api/auth/rekey', { method: 'POST', body: { ...upload, currentAuthKey } });
   await cacheKeys(keys);
 }

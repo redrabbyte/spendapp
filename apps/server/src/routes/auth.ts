@@ -14,7 +14,7 @@ import {
 import { config } from '../config.js';
 import { db, schema } from '../db/index.js';
 import { currentPolicy } from '../lib/privacy.js';
-import { createSession, destroySession } from '../lib/sessions.js';
+import { createSession, destroyOtherSessions, destroySession } from '../lib/sessions.js';
 
 const ARGON_OPTS = { type: argon2.argon2id, memoryCost: 19_456, timeCost: 2, parallelism: 1 } as const;
 
@@ -203,15 +203,22 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     if (!parsed.success) return reply.code(400).send({ error: 'invalid_input' });
 
     const rows = await db
-      .select({ publicKey: schema.users.publicKey })
+      .select({ publicKey: schema.users.publicKey, passwordHash: schema.users.passwordHash })
       .from(schema.users)
       .where(eq(schema.users.id, req.user!.id))
       .limit(1);
     if (rows[0]?.publicKey && rows[0].publicKey !== parsed.data.publicKey) {
       return reply.code(400).send({ error: 'identity_key_immutable' });
     }
+    // Same bar as deleting: both overwrite something nothing can recover.
+    if (!rows[0]?.passwordHash || !(await argon2.verify(rows[0].passwordHash, parsed.data.currentAuthKey))) {
+      return reply.code(401).send({ error: 'wrong_password' });
+    }
 
     await applyAccountKeys(req.user!.id, parsed.data);
+    // The new password is only worth anything if the old one stops working
+    // everywhere, so every other device has to re-authenticate under it.
+    await destroyOtherSessions(req, req.user!.id);
     return { ok: true };
   });
 

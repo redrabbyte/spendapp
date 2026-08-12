@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { and, eq, gt, lt } from 'drizzle-orm';
+import { and, eq, gt, lt, ne } from 'drizzle-orm';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { config, SESSION_COOKIE } from '../config.js';
 import { db, schema } from '../db/index.js';
@@ -67,6 +67,21 @@ export async function destroySession(req: FastifyRequest, reply: FastifyReply): 
     await db.delete(schema.sessions).where(eq(schema.sessions.idHash, hashToken(raw)));
   }
   reply.clearCookie(SESSION_COOKIE, { path: '/' });
+}
+
+/**
+ * Sign every other device out, keeping the caller's own session. What changing
+ * a password is for: an intruder holding a stolen cookie has to be evicted by
+ * it, and until now the one action taken to do that left them signed in.
+ */
+export async function destroyOtherSessions(req: FastifyRequest, userId: string): Promise<number> {
+  const raw = req.cookies[SESSION_COOKIE];
+  const keep = raw && /^[0-9a-f]{64}$/.test(raw) ? hashToken(raw) : null;
+  const where = keep
+    ? and(eq(schema.sessions.userId, userId), ne(schema.sessions.idHash, keep))
+    : eq(schema.sessions.userId, userId);
+  const [res] = await db.delete(schema.sessions).where(where);
+  return res.affectedRows;
 }
 
 export async function pruneExpiredSessions(): Promise<void> {

@@ -98,7 +98,15 @@ export const deleteAccountSchema = z.object({ authKey: key32 });
  * Access to a group survives anyway — another member can re-wrap its keys to a
  * new account, which is what the join flow already does.
  */
-export const rekeySchema = accountKeysSchema;
+export const rekeySchema = accountKeysSchema.extend({
+  /**
+   * The password being replaced, for the same reason deleting asks: a session
+   * proves who is signed in, not who is at the keyboard. Without it, anyone
+   * holding a borrowed device could set a new password — locking the owner out
+   * of an account nothing can recover.
+   */
+  currentAuthKey: key32,
+});
 
 /** A group key sealed to one member's public key (design §4.2). */
 export const wrappedKeySchema = z.object({
