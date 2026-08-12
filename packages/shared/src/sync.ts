@@ -13,7 +13,9 @@ export const MUTATION_SCHEMA_VERSION = 1;
 const envelope = {
   id: uuid, // idempotency key
   v: z.number().int().min(1),
-  clientTs: z.string(),
+  // Bounded like everything else here: an ISO timestamp, not a place to put a
+  // megabyte and make the server hold it.
+  clientTs: z.string().max(40),
 };
 
 /**

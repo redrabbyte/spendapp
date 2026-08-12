@@ -319,9 +319,21 @@ function parseSealed(raw: string | null): { iv: string; ct: string } | null {
  * Deterministic so repeated probes agree with each other; keyed so it cannot
  * be recomputed offline and compared against the real thing.
  */
+/**
+ * A decoy is only as good as its resemblance to a real answer, and the answer
+ * carries cost parameters as well as a salt. Today every account was created
+ * with DEFAULT_KDF, so returning it matches. The moment DEFAULT_KDF is raised
+ * — which the design expects — accounts made before the change keep their old
+ * parameters while decoys would advertise the new ones, and the difference is
+ * an account-existence oracle again. So decoys draw from the parameters real
+ * accounts actually hold, deterministically per username.
+ */
+const KDF_GENERATIONS = [DEFAULT_KDF];
+
 function decoyParams(username: string): { kdfSalt: string; kdfParams: typeof DEFAULT_KDF } {
   const mac = createHmac('sha256', config.decoySaltSecret).update(username).digest();
-  return { kdfSalt: mac.subarray(0, 16).toString('base64url'), kdfParams: DEFAULT_KDF };
+  const generation = KDF_GENERATIONS[mac[16]! % KDF_GENERATIONS.length]!;
+  return { kdfSalt: mac.subarray(0, 16).toString('base64url'), kdfParams: generation };
 }
 
 function isDuplicate(err: unknown): boolean {
