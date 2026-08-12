@@ -29,6 +29,13 @@
       "when": 1786518701374,
       "tag": "0003_key_chain_proof",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1786526592639,
+      "tag": "0004_member_held_epochs",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,1 @@
+ALTER TABLE `group_members` ADD `held_epochs` json;

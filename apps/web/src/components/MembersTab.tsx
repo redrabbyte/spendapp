@@ -66,6 +66,8 @@ interface JoinRequest {
   /** Both halves of the SAS (design §4.3); absent on accounts predating §4.1. */
   publicKey: string | null;
   inviteTokenHash: string;
+  /** Epochs they could open when they last left; absent unless they were here before. */
+  heldEpochs?: number[] | null;
   /** False means approving must rotate instead of handing over the keyring. */
   shareHistory: boolean;
   /** 'rejected' rows are recent declines, kept listed so they can be undone. */
@@ -234,7 +236,20 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
       if (decision === 'approve' && request && !request.shareHistory) {
         try {
           const rotated = await rotateGroupKey(groupId);
-          setKeyHandoff(t(rotated ? 'members.scopedAdded' : 'members.scopedNoKey'));
+          // Somebody who was here before gets their own past back, and only
+          // that. Withholding it does not protect anything they have not
+          // already read, and it leaves their own splits — which still name
+          // them, and which everyone else can see — unreadable to them, so
+          // their balance would be wrong rather than merely partial.
+          let restored = 0;
+          if (request.heldEpochs?.length && res.publicKey) {
+            restored = await shareKeyring(groupId, userId, res.publicKey, request.heldEpochs);
+          }
+          setKeyHandoff(
+            restored > 0
+              ? t('members.scopedRestored', { count: restored })
+              : t(rotated ? 'members.scopedAdded' : 'members.scopedNoKey'),
+          );
         } catch (err) {
           setKeyHandoff(t('members.scopedRotateFailed', { reason: (err as Error).message }));
         }

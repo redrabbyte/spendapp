@@ -109,6 +109,17 @@ export const groupMembers = mysqlTable(
      * simpler than putting an alias map inside encrypted group metadata.
      */
     aliasOf: id('alias_of'),
+    /**
+     * The epochs this member could open when they last left, recorded as the
+     * wraps are deleted (see lib/leave.ts).
+     *
+     * The exact set, not a range: somebody admitted on a from-today link holds
+     * a run that starts partway up, and restoring "everything below the
+     * highest" would hand them epochs they were never given. Read when they
+     * come back on another from-today link, so their own past is legible again
+     * without opening the stretch they were away for.
+     */
+    heldEpochs: json('held_epochs'),
     version: version(),
   },
   (t) => [primaryKey({ columns: [t.groupId, t.userId] }), index('gm_user').on(t.userId)],

@@ -17,6 +17,7 @@ const d = RUN ? describe : describe.skip;
 
 const ADA = '11111111-1111-4111-8111-111111111111';
 const GRACE = '22222222-2222-4222-8222-222222222222';
+const OUTSIDER = '44444444-4444-4444-8444-444444444444';
 const GROUP = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const ARGON = { type: argon2.argon2id, memoryCost: 19_456, timeCost: 2, parallelism: 1 } as const;
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
@@ -40,6 +41,8 @@ async function session(userId: string): Promise<string> {
 const hdrs = (raw: string) => ({ cookie: `sid=${raw}`, 'x-requested-with': 'spendapp' });
 
 async function reset() {
+  await db.delete(schema.joinRequests);
+  await db.delete(schema.invites);
   await db.delete(schema.groupKeys);
   await db.delete(schema.sessions);
   await db.delete(schema.groupMembers);
@@ -49,6 +52,7 @@ async function reset() {
   for (const [id, name] of [
     [ADA, 'Ada'],
     [GRACE, 'Grace'],
+    [OUTSIDER, 'Alan'],
   ] as const) {
     await db.insert(schema.users).values({
       id,
@@ -352,6 +356,65 @@ d('leaving a group', () => {
     });
     const { changes } = sync.json() as { changes: Record<string, { keys: { epoch: number }[] }> };
     expect(changes[GROUP]!.keys).toEqual([]);
+  });
+
+  it('records exactly the epochs they held, not a range', async () => {
+    // Somebody admitted on a from-today link holds a run that starts partway
+    // up. Recording a bound and restoring everything under it would hand them
+    // epochs they were never given.
+    await graceHolds([5, 6, 7]);
+    const raw = await session(GRACE);
+    await app!.inject({ method: 'POST', url: `/api/groups/${GROUP}/leave`, headers: hdrs(raw) });
+
+    const [row] = await db
+      .select({ heldEpochs: schema.groupMembers.heldEpochs })
+      .from(schema.groupMembers)
+      .where(and(eq(schema.groupMembers.groupId, GROUP), eq(schema.groupMembers.userId, GRACE)));
+    expect(row!.heldEpochs).toEqual([5, 6, 7]);
+  });
+
+  it('offers the held epochs to the approving admin on a return', async () => {
+    await graceHolds([0, 1]);
+    const graceLeaves = await session(GRACE);
+    await app!.inject({ method: 'POST', url: `/api/groups/${GROUP}/leave`, headers: hdrs(graceLeaves) });
+    await db.insert(schema.joinRequests).values({
+      groupId: GROUP,
+      userId: GRACE,
+      inviteTokenHash: sha256('tok'),
+      status: 'pending',
+      requestedAt: new Date(),
+    });
+
+    const admin = await session(ADA);
+    const res = await app!.inject({
+      method: 'GET',
+      url: `/api/groups/${GROUP}/join-requests`,
+      headers: hdrs(admin),
+    });
+    const [request] = (res.json() as { requests: { heldEpochs: number[] | null }[] }).requests;
+    // Without this the admin's client cannot know what to hand back, and a
+    // from-today approval leaves their own splits unreadable to them.
+    expect(request!.heldEpochs).toEqual([0, 1]);
+  });
+
+  it('offers nothing for somebody who was never here', async () => {
+    await db.insert(schema.joinRequests).values({
+      groupId: GROUP,
+      userId: OUTSIDER,
+      inviteTokenHash: sha256('tok'),
+      status: 'pending',
+      requestedAt: new Date(),
+    });
+    const admin = await session(ADA);
+    const res = await app!.inject({
+      method: 'GET',
+      url: `/api/groups/${GROUP}/join-requests`,
+      headers: hdrs(admin),
+    });
+    const request = (res.json() as { requests: { userId: string; heldEpochs: number[] | null }[] }).requests.find(
+      (r) => r.userId === OUTSIDER,
+    );
+    expect(request!.heldEpochs).toBeNull();
   });
 
   it('gives a scoped rejoin only the epoch minted for it', async () => {

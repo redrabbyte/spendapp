@@ -525,6 +525,8 @@ export const en = {
   'members.leave': 'Leave group',
   // What happened to the keys after a decision. Said separately from the
   // decision itself, because by then the person is already a member.
+  'members.scopedRestored':
+    'Added. They can read the entries they were part of before, and everything from today — but nothing from while they were away.',
   'members.scopedAdded':
     'Added from today onwards. Nothing recorded before now is readable to them, and they cannot pass this group’s history on.',
   'members.scopedNoKey': 'Added, but no new key could be minted — they may be able to read entries from before they joined.',

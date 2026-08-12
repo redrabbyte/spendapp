@@ -514,6 +514,8 @@ export const de: Catalogue = {
   'members.deleteForGood': 'Gruppe endgültig löschen',
   'members.confirmLeave': 'Ja, Gruppe verlassen',
   'members.leave': 'Gruppe verlassen',
+  'members.scopedRestored':
+    'Hinzugefügt. Sie können die Einträge lesen, an denen sie früher beteiligt waren, und alles ab heute — aber nichts aus der Zeit ihrer Abwesenheit.',
   'members.scopedAdded':
     'Ab heute hinzugefügt. Nichts von vorher ist für sie lesbar, und sie können den Verlauf dieser Gruppe nicht weitergeben.',
   'members.scopedNoKey':

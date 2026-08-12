@@ -219,9 +219,23 @@ export async function adoptGroupKey(groupId: string, epoch: number, key: Uint8Ar
  * (design §4.2). Wrapping only the current epoch would give them a group that
  * looks empty up to the last rotation.
  */
-export async function shareKeyring(groupId: string, userId: string, publicKeyB64: string): Promise<number> {
-  const ring = await getKeyring(groupId);
-  if (!ring || ring.size === 0) throw new AppError('app.noGroupKeys');
+export async function shareKeyring(
+  groupId: string,
+  userId: string,
+  publicKeyB64: string,
+  /**
+   * Restrict the hand-over to these epochs. Used when somebody who was here
+   * before returns on a from-today link: they get back exactly what they could
+   * already open and nothing from the stretch they were away for. Omitted for
+   * an ordinary full-history join, which is the whole ring.
+   */
+  onlyEpochs?: readonly number[],
+): Promise<number> {
+  const full = await getKeyring(groupId);
+  if (!full || full.size === 0) throw new AppError('app.noGroupKeys');
+  const wanted = onlyEpochs ? new Set(onlyEpochs) : null;
+  const ring: Keyring = wanted ? new Map([...full].filter(([e]) => wanted.has(e))) : full;
+  if (ring.size === 0) return 0; // nothing of theirs left that we can hand back
   const publicKey = fromBase64Url(publicKeyB64);
   // Proofs travel with the keys. Without them the recipient would hold a ring
   // it could read but never extend: their first rotation would produce an
@@ -231,7 +245,7 @@ export async function shareKeyring(groupId: string, userId: string, publicKeyB64
       userId,
       epoch,
       ...(await wrapFor(publicKey, held.key)),
-      ...(await chainFor(ring, groupId, epoch, held.key)),
+      ...(await chainFor(full, groupId, epoch, held.key)),
     })),
   );
   // What the server actually took, not what we offered. A member who left and

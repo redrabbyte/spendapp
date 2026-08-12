@@ -47,6 +47,10 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
         // server no longer hands a live invite back to anybody.
         publicKey: schema.users.publicKey,
         inviteTokenHash: schema.joinRequests.inviteTokenHash,
+        // What they could open when they last left, if they were here before.
+        // A from-today approval restores exactly these and nothing else, so a
+        // returning member's own splits read again while the gap stays shut.
+        heldEpochs: schema.groupMembers.heldEpochs,
         // Which invite they followed decides whether approving hands over the
         // whole keyring or forces a rotation (design §4.7). The approving
         // client needs to know before it acts, not after.
@@ -56,6 +60,14 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
       })
       .from(schema.joinRequests)
       .innerJoin(schema.users, eq(schema.users.id, schema.joinRequests.userId))
+      // Left join: only a returning member has one of these.
+      .leftJoin(
+        schema.groupMembers,
+        and(
+          eq(schema.groupMembers.groupId, schema.joinRequests.groupId),
+          eq(schema.groupMembers.userId, schema.joinRequests.userId),
+        ),
+      )
       // Left join: a revoked or deleted invite must not hide a pending row.
       .leftJoin(schema.invites, eq(schema.invites.tokenHash, schema.joinRequests.inviteTokenHash))
       .where(

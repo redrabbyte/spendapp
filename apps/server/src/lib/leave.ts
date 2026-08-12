@@ -48,9 +48,17 @@ export async function leaveGroup(userId: string, groupId: string): Promise<'left
   const now = new Date();
   await db.transaction(async (tx) => {
     const version = await bumpGroupVersion(tx, groupId);
+    // Noted before the wraps go, so coming back on a from-today link can make
+    // their own past legible again without opening the stretch they were away
+    // for. The set, not a bound: a run that starts partway up must not be
+    // rounded down to zero.
+    const held = await tx
+      .select({ epoch: schema.groupKeys.epoch })
+      .from(schema.groupKeys)
+      .where(and(eq(schema.groupKeys.groupId, groupId), eq(schema.groupKeys.userId, userId)));
     await tx
       .update(schema.groupMembers)
-      .set({ leftAt: now, version })
+      .set({ leftAt: now, version, heldEpochs: held.map((r) => r.epoch).sort((a, b) => a - b) })
       .where(and(eq(schema.groupMembers.groupId, groupId), eq(schema.groupMembers.userId, userId)));
     /**
      * Their wraps go with them. The rows outlived the membership before, and
