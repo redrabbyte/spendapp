@@ -616,6 +616,7 @@ export const de: Catalogue = {
   'error.use_leave_to_remove_yourself': 'Nutze „Gruppe verlassen“, um dich selbst zu entfernen.',
   'error.no_pending_request': 'Diese Anfrage wartet nicht mehr.',
   'error.no_wraps_for_members': 'Niemandem konnte Zugriff gegeben werden — versuch es noch einmal.',
+  'error.wrap_exists': 'Dieses Mitglied hat für diese Version schon einen Schlüssel — es wurde nichts geändert.',
   'error.invite_invalid': 'Dieser Einladungslink gilt nicht mehr.',
   'error.invite_spent': 'Dieser Einladungslink wurde schon benutzt.',
   'error.join_declined': 'Deine Beitrittsanfrage wurde abgelehnt.',

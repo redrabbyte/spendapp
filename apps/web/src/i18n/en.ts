@@ -628,6 +628,7 @@ export const en = {
   'error.use_leave_to_remove_yourself': 'Use “leave” to remove yourself.',
   'error.no_pending_request': 'That request is no longer waiting.',
   'error.no_wraps_for_members': 'Nobody could be given access — try again.',
+  'error.wrap_exists': 'That member already has a key for this version — nothing was changed.',
   'error.invite_invalid': 'This invite link is not valid any more.',
   'error.invite_spent': 'This invite link has already been used.',
   'error.join_declined': 'Your request to join was declined.',

@@ -317,6 +317,29 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
       return { stored: claimed ? wraps.length : 0, skipped: 0, minted: claimed };
     }
 
+    // Overwriting is what makes a failed hand-off safe to retry, but only for
+    // your own row. The server cannot read a wrap, so it cannot tell a repaired
+    // one from a destroyed one — and replacing somebody else's locks them out of
+    // that epoch until another member notices and re-wraps. Handing a peer a
+    // wrap they do not have yet is the onboarding path and stays allowed.
+    const self = req.user!.id;
+    const theirs = wraps.filter((w) => w.userId !== self);
+    if (theirs.length > 0) {
+      const held = await db
+        .select({ epoch: schema.groupKeys.epoch, userId: schema.groupKeys.userId })
+        .from(schema.groupKeys)
+        .where(
+          and(
+            eq(schema.groupKeys.groupId, groupId),
+            inArray(schema.groupKeys.userId, [...new Set(theirs.map((w) => w.userId))]),
+          ),
+        );
+      const taken = new Set(held.map((r) => `${r.userId}:${r.epoch}`));
+      if (theirs.some((w) => taken.has(`${w.userId}:${w.epoch}`))) {
+        return reply.code(409).send({ error: 'wrap_exists' });
+      }
+    }
+
     await db
       .insert(schema.groupKeys)
       .values(wraps.map((w) => ({ groupId, epoch: w.epoch, userId: w.userId, epk: w.epk, iv: w.iv, ct: w.ct, createdAt: now })))

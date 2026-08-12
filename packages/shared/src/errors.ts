@@ -36,6 +36,9 @@ export const API_ERRORS = [
   'use_leave_to_remove_yourself',
   'no_pending_request',
   'no_wraps_for_members',
+  // Refusing to overwrite a peer's existing key wrap: the server cannot read one,
+  // so it cannot tell a repaired wrap from one that locks its owner out.
+  'wrap_exists',
 
   // invites
   'invite_invalid',
