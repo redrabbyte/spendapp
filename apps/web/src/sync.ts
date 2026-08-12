@@ -21,6 +21,7 @@ import {
   forgetGroupKeys,
   keyForEpoch,
   mintGroupKey,
+  rotateGroupKey,
 } from './groupKeys';
 import { localDb, type OutboxItem } from './db';
 import { uuid } from './uuid';
@@ -155,6 +156,27 @@ export async function syncNow(): Promise<void> {
     if (rewound) {
       runAgain = true;
       return; // re-pull from the rewound cursors before touching the mirror
+    }
+
+    /**
+     * Somebody left and nothing has been minted since, so the group is still
+     * writing under a key they hold. The one who left cannot rotate, and the
+     * admin who removed them may never come back online — so the first member
+     * to sync holding the current epoch does it.
+     *
+     * Best effort by design. Minting is first-writer-wins, so several clients
+     * racing is fine and the losers simply pull the winner's key; a failure
+     * leaves the flag set and the next sync tries again. Never allowed to
+     * break the sync it rode in on.
+     */
+    for (const [groupId, ch] of Object.entries(res.changes)) {
+      if (!ch.rotationPending) continue;
+      if ((await currentEpoch(groupId)) === null) continue; // not ours to rotate
+      try {
+        if (await rotateGroupKey(groupId)) runAgain = true;
+      } catch {
+        /* offline, or somebody beat us to it — the flag survives for next time */
+      }
     }
 
     const opened = new Map<string, ExpenseDto[]>();

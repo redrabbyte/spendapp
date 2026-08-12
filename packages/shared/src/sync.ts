@@ -321,6 +321,14 @@ export interface GroupChanges {
   members: MemberDto[];
   /** Every epoch this user can open. Sent whole; it is a handful of rows. */
   keys: WrappedKeyDto[];
+  /**
+   * Somebody left after the newest epoch was minted, so the key they held is
+   * still the one being written under. Whichever member's client sees this and
+   * holds that epoch mints the next one; minting is first-writer-wins, so it
+   * does not matter which. The leaver cannot do it — they are gone — which is
+   * why it has to be asked for rather than done on the way out.
+   */
+  rotationPending: boolean;
   expenses: ExpenseWire[];
   payments: PaymentWire[];
   attachments: AttachmentDto[];

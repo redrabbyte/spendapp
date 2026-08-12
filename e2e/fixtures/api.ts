@@ -400,6 +400,7 @@ function changesFor(state: ApiState, cursors: Record<string, number> = {}): Reco
       group,
       members: members.filter((m) => m.version > cursor),
       keys: state.groupKeys.get(id) ?? [],
+      rotationPending: false,
       expenses: expenses.filter((e) => e.version > cursor),
       payments: payments.filter((p) => p.version > cursor),
       attachments: attachments.filter((a) => a.version > cursor),

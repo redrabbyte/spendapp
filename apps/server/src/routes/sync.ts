@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, isNull } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
 import {
   SYNC_PROTOCOL,
@@ -173,6 +173,36 @@ async function collectGroupChanges(
     .from(schema.groupKeys)
     .where(and(eq(schema.groupKeys.groupId, groupId), eq(schema.groupKeys.userId, userId)));
 
+  /**
+   * Has anybody left since the newest epoch was minted?
+   *
+   * Rotation on departure cannot happen on the way out — the one leaving has
+   * no standing to mint, and nobody else is necessarily online. So it is asked
+   * for here and done by whichever member's client next syncs holding the key.
+   *
+   * The mint time is the *earliest* row for the highest epoch, not the latest.
+   * Re-sharing an existing epoch to a new member writes fresh rows for it, and
+   * taking the newest would let a hand-over look like a rotation and quietly
+   * clear a departure that was never answered.
+   */
+  const [{ mintedAt = null } = {}] = await db
+    .select({ mintedAt: sql<Date | null>`min(${schema.groupKeys.createdAt})` })
+    .from(schema.groupKeys)
+    .where(
+      and(
+        eq(schema.groupKeys.groupId, groupId),
+        eq(
+          schema.groupKeys.epoch,
+          sql`(select max(epoch) from ${schema.groupKeys} where group_id = ${groupId})`,
+        ),
+      ),
+    );
+  const [{ lastLeft = null } = {}] = await db
+    .select({ lastLeft: sql<Date | null>`max(${schema.groupMembers.leftAt})` })
+    .from(schema.groupMembers)
+    .where(eq(schema.groupMembers.groupId, groupId));
+  const rotationPending = !!lastLeft && (!mintedAt || lastLeft > mintedAt);
+
   const members = await db
     .select({
       groupId: schema.groupMembers.groupId,
@@ -215,6 +245,7 @@ async function collectGroupChanges(
       version: group.version,
     },
     keys,
+    rotationPending,
     members: members.map((m) => ({
       groupId: m.groupId,
       userId: m.userId,

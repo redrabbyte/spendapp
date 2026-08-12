@@ -376,3 +376,70 @@ d('leaving a group', () => {
     expect(await keysOf(GRACE)).toEqual([3]);
   });
 });
+
+d('asking for a rotation after somebody leaves', () => {
+  beforeEach(reset);
+
+  const wrap = (userId: string, epoch: number) => ({ userId, epoch, epk: b64(32), iv: b64(12), ct: b64(48) });
+
+  async function pending(): Promise<boolean> {
+    const raw = await session(ADA);
+    const sync = await app!.inject({
+      method: 'POST',
+      url: '/api/sync',
+      headers: hdrs(raw),
+      payload: { protocolVersion: 1, cursors: {}, mutations: [] },
+    });
+    const { changes } = sync.json() as { changes: Record<string, { rotationPending: boolean }> };
+    return changes[GROUP]!.rotationPending;
+  }
+
+  async function mint(epoch: number, users = [ADA]) {
+    const raw = await session(ADA);
+    await app!.inject({
+      method: 'POST',
+      url: `/api/groups/${GROUP}/keys`,
+      headers: hdrs(raw),
+      payload: { mint: true, wraps: users.map((u) => wrap(u, epoch)) },
+    });
+  }
+
+  async function graceLeaves() {
+    const raw = await session(GRACE);
+    await app!.inject({ method: 'POST', url: `/api/groups/${GROUP}/leave`, headers: hdrs(raw) });
+  }
+
+  it('asks for nothing while nobody has left', async () => {
+    await mint(0);
+    expect(await pending()).toBe(false);
+  });
+
+  it('asks once somebody has left', async () => {
+    await mint(0);
+    await graceLeaves();
+    expect(await pending()).toBe(true);
+  });
+
+  it('stops asking once a newer epoch exists', async () => {
+    await mint(0);
+    await graceLeaves();
+    expect(await pending()).toBe(true);
+    await mint(1);
+    expect(await pending()).toBe(false);
+  });
+
+  it('is not satisfied by re-sharing an epoch that already existed', async () => {
+    // A hand-over writes fresh rows for an old epoch. Reading the newest row
+    // would call that a rotation and quietly drop a departure nobody answered.
+    await mint(0);
+    await graceLeaves();
+    const raw = await session(ADA);
+    await app!.inject({
+      method: 'POST',
+      url: `/api/groups/${GROUP}/keys`,
+      headers: hdrs(raw),
+      payload: { wraps: [wrap(ADA, 0)] },
+    });
+    expect(await pending()).toBe(true);
+  });
+});
