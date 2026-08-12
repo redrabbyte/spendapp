@@ -41,10 +41,12 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
         requestedAt: schema.joinRequests.requestedAt,
         displayName: schema.users.displayName,
         // Both halves of the SAS the admin reads out (design §4.3). Derived
-        // client-side from these rather than sent as six digits: a number the
-        // server computed proves nothing about the person on the phone.
+        // client-side from these rather than as digits: a number the server
+        // computed proves nothing about the person on the phone. The hash
+        // stands in for the token — the joiner hashes theirs to match, and the
+        // server no longer hands a live invite back to anybody.
         publicKey: schema.users.publicKey,
-        inviteToken: schema.joinRequests.inviteToken,
+        inviteTokenHash: schema.joinRequests.inviteTokenHash,
         // Which invite they followed decides whether approving hands over the
         // whole keyring or forces a rotation (design §4.7). The approving
         // client needs to know before it acts, not after.
@@ -55,7 +57,7 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
       .from(schema.joinRequests)
       .innerJoin(schema.users, eq(schema.users.id, schema.joinRequests.userId))
       // Left join: a revoked or deleted invite must not hide a pending row.
-      .leftJoin(schema.invites, eq(schema.invites.token, schema.joinRequests.inviteToken))
+      .leftJoin(schema.invites, eq(schema.invites.tokenHash, schema.joinRequests.inviteTokenHash))
       .where(
         and(
           eq(schema.joinRequests.groupId, groupId),

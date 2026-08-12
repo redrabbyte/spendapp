@@ -118,6 +118,16 @@ async function hkdf(ikm: Uint8Array, info: string, length = KEY_BYTES): Promise<
   return new Uint8Array(bits);
 }
 
+/**
+ * sha256 as lowercase hex — the same value the server stores for an invite and
+ * MySQL's SHA2(x, 256) produces, so both ends of the SAS can name a token
+ * without either of them holding the token itself.
+ */
+export async function sha256Hex(input: string): Promise<string> {
+  const digest = await subtle().digest('SHA-256', toArrayBuffer(utf8.encode(input)));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 export const deriveAuthKey = (masterKey: Uint8Array): Promise<Uint8Array> => hkdf(masterKey, 'spendapp/auth/v1');
 export const deriveKek = (masterKey: Uint8Array): Promise<Uint8Array> => hkdf(masterKey, 'spendapp/wrap/v1');
 

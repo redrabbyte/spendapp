@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { deriveSas, formatSas } from '@spendapp/shared';
+import { deriveSas, formatSas, sha256Hex } from '@spendapp/shared';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import { localDb } from '../db';
@@ -101,7 +101,9 @@ export function InvitePage() {
         // reads out a different number — which is the only thing that
         // distinguishes them from the person the admin is expecting.
         const keys = await loadKeys();
-        if (keys && token) setSas(await deriveSas(token, keys.publicKey, res.groupId));
+        // Hashed first: the admin's side only ever sees the hash, because the
+        // server no longer keeps the token itself.
+        if (keys && token) setSas(await deriveSas(await sha256Hex(token), keys.publicKey, res.groupId));
         return;
       }
       await syncNow();

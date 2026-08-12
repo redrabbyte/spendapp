@@ -52,8 +52,13 @@ notifications, and a full audit trail with revert.
 
 ```sh
 pnpm install
-pnpm test                     # shared-package property tests
+pnpm test                     # unit and property tests
 pnpm typecheck
+
+# The invite tests talk to a real database and skip without one. They are the
+# only place the token hashing and the single-use race are checked end to end.
+DATABASE_URL=mysql://spendapp:spendapp@127.0.0.1:3306/spendapp \
+  pnpm --filter server test
 
 # server (needs MySQL 8)
 cp apps/server/.env.example apps/server/.env   # edit DATABASE_URL etc.

@@ -125,7 +125,7 @@ export const joinRequests = mysqlTable(
   {
     groupId: id('group_id').notNull(),
     userId: id('user_id').notNull(),
-    inviteToken: varchar('invite_token', { length: 43 }).notNull(),
+    inviteTokenHash: varchar('invite_token_hash', { length: 64 }).notNull(),
     // Set when the joiner is taking over a placeholder instead of joining
     // fresh; the claim is replayed at approval time, not at request time.
     claimMemberId: id('claim_member_id'),
@@ -166,7 +166,13 @@ export const groupKeys = mysqlTable(
 );
 
 export const invites = mysqlTable('invites', {
-  token: varchar('token', { length: 43 }).primaryKey(),
+  /**
+   * sha256 of the token, hex. The link is a bearer capability, so holding this
+   * table used to mean holding every live invite — sessions have been stored
+   * hashed for exactly that reason and this was the odd one out. Lookups hash
+   * what the caller presents, so links already handed out keep working.
+   */
+  tokenHash: varchar('token_hash', { length: 64 }).primaryKey(),
   groupId: id('group_id').notNull(),
   createdBy: id('created_by').notNull(),
   createdAt: ts('created_at').notNull(),

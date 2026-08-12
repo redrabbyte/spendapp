@@ -65,7 +65,7 @@ interface JoinRequest {
   requestedAt: string;
   /** Both halves of the SAS (design §4.3); absent on accounts predating §4.1. */
   publicKey: string | null;
-  inviteToken: string;
+  inviteTokenHash: string;
   /** False means approving must rotate instead of handing over the keyring. */
   shareHistory: boolean;
   /** 'rejected' rows are recent declines, kept listed so they can be undone. */
@@ -74,11 +74,12 @@ interface JoinRequest {
 }
 
 /**
- * Six digits the admin reads out and the joiner confirms, derived from the
+ * The digits the admin reads out and the joiner confirms, derived from the
  * joiner's own public key so a different asker yields different digits.
  *
- * It defends against the person who intercepted the link, not against the
- * server — the server holds every input. That is what §4.3 claims and no more.
+ * Long enough that a server cannot grind a key to match them, which six digits
+ * was not. The joiner hashes their token to reach the same input this gets from
+ * the server, so no live invite has to travel back to an admin.
  */
 function SasDigits({ groupId, request }: { groupId: string; request: JoinRequest }) {
   const t = useT();
@@ -87,13 +88,13 @@ function SasDigits({ groupId, request }: { groupId: string; request: JoinRequest
   useEffect(() => {
     if (!request.publicKey) return;
     let live = true;
-    void deriveSas(request.inviteToken, fromBase64Url(request.publicKey), groupId).then((s) => {
+    void deriveSas(request.inviteTokenHash, fromBase64Url(request.publicKey), groupId).then((s) => {
       if (live) setSas(s);
     });
     return () => {
       live = false;
     };
-  }, [groupId, request.inviteToken, request.publicKey]);
+  }, [groupId, request.inviteTokenHash, request.publicKey]);
 
   if (!request.publicKey) {
     return (

@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { and, eq, isNull, lt, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { config } from '../config.js';
@@ -6,6 +6,9 @@ import { db, schema } from '../db/index.js';
 import { activeAdminIds, isMember } from '../lib/groups.js';
 import { claimableMembers } from '../lib/members.js';
 import { notifyUsers } from '../lib/notify.js';
+
+/** Stored instead of the token, exactly as sessions store theirs. */
+const hashToken = (raw: string): string => createHash('sha256').update(raw).digest('hex');
 
 export async function inviteRoutes(app: FastifyInstance): Promise<void> {
   app.post('/api/groups/:groupId/invites', { preHandler: app.requireUser }, async (req, reply) => {
@@ -18,7 +21,7 @@ export async function inviteRoutes(app: FastifyInstance): Promise<void> {
     const token = randomBytes(16).toString('base64url'); // 128-bit capability
     const now = new Date();
     await db.insert(schema.invites).values({
-      token,
+      tokenHash: hashToken(token),
       groupId,
       createdBy: req.user!.id,
       createdAt: now,
@@ -97,7 +100,7 @@ export async function inviteRoutes(app: FastifyInstance): Promise<void> {
     const [claimed] = await db
       .update(schema.invites)
       .set({ useCount: sql`use_count + 1` })
-      .where(and(eq(schema.invites.token, token), lt(schema.invites.useCount, schema.invites.maxUses)));
+      .where(and(eq(schema.invites.tokenHash, hashToken(token)), lt(schema.invites.useCount, schema.invites.maxUses)));
     if (claimed.affectedRows === 0) {
       return reply.code(410).send({ error: 'invite_spent' });
     }
@@ -110,13 +113,13 @@ export async function inviteRoutes(app: FastifyInstance): Promise<void> {
       .values({
         groupId: invite.groupId,
         userId,
-        inviteToken: token,
+        inviteTokenHash: hashToken(token),
         claimMemberId: claim,
         status: 'pending',
         requestedAt: now,
       })
       .onDuplicateKeyUpdate({
-        set: { status: 'pending', inviteToken: token, claimMemberId: claim, requestedAt: now, decidedBy: null, decidedAt: null },
+        set: { status: 'pending', inviteTokenHash: hashToken(token), claimMemberId: claim, requestedAt: now, decidedBy: null, decidedAt: null },
       });
 
     const [admins, actor] = await Promise.all([
@@ -135,12 +138,12 @@ export async function inviteRoutes(app: FastifyInstance): Promise<void> {
 
   app.delete('/api/invites/:token', { preHandler: app.requireUser }, async (req, reply) => {
     const { token } = req.params as { token: string };
-    const rows = await db.select().from(schema.invites).where(eq(schema.invites.token, token)).limit(1);
+    const rows = await db.select().from(schema.invites).where(eq(schema.invites.tokenHash, hashToken(token))).limit(1);
     const invite = rows[0];
     if (!invite || !(await isMember(req.user!.id, invite.groupId))) {
       return reply.code(404).send({ error: 'not_found' });
     }
-    await db.update(schema.invites).set({ revokedAt: new Date() }).where(eq(schema.invites.token, token));
+    await db.update(schema.invites).set({ revokedAt: new Date() }).where(eq(schema.invites.tokenHash, hashToken(token)));
     return { ok: true };
   });
 }
@@ -158,7 +161,7 @@ async function findValidInvite(token: string) {
     .from(schema.invites)
     .innerJoin(schema.groups, eq(schema.groups.id, schema.invites.groupId))
     .innerJoin(schema.users, eq(schema.users.id, schema.invites.createdBy))
-    .where(and(eq(schema.invites.token, token), isNull(schema.invites.revokedAt), isNull(schema.groups.deletedAt)))
+    .where(and(eq(schema.invites.tokenHash, hashToken(token)), isNull(schema.invites.revokedAt), isNull(schema.groups.deletedAt)))
     .limit(1);
   const invite = rows[0];
   if (!invite) return null;
