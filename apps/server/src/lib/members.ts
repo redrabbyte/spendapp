@@ -1,5 +1,6 @@
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import type { SplitMeta } from '@spendapp/shared';
+import { ApiError } from './api-error.js';
 import { db, schema } from '../db/index.js';
 import { bumpGroupVersion, logActivity } from './groups.js';
 
@@ -135,8 +136,8 @@ export async function unclaimMember(adminId: string, groupId: string, targetId: 
       .where(and(eq(schema.groupMembers.groupId, groupId), eq(schema.groupMembers.userId, targetId)))
       .for('update');
     const row = rows[0];
-    if (!row) throw Object.assign(new Error('not a member of this group'), { statusCode: 404 });
-    if (!row.aliasOf) throw Object.assign(new Error('that name was not taken over'), { statusCode: 409 });
+    if (!row) throw new ApiError('not_a_member', 404);
+    if (!row.aliasOf) throw new ApiError('name_not_taken_over', 409);
 
     const version = await bumpGroupVersion(tx, groupId);
     // A placeholder goes back to being an active, unclaimed name. A real
@@ -195,7 +196,7 @@ export async function claimPlaceholder(userId: string, groupId: string, targetId
   if (userId === targetId) {
     // Aliasing a row to itself. Rejoining on the same account already restores
     // the old membership, so there is nothing here to claim.
-    throw Object.assign(new Error('that is already you'), { statusCode: 409 });
+    throw new ApiError('already_you', 409);
   }
   await db.transaction(async (tx) => {
     const ghostRows = await tx
@@ -212,28 +213,28 @@ export async function claimPlaceholder(userId: string, groupId: string, targetId
       .where(and(eq(schema.groupMembers.groupId, groupId), eq(schema.groupMembers.userId, targetId)))
       .for('update');
     const ghost = ghostRows[0];
-    if (!ghost) throw Object.assign(new Error('member is not claimable'), { statusCode: 409 });
+    if (!ghost) throw new ApiError('not_claimable', 409);
     if (ghost.aliasOf) {
-      throw Object.assign(new Error('somebody has already taken that name over'), { statusCode: 409 });
+      throw new ApiError('already_claimed', 409);
     }
 
     if (ghost.isPlaceholder) {
-      if (ghost.leftAt) throw Object.assign(new Error('member is not claimable'), { statusCode: 409 });
+      if (ghost.leftAt) throw new ApiError('not_claimable', 409);
       // A placeholder belongs to exactly one group. Both checks below should be
       // impossible — nothing creates a placeholder outside a group or adds one
       // to a second — so if either trips, refuse.
       if (ghost.placeholderGroupId !== null && ghost.placeholderGroupId !== groupId) {
-        throw Object.assign(new Error('member belongs to a different group'), { statusCode: 409 });
+        throw new ApiError('not_claimable', 409);
       }
       const memberships = await tx
         .select({ groupId: schema.groupMembers.groupId })
         .from(schema.groupMembers)
         .where(and(eq(schema.groupMembers.userId, targetId), isNull(schema.groupMembers.leftAt)));
       if (memberships.length !== 1 || memberships[0]!.groupId !== groupId) {
-        throw Object.assign(new Error('member is in more than one group'), { statusCode: 409 });
+        throw new ApiError('not_claimable', 409);
       }
     } else if (!ghost.leftAt) {
-      throw Object.assign(new Error('that person is still in this group'), { statusCode: 409 });
+      throw new ApiError('still_in_group', 409);
     }
     // A real account that left keeps its other groups untouched: only this
     // group's membership row is aliased, and the resolver is per group.

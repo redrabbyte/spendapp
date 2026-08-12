@@ -30,6 +30,11 @@ const KEYS: Record<ApiErrorCode, MessageKey> = {
   last_admin: 'error.last_admin',
   use_leave_to_remove_yourself: 'error.use_leave_to_remove_yourself',
   no_pending_request: 'error.no_pending_request',
+  name_not_taken_over: 'error.name_not_taken_over',
+  already_you: 'error.already_you',
+  not_claimable: 'error.not_claimable',
+  already_claimed: 'error.already_claimed',
+  still_in_group: 'error.still_in_group',
   no_wraps_for_members: 'error.no_wraps_for_members',
   wrap_exists: 'error.wrap_exists',
   invite_invalid: 'error.invite_invalid',
@@ -38,6 +43,7 @@ const KEYS: Record<ApiErrorCode, MessageKey> = {
   attachment_missing: 'error.attachment_missing',
   // Nothing a user did, and nothing they can act on: a stale tab, a bad
   // upload, a browser that changed its mind about a push subscription.
+  internal_error: 'error.unexpected',
   csrf_header_missing: 'error.unexpected',
   identity_key_immutable: 'error.unexpected',
   attachment_too_short: 'error.unexpected',

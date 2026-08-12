@@ -1,5 +1,5 @@
 import { and, eq, gt, inArray, isNull } from 'drizzle-orm';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
 import {
   SYNC_PROTOCOL,
   syncRequestSchema,
@@ -35,7 +35,7 @@ export async function syncRoutes(app: FastifyInstance): Promise<void> {
         results.push({ id: m.id, status: 'applied' }); // replay of a delivered batch
         continue;
       }
-      results.push(await applyMutation(userId, m));
+      results.push(await applyMutation(userId, m, req.log));
     }
 
     // Pull: everything that changed in each of my groups since its cursor.
@@ -63,7 +63,7 @@ async function processedIds(mutations: Mutation[]): Promise<Set<string>> {
   return new Set(rows.map((r) => r.mutationId));
 }
 
-async function applyMutation(userId: string, m: Mutation): Promise<MutationResult> {
+async function applyMutation(userId: string, m: Mutation, log: FastifyBaseLogger): Promise<MutationResult> {
   // v currently has one version; when it bumps, up-convert old shapes here.
   try {
     switch (m.type) {
@@ -136,8 +136,11 @@ async function applyMutation(userId: string, m: Mutation): Promise<MutationResul
       }
     }
   } catch (err) {
-    // A rejected mutation must never wedge the client's queue.
-    return { id: m.id, status: 'rejected', reason: (err as Error).message };
+    // A rejected mutation must never wedge the client's queue — but the reason
+    // goes in a log the caller cannot read. Returning err.message put constraint
+    // names and driver text in front of anyone who could trip an exception.
+    log.error({ err, mutation: m.type }, 'mutation failed');
+    return { id: m.id, status: 'rejected', reason: 'internal error' };
   }
 }
 

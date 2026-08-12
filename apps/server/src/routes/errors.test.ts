@@ -24,9 +24,18 @@ function serverSource(): string {
   return read(SRC);
 }
 
-/** Every `error: '…'` literal the server can send. */
+/**
+ * Every code the server can send: the `error: '…'` literals a handler writes
+ * directly, and the ones an `ApiError` carries for the error handler to send.
+ * Both have to be counted, or moving a handler to a thrown ApiError would look
+ * like the code went dead.
+ */
 function sentCodes(): string[] {
-  const found = [...serverSource().matchAll(/\berror: '([^']*)'/g)].map((m) => m[1]!);
+  const src = serverSource();
+  const found = [
+    ...[...src.matchAll(/\berror: '([^']*)'/g)].map((m) => m[1]!),
+    ...[...src.matchAll(/\bnew ApiError\(\s*'([^']*)'/g)].map((m) => m[1]!),
+  ];
   return [...new Set(found)].sort();
 }
 

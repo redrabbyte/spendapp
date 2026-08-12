@@ -15,6 +15,8 @@ export const API_ERRORS = [
   'invalid_input',
   'csrf_header_missing',
   'client_update_required',
+  // Something went wrong that the caller cannot act on; the detail is in the log.
+  'internal_error',
 
   // accounts
   'username_taken',
@@ -37,6 +39,12 @@ export const API_ERRORS = [
   'last_admin',
   'use_leave_to_remove_yourself',
   'no_pending_request',
+  // Taking over a placeholder or a departed member's name.
+  'name_not_taken_over',
+  'already_you',
+  'not_claimable',
+  'already_claimed',
+  'still_in_group',
   'no_wraps_for_members',
   // Refusing to overwrite a peer's existing key wrap: the server cannot read one,
   // so it cannot tell a repaired wrap from one that locks its owner out.

@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { admitSchema, publishKeysSchema } from '@spendapp/shared';
 import { db, schema } from '../db/index.js';
+import { isApiError } from '../lib/api-error.js';
 import { activeAdminIds, bumpGroupVersion, isAdmin, isMember, logActivity } from '../lib/groups.js';
 import { leaveGroup } from '../lib/leave.js';
 import { claimPlaceholder, unclaimMember } from '../lib/members.js';
@@ -391,8 +392,8 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
     try {
       await unclaimMember(req.user!.id, groupId, userId);
     } catch (err) {
-      const status = (err as { statusCode?: number }).statusCode ?? 500;
-      return reply.code(status).send({ error: (err as Error).message });
+      if (!isApiError(err)) throw err; // the handler logs it and says nothing
+      return reply.code(err.statusCode).send({ error: err.code });
     }
     return { status: 'unclaimed' as const };
   });
