@@ -36,7 +36,6 @@ const KEYS: Record<ApiErrorCode, MessageKey> = {
   already_claimed: 'error.already_claimed',
   still_in_group: 'error.still_in_group',
   no_wraps_for_members: 'error.no_wraps_for_members',
-  wrap_exists: 'error.wrap_exists',
   invite_invalid: 'error.invite_invalid',
   invite_spent: 'error.invite_spent',
   join_declined: 'error.join_declined',

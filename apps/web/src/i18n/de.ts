@@ -622,7 +622,6 @@ export const de: Catalogue = {
   'error.already_claimed': 'Jemand hat diesen Namen bereits übernommen.',
   'error.still_in_group': 'Diese Person ist noch in dieser Gruppe.',
   'error.no_wraps_for_members': 'Niemandem konnte Zugriff gegeben werden — versuch es noch einmal.',
-  'error.wrap_exists': 'Dieses Mitglied hat für diese Version schon einen Schlüssel — es wurde nichts geändert.',
   'error.invite_invalid': 'Dieser Einladungslink gilt nicht mehr.',
   'error.invite_spent': 'Dieser Einladungslink wurde schon benutzt.',
   'error.join_declined': 'Deine Beitrittsanfrage wurde abgelehnt.',

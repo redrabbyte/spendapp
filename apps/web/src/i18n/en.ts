@@ -634,7 +634,6 @@ export const en = {
   'error.already_claimed': 'Somebody has already taken that name over.',
   'error.still_in_group': 'That person is still in this group.',
   'error.no_wraps_for_members': 'Nobody could be given access — try again.',
-  'error.wrap_exists': 'That member already has a key for this version — nothing was changed.',
   'error.invite_invalid': 'This invite link is not valid any more.',
   'error.invite_spent': 'This invite link has already been used.',
   'error.join_declined': 'Your request to join was declined.',

@@ -200,4 +200,29 @@ describe('taking group keys from the server', () => {
     // a reload rather than quietly becoming writable again.
     expect(writable(toRing([{ epoch: 5, key: generateGroupKey(), trusted: false }]))).toBe(null);
   });
+
+  it('takes the epochs a returning member missed while they were away', async () => {
+    // They left holding 0-1, the group rotated twice without them, and now the
+    // whole ring is re-shared. The two they still hold are skipped server-side;
+    // these two are the ones that decide whether they can see anything since.
+    const held0 = generateGroupKey();
+    const held1 = generateGroupKey();
+    const r = ring([
+      [0, { key: held0, trusted: true }],
+      [1, { key: held1, trusted: true }],
+    ]);
+    const missed2 = generateGroupKey();
+    const missed3 = generateGroupKey();
+    const added = await absorbInto(r, GROUP, me.privateKey, [
+      await delivery(2, missed2, held1),
+      await delivery(3, missed3, missed2),
+    ]);
+
+    expect(added.sort()).toEqual([2, 3]);
+    // Proved against the key they kept, so they may write again — without this
+    // they would read the backlog and still post under a stale epoch.
+    expect(r.get(2)!.trusted).toBe(true);
+    expect(r.get(3)!.trusted).toBe(true);
+    expect(writable(r)).toBe(3);
+  });
 });

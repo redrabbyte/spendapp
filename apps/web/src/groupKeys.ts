@@ -234,8 +234,11 @@ export async function shareKeyring(groupId: string, userId: string, publicKeyB64
       ...(await chainFor(ring, groupId, epoch, held.key)),
     })),
   );
-  await api(`/api/groups/${groupId}/keys`, { method: 'POST', body: { wraps } });
-  return wraps.length;
+  // What the server actually took, not what we offered. A member who left and
+  // came back already holds the older epochs, so those are skipped and only the
+  // ones minted while they were away are stored.
+  const res = await api<{ stored: number }>(`/api/groups/${groupId}/keys`, { method: 'POST', body: { wraps } });
+  return res.stored;
 }
 
 export interface MemberKey {

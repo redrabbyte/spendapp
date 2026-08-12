@@ -334,13 +334,21 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
       return { stored: claimed ? wraps.length : 0, skipped: 0, minted: claimed };
     }
 
-    // Overwriting is what makes a failed hand-off safe to retry, but only for
-    // your own row. The server cannot read a wrap, so it cannot tell a repaired
-    // one from a destroyed one — and replacing somebody else's locks them out of
-    // that epoch until another member notices and re-wraps. Handing a peer a
-    // wrap they do not have yet is the onboarding path and stays allowed.
+    /**
+     * Never overwrite a peer's existing wrap. The server cannot read one, so it
+     * cannot tell a repaired wrap from a destroyed one, and replacing somebody
+     * else's locks them out of that epoch until another member notices.
+     *
+     * Dropped rather than refused, one wrap at a time. Rejecting the whole
+     * batch looked stricter and was worse: re-sharing the ring with somebody
+     * who left and came back names every epoch, including the ones they still
+     * hold, so a single collision withheld all the epochs minted while they
+     * were away — which is exactly the hand-over that had to work. Replacing
+     * your own wrap is untouched, so a failed hand-off is still safe to retry.
+     */
     const self = req.user!.id;
     const theirs = wraps.filter((w) => w.userId !== self);
+    let toStore = wraps;
     if (theirs.length > 0) {
       const held = await db
         .select({ epoch: schema.groupKeys.epoch, userId: schema.groupKeys.userId })
@@ -352,15 +360,17 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
           ),
         );
       const taken = new Set(held.map((r) => `${r.userId}:${r.epoch}`));
-      if (theirs.some((w) => taken.has(`${w.userId}:${w.epoch}`))) {
-        return reply.code(409).send({ error: 'wrap_exists' });
+      toStore = wraps.filter((w) => w.userId === self || !taken.has(`${w.userId}:${w.epoch}`));
+      // Everything named was already held: a repeat hand-over, not a failure.
+      if (toStore.length === 0) {
+        return { stored: 0, skipped: parsed.data.wraps.length };
       }
     }
 
     await db
       .insert(schema.groupKeys)
       .values(
-        wraps.map((w) => ({
+        toStore.map((w) => ({
           groupId,
           epoch: w.epoch,
           userId: w.userId,
@@ -382,7 +392,7 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
         },
       });
 
-    return { stored: wraps.length, skipped: parsed.data.wraps.length - wraps.length };
+    return { stored: toStore.length, skipped: parsed.data.wraps.length - toStore.length };
   });
 
   /**

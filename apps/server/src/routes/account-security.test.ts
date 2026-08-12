@@ -154,7 +154,7 @@ d('publishing group keys', () => {
     expect(res.statusCode).toBe(200);
   });
 
-  it('refuses to overwrite a wrap the peer already holds', async () => {
+  it('leaves a wrap the peer already holds exactly as it was', async () => {
     const raw = await session(ADA);
     const first = await app!.inject({
       method: 'POST',
@@ -174,8 +174,9 @@ d('publishing group keys', () => {
       headers: hdrs(raw),
       payload: { wraps: [wrap(GRACE, 0)] },
     });
-    expect(second.statusCode).toBe(409);
-    expect(second.json()).toEqual({ error: 'wrap_exists' });
+    // Dropped, not refused: the batch may carry epochs they do need.
+    expect(second.statusCode).toBe(200);
+    expect(second.json()).toMatchObject({ stored: 0, skipped: 1 });
 
     // Grace can still open epoch 0 — which is the damage this prevents.
     const [after] = await db
@@ -183,6 +184,48 @@ d('publishing group keys', () => {
       .from(schema.groupKeys)
       .where(and(eq(schema.groupKeys.groupId, GROUP), eq(schema.groupKeys.userId, GRACE)));
     expect(after!.ct).toBe(before!.ct);
+  });
+
+  it('gives a returning member the epochs they missed', async () => {
+    // Someone who left and came back still has rows for the epochs they held,
+    // and leaving does not delete them. Re-sharing the ring therefore names
+    // epochs they already have alongside the ones minted while they were gone.
+    // Refusing the batch over the former would withhold the latter, which is
+    // the whole reason they cannot see anything added since.
+    const raw = await session(ADA);
+    const already = await app!.inject({
+      method: 'POST',
+      url: `/api/groups/${GROUP}/keys`,
+      headers: hdrs(raw),
+      payload: { wraps: [wrap(GRACE, 0), wrap(GRACE, 1)] },
+    });
+    expect(already.statusCode).toBe(200);
+    const before = await db
+      .select()
+      .from(schema.groupKeys)
+      .where(and(eq(schema.groupKeys.groupId, GROUP), eq(schema.groupKeys.userId, GRACE)));
+
+    // The whole ring goes over, epochs 0-3: two they hold, two they do not.
+    const reshare = await app!.inject({
+      method: 'POST',
+      url: `/api/groups/${GROUP}/keys`,
+      headers: hdrs(raw),
+      payload: { wraps: [wrap(GRACE, 0), wrap(GRACE, 1), wrap(GRACE, 2), wrap(GRACE, 3)] },
+    });
+    expect(reshare.statusCode).toBe(200);
+    expect(reshare.json()).toMatchObject({ stored: 2, skipped: 2 });
+
+    const after = await db
+      .select()
+      .from(schema.groupKeys)
+      .where(and(eq(schema.groupKeys.groupId, GROUP), eq(schema.groupKeys.userId, GRACE)));
+    expect(after.map((r) => r.epoch).sort()).toEqual([0, 1, 2, 3]);
+
+    // And the two they already held are untouched, which is the property the
+    // refusal existed to protect.
+    for (const old of before) {
+      expect(after.find((r) => r.epoch === old.epoch)!.ct).toBe(old.ct);
+    }
   });
 
   it('carries the chain proof through to the recipient', async () => {

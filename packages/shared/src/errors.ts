@@ -46,9 +46,6 @@ export const API_ERRORS = [
   'already_claimed',
   'still_in_group',
   'no_wraps_for_members',
-  // Refusing to overwrite a peer's existing key wrap: the server cannot read one,
-  // so it cannot tell a repaired wrap from one that locks its owner out.
-  'wrap_exists',
 
   // invites
   'invite_invalid',
