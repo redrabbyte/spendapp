@@ -67,7 +67,7 @@ export function InvitePage() {
 
   useEffect(() => {
     if (!token) return;
-    api<InviteInfo>(`/api/invites/${token}`)
+    api<InviteInfo>(`/api/invites/${encodeURIComponent(token)}`)
       .then(setInfo)
       .catch((err: Error) => setError(err.message));
   }, [token]);
@@ -83,10 +83,13 @@ export function InvitePage() {
     setBusy(true);
     setError(null);
     try {
-      const res = await api<{ groupId: string; status: 'joined' | 'pending' }>(`/api/invites/${token}/join`, {
-        method: 'POST',
-        body: claim === AS_NEW ? {} : { claimMemberId: claim },
-      });
+      const res = await api<{ groupId: string; status: 'joined' | 'pending' }>(
+        `/api/invites/${encodeURIComponent(token ?? '')}/join`,
+        {
+          method: 'POST',
+          body: claim === AS_NEW ? {} : { claimMemberId: claim },
+        },
+      );
       // Following a link only asks; an admin still has to say yes. Already
       // being a member is the one case that goes straight through.
       if (res.status === 'pending') {
