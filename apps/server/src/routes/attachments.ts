@@ -28,8 +28,15 @@ export async function attachmentRoutes(app: FastifyInstance): Promise<void> {
     (_req, body, done) => done(null, body),
   );
 
-  app.put('/api/attachments/:id', { preHandler: app.requireUser }, async (req, reply) => {
+  // Tighter than the global ceiling: each of these can be 5 MiB, and the
+  // global 300/min would let one member write over a gigabyte a minute.
+  const UPLOAD_RATE = { rateLimit: { max: 60, timeWindow: '1 minute' } };
+
+  app.put('/api/attachments/:id', { preHandler: app.requireUser, config: UPLOAD_RATE }, async (req, reply) => {
     const { id } = req.params as { id: string };
+    // Same guard the GET has. Unreachable today — a row only exists if sync
+    // validated the id as a uuid — but the path is built from this.
+    if (!/^[0-9a-f-]{36}$/.test(id)) return reply.code(404).send({ error: 'not_found' });
     const attachment = await findLiveAttachment(id);
     if (!attachment || !(await isMember(req.user!.id, attachment.groupId))) {
       return reply.code(404).send({ error: 'not_found' }); // metadata must sync first
