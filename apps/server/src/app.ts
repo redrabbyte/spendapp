@@ -1,4 +1,5 @@
 import Fastify, { type FastifyInstance } from 'fastify';
+import { config } from './config.js';
 import { loggerOptions } from './lib/logging.js';
 import { securityPlugin } from './plugins/security.js';
 import { accountRoutes } from './routes/account.js';
@@ -11,9 +12,12 @@ import { pushRoutes } from './routes/push.js';
 import { syncRoutes } from './routes/sync.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
-  // trustProxy stays: the rate limiter keys on req.ip, and behind a reverse
-  // proxy the socket address is the proxy's for everyone.
-  const app = Fastify({ logger: loggerOptions, trustProxy: true, bodyLimit: 1_048_576 });
+  // Names the proxy hops rather than trusting any; the limiter keys on req.ip.
+  const app = Fastify({
+    logger: loggerOptions,
+    trustProxy: config.trustedProxies,
+    bodyLimit: 1_048_576,
+  });
   await app.register(securityPlugin);
   await app.register(authRoutes);
   await app.register(accountRoutes);

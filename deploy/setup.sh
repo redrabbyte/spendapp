@@ -52,7 +52,7 @@ SUDO=''
 [ "$(id -u)" -ne 0 ] && SUDO=sudo
 
 command -v apt-get >/dev/null || {
-  echo "This script targets Debian/Ubuntu. Install git, Node >= 20.12, pnpm and" >&2
+  echo "This script targets Debian/Ubuntu. Install git, Node >= 22.13, pnpm and" >&2
   echo "MySQL 8 by hand, then run deploy/deploy.sh." >&2
   exit 1
 }
@@ -63,10 +63,10 @@ say "packages"
 $SUDO apt-get update -qq
 $SUDO apt-get install -y -qq git curl ca-certificates gnupg
 
-# Node >= 20.12 — config.ts uses process.loadEnvFile().
+# Node >= 22.13 — required by pnpm 11.
 node_major=$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)
 node_minor=$(node -p 'process.versions.node.split(".")[1]' 2>/dev/null || echo 0)
-if [ "$node_major" -lt 20 ] || { [ "$node_major" -eq 20 ] && [ "$node_minor" -lt 12 ]; }; then
+if [ "$node_major" -lt 22 ] || { [ "$node_major" -eq 22 ] && [ "$node_minor" -lt 13 ]; }; then
   say "installing Node 22"
   # -E is a sudo flag, so it must drop out along with $SUDO when run as root.
   # shellcheck disable=SC2086
@@ -77,7 +77,7 @@ fi
 if ! command -v pnpm >/dev/null; then
   say "installing pnpm"
   $SUDO corepack enable
-  $SUDO corepack prepare pnpm@10.33.0 --activate
+  $SUDO corepack prepare pnpm@11.21.0 --activate
 fi
 
 if ! command -v mysqld >/dev/null && ! command -v mariadbd >/dev/null; then
@@ -112,6 +112,8 @@ COOKIE_SECURE=1
 RECEIPTS_DIR=$SHARED/receipts
 PRIVACY_PATH=$SHARED/privacy.md
 APP_ORIGIN=$ORIGIN
+# Every proxy between a client and the API, innermost first. See deploy/README.md.
+TRUSTED_PROXIES=loopback
 
 # VAPID keys are generated on the first release if absent.
 VAPID_SUBJECT=mailto:admin@$DOMAIN
@@ -132,6 +134,11 @@ else
   if ! $SUDO grep -q '^PRIVACY_PATH=' "$SHARED/.env"; then
     echo "PRIVACY_PATH=$SHARED/privacy.md" | $SUDO tee -a "$SHARED/.env" >/dev/null
     echo "added PRIVACY_PATH=$SHARED/privacy.md"
+  fi
+  # Loopback is the safe floor — one web server on this host. Further hops by hand.
+  if ! $SUDO grep -q '^TRUSTED_PROXIES=' "$SHARED/.env"; then
+    echo "TRUSTED_PROXIES=loopback" | $SUDO tee -a "$SHARED/.env" >/dev/null
+    echo "added TRUSTED_PROXIES=loopback — add any further hops by hand"
   fi
 fi
 

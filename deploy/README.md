@@ -97,6 +97,23 @@ live release, so the configuration never needs to change again:
 HTTPS is required — the service worker, install prompt and push all need a
 secure context, and `COOKIE_SECURE=1` sets a `__Host-` cookie.
 
+**`TRUSTED_PROXIES` has to list every hop**, innermost first. The rate limiter
+keys on the rightmost `X-Forwarded-For` entry that is not one of them, so both
+directions break it: a hop missing puts every client in one shared bucket, and
+listing something you do not control lets a client pick its own bucket.
+
+Default is `loopback` — one web server on this host. A Caddy in an LXC
+container behind the host's Caddy is `loopback,10.10.10.1`. Confirm rather than
+assume:
+
+```sh
+sudo timeout 10 tcpdump -i lo -A -s0 'tcp port 3000' | grep -i x-forwarded-for
+```
+
+Every entry but the leftmost was written by a proxy; list those. The front proxy
+must *replace* an inbound `X-Forwarded-For`, not append — Caddy does this for
+clients outside its own `trusted_proxies`.
+
 Two details worth getting right: hashed bundles under `/assets/` can be
 cached forever, but `index.html` and `sw.js` must be revalidated or clients
 will never see a new release.

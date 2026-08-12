@@ -31,6 +31,14 @@ export const config = {
   vapidSubject: process.env.VAPID_SUBJECT ?? 'mailto:admin@example.com',
   // Public origin of the app.
   appOrigin: process.env.APP_ORIGIN ?? 'http://localhost:5173',
+  // Proxy hops in front of this process, innermost first, in proxy-addr syntax.
+  // req.ip becomes the rightmost X-Forwarded-For entry that is not one of these,
+  // so a forged header only adds entries where nothing reads them. Never `true`:
+  // that keys the limiter on whatever the client sent. See deploy/README.md.
+  trustedProxies: (process.env.TRUSTED_PROXIES ?? 'loopback')
+    .split(',')
+    .map((hop) => hop.trim())
+    .filter(Boolean),
   /**
    * Keys the fake KDF salt handed out for usernames that do not exist, so the
    * login handshake cannot be used to enumerate accounts. Must be stable
