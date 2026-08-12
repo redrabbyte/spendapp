@@ -252,3 +252,30 @@ describe('timingSafeEqual', () => {
     );
   });
 });
+
+describe('length padding', () => {
+  const key = generateGroupKey();
+
+  it('rounds a small record up to a bucket, so length says little', async () => {
+    const short = await sealJson(key, { a: 1 });
+    const longer = await sealJson(key, { a: 1, b: 'a bit more text than the first one' });
+    expect(short.ciphertext.length).toBe(longer.ciphertext.length);
+  });
+
+  it('still round-trips', async () => {
+    const value = { amountMinor: 1234, splits: [{ userId: 'u1', owed: 617 }] };
+    expect(await openJson(key, await sealJson(key, value))).toEqual(value);
+  });
+
+  it('reads a record written before padding existed', async () => {
+    // Trailing spaces are what JSON.parse already ignores, so nothing stored
+    // has to be rewritten — an unpadded blob opens exactly as it always did.
+    const legacy = await seal(key, new TextEncoder().encode(JSON.stringify({ old: true })));
+    expect(await openJson(key, legacy)).toEqual({ old: true });
+  });
+
+  it('leaves a record too big to bucket alone', async () => {
+    const big = { note: 'x'.repeat(9000) };
+    expect(await openJson(key, await sealJson(key, big))).toEqual(big);
+  });
+});

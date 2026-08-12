@@ -153,8 +153,33 @@ export async function open(key: Uint8Array, sealed: Sealed, aad?: Uint8Array): P
   return new Uint8Array(plain);
 }
 
+/**
+ * Round a sealed record's length up to one of these, in bytes.
+ *
+ * AES-GCM does not hide length, so the server could read the exact size of
+ * every row: enough to tell a two-way split from a ten-way one and a one-word
+ * note from a paragraph, without opening anything. Buckets leave only which
+ * band a record falls in.
+ *
+ * Padding is trailing spaces, which JSON.parse already ignores — so a record
+ * written before this change reads back exactly as it did, and one written
+ * after it reads on a client that predates it. Nothing stored has to move.
+ *
+ * Stops at 4 KiB because a padded record still has to fit the ciphertext caps
+ * in the sync schemas — a comment's is the tightest at 8192 base64 characters,
+ * and 4 KiB padded lands well under it. Ordinary records sit far below that,
+ * which is the range worth hiding; a larger one gives away only that it is large.
+ */
+const PAD_BUCKETS = [256, 512, 1024, 2048, 4096];
+
+function padJson(json: string): string {
+  const size = utf8.encode(json).length;
+  const bucket = PAD_BUCKETS.find((b) => size <= b);
+  return bucket ? json + ' '.repeat(bucket - size) : json;
+}
+
 export const sealJson = (key: Uint8Array, value: unknown, aad?: Uint8Array): Promise<Sealed> =>
-  seal(key, utf8.encode(JSON.stringify(value)), aad);
+  seal(key, utf8.encode(padJson(JSON.stringify(value))), aad);
 
 export async function openJson<T>(key: Uint8Array, sealed: Sealed, aad?: Uint8Array): Promise<T> {
   return JSON.parse(utf8Decoder.decode(await open(key, sealed, aad))) as T;
