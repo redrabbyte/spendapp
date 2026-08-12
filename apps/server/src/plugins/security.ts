@@ -28,9 +28,30 @@ async function securityPluginImpl(app: FastifyInstance): Promise<void> {
         defaultSrc: ["'self'"],
         frameAncestors: ["'none'"],
         baseUri: ["'self'"],
+        // Spelled out even though helmet's defaults already supply them. They
+        // are the directives that actually stop injected script, and inheriting
+        // them silently meant the policy could be gutted by a helmet upgrade or
+        // a stray useDefaults:false while this block still looked complete.
+        scriptSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        connectSrc: ["'self'"],
+        formAction: ["'self'"],
+        // Tailwind injects a stylesheet at runtime. Styles are not a script
+        // vector, and the directives above are what matter for injection.
+        styleSrc: ["'self'", "'unsafe-inline'"],
       },
     },
     referrerPolicy: { policy: 'no-referrer' },
+  });
+
+  // The camera is used for in-person joins; nothing else here needs a powerful
+  // feature, and naming them denies an injected frame the use of any of them.
+  app.addHook('onSend', async (_req, reply, payload) => {
+    reply.header(
+      'permissions-policy',
+      'camera=(self), microphone=(), geolocation=(), payment=(), usb=(), midi=(), magnetometer=(), gyroscope=(), accelerometer=(), display-capture=()',
+    );
+    return payload;
   });
   await app.register(cookie);
   await app.register(rateLimit, { max: 300, timeWindow: '1 minute' });
