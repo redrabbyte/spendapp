@@ -15,6 +15,7 @@ import { config } from '../config.js';
 import { db, schema } from '../db/index.js';
 import { currentPolicy } from '../lib/privacy.js';
 import { createSession, destroyOtherSessions, destroySession } from '../lib/sessions.js';
+import { clearFailures, recordFailure, throttleRemaining } from '../lib/throttle.js';
 
 const ARGON_OPTS = { type: argon2.argon2id, memoryCost: 19_456, timeCost: 2, parallelism: 1 } as const;
 
@@ -166,6 +167,13 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     if (!parsed.success) return reply.code(400).send({ error: 'invalid_input' });
     const username = parsed.data.username.toLowerCase();
 
+    // Per-address limiting does nothing about one password guessed from many
+    // addresses, so the account itself backs off. Checked before the lookup so
+    // a locked account costs an attacker an argon2 verify either way.
+    if (throttleRemaining(username) > 0) {
+      return reply.code(429).send({ error: 'too_many_attempts' });
+    }
+
     const rows = await db.select().from(schema.users).where(eq(schema.users.username, username)).limit(1);
     const user = rows[0];
 
@@ -173,8 +181,12 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       ? await argon2.verify(user.passwordHash, parsed.data.authKey)
       : (await argon2.verify(await dummyHashPromise, parsed.data.authKey), false);
     if (!ok || !user) {
+      // Counted for names that do not exist too: skipping those would make a
+      // throttled reply mean the account is real.
+      recordFailure(username);
       return reply.code(401).send({ error: 'invalid_credentials' });
     }
+    clearFailures(username);
 
     await createSession(reply, user.id, req.headers['user-agent']); // fresh session id on every login
     return {

@@ -608,6 +608,7 @@ export const de: Catalogue = {
   'error.invalid_username':
     'Benutzername: 3–32 Zeichen, beginnend und endend mit einem Buchstaben oder einer Ziffer. Erlaubte Sonderzeichen: . _ - @',
   'error.invalid_credentials': 'Benutzername oder Passwort ist falsch.',
+  'error.too_many_attempts': 'Zu viele Versuche für dieses Konto. Warte ein paar Minuten und versuch es erneut.',
   'error.wrong_password': 'Falsches Passwort.',
   'error.no_such_account': 'Kein Konto mit diesem Namen.',
   'error.policy_changed': 'Die Datenschutzerklärung hat sich geändert, während du sie gelesen hast. Lade neu und lies sie noch einmal.',

@@ -23,6 +23,8 @@ export const API_ERRORS = [
   // which of three fields to look at (see `usernameSchema`).
   'invalid_username',
   'invalid_credentials',
+  // Too many failed logins for this account, whatever address they came from.
+  'too_many_attempts',
   'wrong_password',
   'no_such_account',
   'identity_key_immutable',

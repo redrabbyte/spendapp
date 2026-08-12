@@ -620,6 +620,7 @@ export const en = {
   'error.invalid_username':
     'Username: 3–32 characters, starting and ending with a letter or digit. Allowed special characters: . _ - @',
   'error.invalid_credentials': 'Wrong username or password.',
+  'error.too_many_attempts': 'Too many attempts on this account. Wait a few minutes and try again.',
   'error.wrong_password': 'Wrong password.',
   'error.no_such_account': 'No account with that name.',
   'error.policy_changed': 'The privacy policy changed while you were reading it. Reload and read it again.',

@@ -22,6 +22,7 @@ const KEYS: Record<ApiErrorCode, MessageKey> = {
   username_taken: 'error.username_taken',
   invalid_username: 'error.invalid_username',
   invalid_credentials: 'error.invalid_credentials',
+  too_many_attempts: 'error.too_many_attempts',
   wrong_password: 'error.wrong_password',
   no_such_account: 'error.no_such_account',
   policy_changed: 'error.policy_changed',
