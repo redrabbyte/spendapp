@@ -27,5 +27,22 @@ RestrictNamespaces=true
 LockPersonality=true
 ReadWritePaths=__APP_DIR__/shared
 
+# Nothing here needs a capability: the app binds 3000, not a privileged port.
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictSUIDSGID=true
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectProc=invisible
+RemoveIPC=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+# Receipts and .env are written 0600/0700 rather than left group-readable.
+UMask=0077
+# MemoryDenyWriteExecute is deliberately absent: V8 maps executable pages for
+# the JIT and would be killed on the first compile.
+
 [Install]
 WantedBy=multi-user.target
