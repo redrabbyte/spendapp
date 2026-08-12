@@ -226,12 +226,11 @@ describe('taking group keys from the server', () => {
     expect(writable(r)).toBe(3);
   });
 
-  it('seals under the epoch it last held, which is what an offline write does', async () => {
-    // The boundary rotation actually gives you. A device that has not synced
-    // does not know an epoch was minted, so an entry it writes goes up under
-    // the older one and stays readable to whoever held that key. Rotation
-    // takes effect from the writer's next sync, not from the moment somebody
-    // left. Narrow, but it is the honest shape of the guarantee.
+  it('seals under the epoch it last held, until a newer one arrives', async () => {
+    // An offline device does not know an epoch was minted, so this is what it
+    // writes under at the time. It is not what finally goes up: the outbox is
+    // re-sealed to the current epoch on the way out (see reseal.ts), so the
+    // boundary is when the entry leaves the device, not when it was typed.
     const stale = generateGroupKey();
     const offline = ring([[2, { key: stale, trusted: true }]]);
     expect(writable(offline)).toBe(2);

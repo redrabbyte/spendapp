@@ -24,6 +24,7 @@ import {
   rotateGroupKey,
 } from './groupKeys';
 import { localDb, type OutboxItem } from './db';
+import { resealMutation } from './reseal';
 import { uuid } from './uuid';
 import { AppError } from './i18n/errors';
 
@@ -95,6 +96,7 @@ export async function syncNow(): Promise<void> {
   syncing = true;
   try {
     const outbox = await localDb.outbox.orderBy('seq').limit(BATCH).toArray();
+    await freshenQueuedEpochs(outbox);
     const cursorRows = await localDb.cursors.toArray();
     const res = await api<SyncResponse>('/api/sync', {
       method: 'POST',
@@ -565,6 +567,45 @@ export async function deleteAttachmentLocal(attachment: AttachmentDto): Promise<
     await localDb.outbox.add({ mutation } as OutboxItem);
   });
   scheduleSync();
+}
+
+/**
+ * Move anything queued onto the epoch current right now.
+ *
+ * A mutation is sealed when it is written, so a device that was offline while
+ * the group rotated has a queue full of entries sealed to the key somebody
+ * took with them. Uploading those verbatim would hand them exactly what
+ * rotating was meant to withhold. The epoch that matters is the one at the
+ * moment it leaves the device, so it is set here.
+ *
+ * Verify, then swap. `resealMutation` re-opens what it produced before
+ * returning it and answers null on any doubt; only then is the row replaced,
+ * in a transaction, alongside the attachment's mirror row — whose epoch is
+ * what the image will be sealed under when the bytes follow. A queued
+ * mutation is the only copy of that write, so the worst outcome allowed here
+ * is that it goes up on the old epoch, exactly as it does today.
+ */
+async function freshenQueuedEpochs(outbox: OutboxItem[]): Promise<void> {
+  for (const item of outbox) {
+    const groupId = (item.mutation as { groupId?: string }).groupId;
+    if (!groupId || item.seq === undefined) continue;
+    const now = await currentEpoch(groupId);
+    if (now === null) continue;
+
+    const next = await resealMutation(item.mutation, now, (e) => keyForEpoch(groupId, e));
+    if (!next) continue; // nothing to do, or not safe to do — either way, leave it
+
+    const attachmentId =
+      next.type === 'attachment.upsert' ? (next.data as { id: string }).id : null;
+    await localDb.transaction('rw', [localDb.outbox, localDb.attachments], async () => {
+      await localDb.outbox.update(item.seq!, { mutation: next });
+      if (attachmentId) {
+        const meta = await localDb.attachments.get(attachmentId);
+        if (meta) await localDb.attachments.put({ ...meta, keyEpoch: now });
+      }
+    });
+    item.mutation = next; // the batch about to be sent, not the one we read
+  }
 }
 
 async function uploadPendingBlobs(): Promise<void> {
