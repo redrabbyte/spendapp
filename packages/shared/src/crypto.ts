@@ -248,11 +248,19 @@ const wrapInfo = (epk: Uint8Array, recipient: Uint8Array): string =>
 // Short authentication string (design §4.3)
 // ---------------------------------------------------------------------------
 
+/** Digits in a SAS. 64 bits: 2^64 candidate keys is not a search anyone runs. */
+export const SAS_DIGITS = 20;
+
 /**
- * Six digits both sides read aloud before an admin approves a join. Derived
- * from the *joiner's own public key*, so a different joiner yields different
- * digits — deriving it from the invite token alone would be theatre, since
- * anyone holding an intercepted link would compute the same number.
+ * Digits both sides read aloud before an admin approves a join. Derived from
+ * the *joiner's own public key*, so a different joiner yields different digits
+ * — deriving it from the invite token alone would be theatre, since anyone
+ * holding an intercepted link would compute the same number.
+ *
+ * Long because nothing commits to the key first. A server learns the real
+ * public key before the digits are read, so a short code is one it can grind:
+ * six digits fell to a colliding keypair in seconds. Widening is the whole
+ * defence — there is no commit-reveal round here to make brevity safe.
  */
 export async function deriveSas(
   inviteToken: string,
@@ -260,11 +268,14 @@ export async function deriveSas(
   groupId: string,
 ): Promise<string> {
   const ikm = utf8.encode(`${inviteToken}|${toBase64Url(joinerPublicKey)}|${groupId}`);
-  const bits = await hkdf(ikm, 'spendapp/sas/v1', 4);
-  // Big-endian, top bit cleared so the modulo is taken over a positive int.
-  const n = (((bits[0]! & 0x7f) << 24) | (bits[1]! << 16) | (bits[2]! << 8) | bits[3]!) % 1_000_000;
-  return String(n).padStart(6, '0');
+  const bits = await hkdf(ikm, 'spendapp/sas/v2', 8);
+  let n = 0n;
+  for (const b of bits) n = (n << 8n) | BigInt(b);
+  return n.toString().padStart(SAS_DIGITS, '0').slice(-SAS_DIGITS);
 }
+
+/** The same digits in groups of five, which is how a person reads them out. */
+export const formatSas = (sas: string): string => sas.replace(/(\d{5})(?=\d)/g, '$1 ');
 
 /** Constant-time equality, for comparing SAS values and MACs. */
 export function timingSafeEqual(a: Uint8Array, b: Uint8Array): boolean {

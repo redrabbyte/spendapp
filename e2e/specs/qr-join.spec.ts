@@ -1,5 +1,5 @@
 import jsQR from 'jsqr';
-import { deriveSas, fromBase64Url, joinCodeSchema } from '@spendapp/shared';
+import { deriveSas, formatSas, fromBase64Url, joinCodeSchema } from '@spendapp/shared';
 import {
   ME,
   TEST_PUBLIC_KEY,
@@ -143,7 +143,7 @@ test('an admin sees the same six digits the joiner is shown', async ({ page, api
 
   // Derived here from the same inputs §4.3 names: token, joiner key, group.
   const sas = await deriveSas('tok', fromBase64Url(TEST_PUBLIC_KEY), GROUP);
-  await expect(page.getByText(`${sas.slice(0, 3)} ${sas.slice(3)}`)).toBeVisible();
+  await expect(page.getByText(formatSas(sas))).toBeVisible();
 
   // A different joiner must not read out the same digits, or the check is
   // theatre — that is exactly the property §4.3 exists for.

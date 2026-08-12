@@ -3,10 +3,12 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_KDF,
   KEY_BYTES,
+  SAS_DIGITS,
   deriveAuthKey,
   deriveKek,
   deriveMasterKey,
   deriveSas,
+  formatSas,
   fromBase64Url,
   generateGroupKey,
   generateIdentityKeyPair,
@@ -195,11 +197,24 @@ describe('SAS', () => {
   const token = 'aVeryRandomInviteToken';
   const group = '33333333-3333-4333-8333-333333333333';
 
-  it('is six digits, and stable for the same joiner', async () => {
+  it('is twenty digits, and stable for the same joiner', async () => {
     const joiner = generateIdentityKeyPair();
     const sas = await deriveSas(token, joiner.publicKey, group);
-    expect(sas).toMatch(/^\d{6}$/);
+    expect(sas).toMatch(/^\d{20}$/);
     expect(await deriveSas(token, joiner.publicKey, group)).toBe(sas);
+  });
+
+  it('is wide enough that a matching key cannot be ground out', async () => {
+    // Six digits fell in seconds: ~10^6 keypairs is a few minutes of CPU. The
+    // search is offline and unbounded, so the digit count is the only defence.
+    const joiner = generateIdentityKeyPair();
+    const sas = await deriveSas(token, joiner.publicKey, group);
+    expect(BigInt(sas) >= 0n).toBe(true);
+    expect(SAS_DIGITS).toBeGreaterThanOrEqual(20);
+  });
+
+  it('reads out in groups of five', async () => {
+    expect(formatSas('12345678901234567890')).toBe('12345 67890 12345 67890');
   });
 
   it('differs per joiner — the point of not deriving it from the token', async () => {
@@ -221,9 +236,9 @@ describe('SAS', () => {
   it('spreads across the range rather than clustering', async () => {
     const seen = new Set<string>();
     for (let i = 0; i < 200; i++) seen.add(await deriveSas(token, generateIdentityKeyPair().publicKey, group));
-    // 200 draws from 10^6 collide with probability ~2%; anything much lower
-    // than 195 distinct would mean the derivation is losing entropy.
-    expect(seen.size).toBeGreaterThan(195);
+    // 200 draws from 10^20 should never collide; any repeat means the
+    // derivation is losing entropy somewhere.
+    expect(seen.size).toBe(200);
   });
 });
 

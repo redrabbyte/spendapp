@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { deriveSas } from '@spendapp/shared';
+import { deriveSas, formatSas } from '@spendapp/shared';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import { localDb } from '../db';
@@ -93,7 +93,7 @@ export function InvitePage() {
         setPending(true);
         setPendingGroupId(res.groupId);
         setBusy(false);
-        // The admin sees the same six digits (design §4.3). Derived from this
+        // The admin sees the same digits (design §4.3). Derived from this
         // device's own public key, so an interceptor who followed the link
         // reads out a different number — which is the only thing that
         // distinguishes them from the person the admin is expecting.
@@ -144,8 +144,8 @@ export function InvitePage() {
               <span className="text-sm text-slate-500 dark:text-slate-400">
                 {t('invitePage.sasIntro')}
               </span>
-              <span className="font-mono text-2xl font-medium tracking-widest">
-                {sas.slice(0, 3)} {sas.slice(3)}
+              <span className="font-mono text-xl font-medium tracking-wider">
+                {formatSas(sas)}
               </span>
               <span className="text-xs text-slate-400">
                 {t('invitePage.sasHint')}

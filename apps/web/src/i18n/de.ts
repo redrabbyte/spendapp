@@ -474,6 +474,9 @@ export const de: Catalogue = {
   'members.wantsToTakeOver': 'möchte {name} übernehmen',
   'members.aPlaceholder': 'einen Platzhalter',
   'members.approve': 'Freigeben',
+  'members.approveAsk': 'Lies die Ziffern zuerst vor. Mit der Freigabe gibst du die Schlüssel zu allem heraus, was diese Gruppe aufgezeichnet hat.',
+  'members.approveConfirm': 'Die Ziffern stimmen',
+  'members.approveCancel': 'Noch nicht',
   'members.decline': 'Ablehnen',
   'members.queueNote':
     'Der Code stammt vom Gerät der anderen Person; wer den Link abgefangen hat, liest also andere Ziffern vor. Eine Ablehnung hindert dieses Konto daran, erneut zu fragen. Du kannst dich hier 30 Tage lang umentscheiden.',

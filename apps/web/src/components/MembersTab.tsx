@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { deriveSas, fromBase64Url, type MemberDto } from '@spendapp/shared';
+import { deriveSas, formatSas, fromBase64Url, type MemberDto } from '@spendapp/shared';
 import { api } from '../api';
 import { forgetGroupLocally } from '../db';
 import { holdsFullHistory } from '../coverage';
@@ -106,9 +106,7 @@ function SasDigits({ groupId, request }: { groupId: string; request: JoinRequest
   return (
     <span className="text-xs text-slate-500 dark:text-slate-400">
       {t('members.checkByVoice')}{' '}
-      <span className="font-mono font-medium tracking-widest">
-        {sas.slice(0, 3)} {sas.slice(3)}
-      </span>
+      <span className="font-mono font-medium tracking-wider">{formatSas(sas)}</span>
     </span>
   );
 }
@@ -135,6 +133,9 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
   const [deciding, setDeciding] = useState<string | null>(null);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  // Approving hands over the keyring, so the digits have to be claimed matched
+  // first. Nothing here can check that; refusing to proceed silently is the point.
+  const [confirmApprove, setConfirmApprove] = useState<string | null>(null);
   const [keyHandoff, setKeyHandoff] = useState<string | null>(null);
   const [orphanEpochs, setOrphanEpochs] = useState<number[]>([]);
   const navigate = useNavigate();
@@ -267,6 +268,7 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
       setError((err as Error).message);
     } finally {
       setDeciding(null);
+      setConfirmApprove(null);
     }
   }
 
@@ -389,21 +391,35 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
                   </span>
                 )}
                 <SasDigits groupId={groupId} request={r} />
+                {confirmApprove === r.userId && (
+                  <span className="text-xs font-medium text-amber-700 dark:text-amber-500">
+                    {t('members.approveAsk')}
+                  </span>
+                )}
               </span>
               <span className="flex shrink-0 gap-2">
                 <button
                   disabled={deciding === r.userId}
-                  onClick={() => void decide(r.userId, 'approve')}
+                  onClick={() =>
+                    // No key means no keyring to hand over, so nothing to confirm.
+                    r.publicKey && confirmApprove !== r.userId
+                      ? setConfirmApprove(r.userId)
+                      : void decide(r.userId, 'approve')
+                  }
                   className={`${smallButton} bg-teal-700 text-white`}
                 >
-                  {t('members.approve')}
+                  {confirmApprove === r.userId ? t('members.approveConfirm') : t('members.approve')}
                 </button>
                 <button
                   disabled={deciding === r.userId}
-                  onClick={() => void decide(r.userId, 'reject')}
+                  onClick={() =>
+                    confirmApprove === r.userId
+                      ? setConfirmApprove(null)
+                      : void decide(r.userId, 'reject')
+                  }
                   className={`${smallButton} border border-slate-300 text-slate-600 dark:border-slate-600 dark:text-slate-300`}
                 >
-                  {t('members.decline')}
+                  {confirmApprove === r.userId ? t('members.approveCancel') : t('members.decline')}
                 </button>
               </span>
             </div>

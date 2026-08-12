@@ -484,6 +484,9 @@ export const en = {
   'members.wantsToTakeOver': 'wants to take over {name}',
   'members.aPlaceholder': 'a placeholder',
   'members.approve': 'Approve',
+  'members.approveAsk': 'Read the digits out first. Approving hands over the keys to everything this group has recorded.',
+  'members.approveConfirm': 'The digits match',
+  'members.approveCancel': 'Not yet',
   'members.decline': 'Decline',
   'members.queueNote':
     'The code is derived from their own device, so a stranger who intercepted the link reads out different digits. Declining stops that account asking again — you can take it back here for the next 30 days.',
