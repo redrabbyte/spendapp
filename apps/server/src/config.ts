@@ -48,8 +48,26 @@ export const config = {
   decoySaltSecret: process.env.AUTH_DECOY_SECRET ?? 'dev-only-decoy-secret-set-AUTH_DECOY_SECRET',
 };
 
-if (process.env.NODE_ENV === 'production' && !process.env.AUTH_DECOY_SECRET) {
-  console.warn('AUTH_DECOY_SECRET is unset — usernames are enumerable via /api/auth/params');
+/**
+ * Refuse to run a production deployment that is missing either of these.
+ *
+ * Both used to be warnings, which is the same as nothing: a line in the
+ * journal at boot is read once, if ever, and the deployment then runs for
+ * months with the hole open. Neither default is safe outside development —
+ * the decoy secret is published in this file, so an unset one is no secret at
+ * all, and without COOKIE_SECURE the session cookie has no Secure flag and
+ * loses the __Host- prefix that scopes it to one host.
+ */
+if (process.env.NODE_ENV === 'production') {
+  const missing = [
+    !process.env.AUTH_DECOY_SECRET &&
+      'AUTH_DECOY_SECRET is unset — the fallback is in the source, so usernames are enumerable via /api/auth/params',
+    process.env.COOKIE_SECURE !== '1' &&
+      'COOKIE_SECURE is not 1 — the session cookie would go out without Secure or the __Host- prefix',
+  ].filter(Boolean);
+  if (missing.length > 0) {
+    throw new Error(`refusing to start:\n  ${missing.join('\n  ')}\nSee deploy/README.md.`);
+  }
 }
 
 export const SESSION_COOKIE = config.cookieSecure ? '__Host-sid' : 'sid';

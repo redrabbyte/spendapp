@@ -97,6 +97,7 @@ $SUDO chmod 755 "$APP_DIR" "$APP_DIR/releases"
 if [ ! -f "$SHARED/.env" ]; then
   say "database and .env"
   db_pass=$(openssl rand -hex 24)
+  decoy_secret=$(openssl rand -hex 32)
   $SUDO mysql <<SQL
 CREATE DATABASE IF NOT EXISTS \`$DB_NAME\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER IF NOT EXISTS '$DB_USER'@'127.0.0.1' IDENTIFIED BY '$db_pass';
@@ -114,6 +115,9 @@ PRIVACY_PATH=$SHARED/privacy.md
 APP_ORIGIN=$ORIGIN
 # Every proxy between a client and the API, innermost first. See deploy/README.md.
 TRUSTED_PROXIES=loopback
+# Keys the fake KDF salt for usernames that do not exist. Secret, or decoys can
+# be recomputed offline and /api/auth/params enumerates accounts again.
+AUTH_DECOY_SECRET=$decoy_secret
 
 # VAPID keys are generated on the first release if absent.
 VAPID_SUBJECT=mailto:admin@$DOMAIN
@@ -139,6 +143,12 @@ else
   if ! $SUDO grep -q '^TRUSTED_PROXIES=' "$SHARED/.env"; then
     echo "TRUSTED_PROXIES=loopback" | $SUDO tee -a "$SHARED/.env" >/dev/null
     echo "added TRUSTED_PROXIES=loopback — add any further hops by hand"
+  fi
+  # The server refuses to start in production without this, so generate one
+  # rather than leave an existing deployment unable to boot.
+  if ! $SUDO grep -q '^AUTH_DECOY_SECRET=' "$SHARED/.env"; then
+    echo "AUTH_DECOY_SECRET=$(openssl rand -hex 32)" | $SUDO tee -a "$SHARED/.env" >/dev/null
+    echo "added AUTH_DECOY_SECRET"
   fi
 fi
 
