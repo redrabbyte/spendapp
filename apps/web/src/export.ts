@@ -13,9 +13,22 @@ import { download, makeZip, type ZipEntry } from './zip';
  * no longer read a single amount — it holds ciphertext and nothing else, so
  * the only place a readable file can be produced is a device with the keys.
  */
+/**
+ * A spreadsheet reads a leading =, +, - or @ as the start of a formula, and
+ * runs it on open. Descriptions, categories, notes and member names all reach
+ * this file, so a co-member could put =HYPERLINK(...) in an expense and have it
+ * evaluate on somebody else's machine when they export. An apostrophe in front
+ * is what every spreadsheet treats as "this is text"; the quoting keeps it
+ * there through a re-parse. Tab and return lead the same way in some importers.
+ */
+const FORMULA = /^[=+\-@\t\r]/;
+/** What formatMinor writes. A negative amount leads with `-` and is not a formula. */
+const MONEY = /^-?\d+(\.\d+)? [A-Z]{3}$/;
+
 const cell = (v: unknown): string => {
   const s = String(v ?? '');
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  const body = FORMULA.test(s) && !MONEY.test(s) ? `'${s}` : s;
+  return /[",\n]/.test(body) || body !== s ? `"${body.replace(/"/g, '""')}"` : body;
 };
 
 const HEADER = [
