@@ -13,7 +13,7 @@ jobs:
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
-          # config.ts uses process.loadEnvFile(), which needs >= 20.12.
+          # >= 22.13: required by pnpm 11, and loadEnvFile() in config.ts.
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile

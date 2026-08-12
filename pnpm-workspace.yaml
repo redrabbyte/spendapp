@@ -3,6 +3,6 @@ packages:
   - packages/*
   - e2e
 
-onlyBuiltDependencies:
-  - argon2
-  - esbuild
+allowBuilds:
+  argon2: true
+  esbuild: true
