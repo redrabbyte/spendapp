@@ -29,11 +29,22 @@ const INLINE = /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)]+\))/g;
  */
 const SCHEME = /^\s*([a-z][a-z0-9+.-]*):/i;
 const ALLOWED = new Set(['http', 'https', 'mailto']);
+/** Tab, newline and return: dropped by the browser wherever they appear. */
+const STRIPPED = /[\t\n\r]/g;
+/** Leading controls and spaces: trimmed by the browser before the scheme. */
+const LEADING = /^[\u0000-\u0020]+/;
 
 function safeHref(url: string): string | null {
-  const scheme = SCHEME.exec(url)?.[1]?.toLowerCase();
-  if (!scheme) return url; // relative, so it can only stay on this origin
-  return ALLOWED.has(scheme) ? url : null;
+  // `java\tscript:` reaches the browser as `javascript:` — the tab breaks the
+  // scheme match here, the value falls through as "relative", and the browser
+  // puts it back together. Same for a leading control character. So the check
+  // has to run on the string the browser will act on, not the one written down.
+  const cleaned = url.replace(STRIPPED, '').replace(LEADING, '');
+  const scheme = SCHEME.exec(cleaned)?.[1]?.toLowerCase();
+  // A colon with no scheme in front of it is nothing this renders; refusing is
+  // safer than guessing which half the browser will believe.
+  if (!scheme) return cleaned.includes(':') ? null : cleaned;
+  return ALLOWED.has(scheme) ? cleaned : null;
 }
 
 function inline(text: string, keyPrefix: string): ReactNode[] {
