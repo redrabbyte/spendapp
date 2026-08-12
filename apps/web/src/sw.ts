@@ -4,7 +4,7 @@
 declare const self: ServiceWorkerGlobalScope;
 
 import { isNotificationKind, type PushPayload } from '@spendapp/shared';
-import { safeNavTarget } from './swNav';
+import { safeNavTarget } from './navSafety';
 import { ExpirationPlugin } from 'workbox-expiration';
 import { createHandlerBoundToURL, precacheAndRoute } from 'workbox-precaching';
 import { NavigationRoute, registerRoute } from 'workbox-routing';

@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { localPath } from '../navSafety';
 import { useAuth } from '../auth';
 import { login, register } from '../keys';
 import { PlaceholderWarning, PrivacyNotice, usePolicy } from '../components/PrivacyNotice';
@@ -15,14 +16,6 @@ import { useT } from '../i18n/useT';
  * another member can wrap its keys to a new account — but a group you are the
  * only member of does not.
  */
-/**
- * `next` comes from the query string, so it is whoever wrote the link. Only a
- * path is allowed: `//host` starts with a slash and is another origin, and an
- * absolute URL is one outright.
- */
-const localPath = (next: string | null): string =>
-  next && next.startsWith('/') && !next.startsWith('//') ? next : '/';
-
 export function LoginPage() {
   const t = useT();
   const [mode, setMode] = useState<'login' | 'register'>('login');
@@ -47,7 +40,9 @@ export function LoginPage() {
           ? await register(username, password, displayName, policy!.version)
           : await login(username, password);
       setUser(user as Me);
-      navigate(localPath(params.get('next')), { replace: true });
+      // `next` is whoever wrote the link, so it is resolved and checked
+      // rather than prefix-matched — see navSafety.
+      navigate(localPath(params.get('next'), window.location.origin), { replace: true });
     } catch (err) {
       setError((err as Error).message);
     } finally {

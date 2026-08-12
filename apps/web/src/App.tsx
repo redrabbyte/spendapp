@@ -1,5 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { localPath } from './navSafety';
 import { useAuth } from './auth';
 import { InstallPrompt } from './components/InstallPrompt';
 import { NotificationPrompt } from './components/NotificationPrompt';
@@ -37,9 +38,9 @@ function NotificationRouter() {
   useEffect(() => {
     const onNavigate = (e: Event) => {
       const url = (e as CustomEvent<string>).detail;
-      // `//host` starts with a slash and is not local — the second slash is
-      // what makes it an origin, so a bare startsWith check lets it through.
-      if (typeof url === 'string' && url.startsWith('/') && !url.startsWith('//')) navigate(url);
+      // Resolved, not prefix-matched: `//host` and `/\host` both begin with a
+      // slash and both leave this origin.
+      if (typeof url === 'string') navigate(localPath(url, window.location.origin));
     };
     window.addEventListener('app:navigate', onNavigate);
     return () => window.removeEventListener('app:navigate', onNavigate);
