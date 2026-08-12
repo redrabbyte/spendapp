@@ -311,6 +311,9 @@ export interface WrappedKeyDto {
   epk: string;
   iv: string;
   ct: string;
+  /** This epoch's key under the previous epoch's; absent on epoch 0 and legacy rows. */
+  chainIv?: string | null;
+  chainCt?: string | null;
 }
 
 export interface GroupChanges {

@@ -72,7 +72,21 @@ describe('sealed tables hold no readable content', () => {
   });
 
   it('group keys are wraps only — no key the server could use', () => {
-    expect(columnsOf(schema.groupKeys)).toEqual(['created_at', 'ct', 'epk', 'epoch', 'group_id', 'iv', 'user_id']);
+    // chain_iv/chain_ct are the new epoch sealed under the previous one. Like
+    // the wrap beside them they are ciphertext under a key the server has never
+    // held, so they add nothing it can read — and adding them is what stops it
+    // inventing an epoch clients would write under.
+    expect(columnsOf(schema.groupKeys)).toEqual([
+      'chain_ct',
+      'chain_iv',
+      'created_at',
+      'ct',
+      'epk',
+      'epoch',
+      'group_id',
+      'iv',
+      'user_id',
+    ]);
   });
 
   it('accounts keep no second full-power credential', () => {

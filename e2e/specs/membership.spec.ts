@@ -39,6 +39,9 @@ test('admins see the pending queue and approving adds the member', async ({ page
   await openMembers(page);
   await expect(page.getByText('Waiting for approval (1)')).toBeVisible();
   await page.getByRole('button', { name: 'Approve' }).click();
+  // Approving hands over the keyring, so it asks the admin to say the digits
+  // matched before it does (design §4.3).
+  await page.getByRole('button', { name: 'The digits match' }).click();
   await expect(page.getByText('Waiting for approval')).toHaveCount(0);
 
   // Membership without keys is a member who sees ciphertext, so the approving
@@ -85,6 +88,9 @@ test('a member added without a keyring is reported, not silently broken', async 
 
   await openMembers(page);
   await page.getByRole('button', { name: 'Approve' }).click();
+  // Approving hands over the keyring, so it asks the admin to say the digits
+  // matched before it does (design §4.3).
+  await page.getByRole('button', { name: 'The digits match' }).click();
   // They are already a member by this point, so this must not read as failure.
   await expect(page.getByText(/Added, but sharing the group with them failed/)).toBeVisible();
 });

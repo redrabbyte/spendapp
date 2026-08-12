@@ -1,5 +1,5 @@
 import jsQR from 'jsqr';
-import { deriveSas, formatSas, fromBase64Url, joinCodeSchema } from '@spendapp/shared';
+import { deriveSas, formatSas, fromBase64Url, joinCodeSchema, sha256Hex } from '@spendapp/shared';
 import {
   ME,
   TEST_PUBLIC_KEY,
@@ -130,7 +130,7 @@ test('scanning a code admits them and wraps the keyring to the scanned key', asy
   }
 });
 
-test('an admin sees the same six digits the joiner is shown', async ({ page, api }) => {
+test('an admin sees the same digits the joiner is shown', async ({ page, api }) => {
   seedGroup(api, GROUP, 'Trip', [
     { userId: ME.id, displayName: ME.displayName, isPlaceholder: false, role: 'admin' },
   ]);
@@ -141,12 +141,15 @@ test('an admin sees the same six digits the joiner is shown', async ({ page, api
   await signIn(page);
   await page.goto(`/g/${GROUP}?tab=members`);
 
-  // Derived here from the same inputs §4.3 names: token, joiner key, group.
-  const sas = await deriveSas('tok', fromBase64Url(TEST_PUBLIC_KEY), GROUP);
+  // Derived from the same inputs §4.3 names, with the token hashed: that is
+  // what the server stores and what the joiner hashes to, so neither side
+  // needs the live invite to agree on the digits.
+  const tokenHash = await sha256Hex('tok');
+  const sas = await deriveSas(tokenHash, fromBase64Url(TEST_PUBLIC_KEY), GROUP);
   await expect(page.getByText(formatSas(sas))).toBeVisible();
 
   // A different joiner must not read out the same digits, or the check is
   // theatre — that is exactly the property §4.3 exists for.
-  const other = await deriveSas('tok', new Uint8Array(32).fill(3), GROUP);
+  const other = await deriveSas(tokenHash, new Uint8Array(32).fill(3), GROUP);
   expect(other).not.toBe(sas);
 });

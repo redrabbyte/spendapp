@@ -156,6 +156,15 @@ export const groupKeys = mysqlTable(
     epk: varchar('epk', { length: 64 }).notNull(),
     iv: varchar('iv', { length: 32 }).notNull(),
     ct: varchar('ct', { length: 255 }).notNull(),
+    /**
+     * This epoch's key, sealed under the *previous* epoch's key (design §4.2).
+     * Minting a new epoch therefore takes a member who already holds the old
+     * one — which the server never does, so it cannot invent an epoch and have
+     * clients write under it. Null on rows predating this and on epoch 0,
+     * which has no predecessor and is anchored by the join handshake instead.
+     */
+    chainIv: varchar('chain_iv', { length: 32 }),
+    chainCt: varchar('chain_ct', { length: 255 }),
     createdAt: ts('created_at').notNull(),
   },
   (t) => [

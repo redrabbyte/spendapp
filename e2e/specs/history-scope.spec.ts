@@ -94,6 +94,9 @@ test('approving a history-scoped request rotates instead of handing over the rin
   await signIn(page);
   await page.goto(`/g/${GROUP}?tab=members`);
   await page.getByRole('button', { name: 'Approve' }).click();
+  // Approving hands over the keyring, so it asks the admin to say the digits
+  // matched before it does (design §4.3).
+  await page.getByRole('button', { name: 'The digits match' }).click();
 
   await expect(page.getByText(/from today onwards/i)).toBeVisible({ timeout: 15_000 });
 

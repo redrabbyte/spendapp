@@ -128,7 +128,21 @@ export const publishKeysSchema = z.object({
    */
   mint: z.boolean().optional(),
   wraps: z
-    .array(z.object({ userId: uuid, epoch: z.number().int().min(0).max(100_000) }).merge(wrappedKeySchema))
+    .array(
+      z
+        .object({
+          userId: uuid,
+          epoch: z.number().int().min(0).max(100_000),
+          /**
+           * This epoch's key sealed under the previous epoch's (design §4.2).
+           * Optional because epoch 0 has no predecessor, and because a client
+           * that predates chaining still has to be able to publish.
+           */
+          chainIv: b64url(32).optional(),
+          chainCt: b64url(255).optional(),
+        })
+        .merge(wrappedKeySchema),
+    )
     .min(1)
     .max(500),
 });

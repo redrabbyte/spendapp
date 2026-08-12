@@ -39,7 +39,14 @@ export interface BlobRow {
  */
 export interface GroupKeyRow {
   groupId: string;
-  epochs: { epoch: number; key: Uint8Array }[];
+  /**
+   * `trusted` records whether this epoch was proved to come from a member —
+   * either by chaining to the epoch before it, or by being what this device
+   * already held. Undefined means a row written before chaining existed, which
+   * is read as trusted: those keys are already on the device and taking them
+   * away would lock people out of their own ledger.
+   */
+  epochs: { epoch: number; key: Uint8Array; trusted?: boolean }[];
 }
 
 /**

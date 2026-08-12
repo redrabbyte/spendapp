@@ -57,6 +57,8 @@ const TEST_KDF = { memoryKiB: 8_192, iterations: 1, parallelism: 1 };
 const TEST_SALT = new Uint8Array(16).fill(7);
 const TEST_PRIVATE_KEY = new Uint8Array(32).fill(9);
 export const TEST_PUBLIC_KEY = toBase64Url(publicKeyFor(TEST_PRIVATE_KEY));
+/** sha256('tok'), the hash the server stores for the seeded invite. */
+export const INVITE_TOKEN_HASH = '1a7674eb4ee78df7e1ac439a93c3fa8e3c945784d4dec9fd8e3011738b2f1d62';
 
 let keyFixture: Promise<{
   kdfSalt: string;
@@ -581,11 +583,13 @@ export async function installApi(context: BrowserContext, state: ApiState): Prom
     if (joinRequestsMatch && method === 'GET') {
       const queue = state.joinRequests.get(joinRequestsMatch[1]!) ?? [];
       // Both SAS inputs, like the real handler: the admin's client derives the
-      // digits itself rather than trusting a number the server computed.
+      // digits itself rather than trusting a number the server computed. The
+      // token itself never comes back — only its hash, which is all that is
+      // stored and all the joiner hashes to.
       return json(route, {
         requests: queue.map((r) => ({
           publicKey: TEST_PUBLIC_KEY,
-          inviteToken: 'tok',
+          inviteTokenHash: INVITE_TOKEN_HASH,
           shareHistory: true,
           // Declines stay listed so they can be undone; the real handler drops
           // them after 30 days, which nothing in a test run reaches.

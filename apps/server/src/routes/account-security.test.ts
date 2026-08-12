@@ -185,6 +185,61 @@ d('publishing group keys', () => {
     expect(after!.ct).toBe(before!.ct);
   });
 
+  it('carries the chain proof through to the recipient', async () => {
+    // The proof is what tells a client the epoch came from inside the group.
+    // It is stored unread and handed back on sync; the server can do neither
+    // more nor less with it than with the wrap itself.
+    const raw = await session(ADA);
+    const chainIv = b64(12);
+    const chainCt = b64(48);
+    const res = await app!.inject({
+      method: 'POST',
+      url: `/api/groups/${GROUP}/keys`,
+      headers: hdrs(raw),
+      payload: { wraps: [{ ...wrap(ADA, 1), chainIv, chainCt }] },
+    });
+    expect(res.statusCode).toBe(200);
+
+    const sync = await app!.inject({
+      method: 'POST',
+      url: '/api/sync',
+      headers: hdrs(raw),
+      payload: { protocolVersion: 1, cursors: {}, mutations: [] },
+    });
+    const { changes } = sync.json() as {
+      changes: Record<string, { keys: { epoch: number; chainIv: string | null; chainCt: string | null }[] }>;
+    };
+    const key1 = changes[GROUP]!.keys.find((k) => k.epoch === 1);
+    expect(key1).toMatchObject({ chainIv, chainCt });
+  });
+
+  it('hands back a legacy row with no proof rather than hiding it', async () => {
+    // Every key stored before chaining has null proof columns. They must keep
+    // syncing exactly as before, or existing groups go dark.
+    const raw = await session(ADA);
+    await db.insert(schema.groupKeys).values({
+      groupId: GROUP,
+      epoch: 0,
+      userId: ADA,
+      epk: b64(32),
+      iv: b64(12),
+      ct: b64(48),
+      createdAt: new Date(),
+    });
+    const sync = await app!.inject({
+      method: 'POST',
+      url: '/api/sync',
+      headers: hdrs(raw),
+      payload: { protocolVersion: 1, cursors: {}, mutations: [] },
+    });
+    const { changes } = sync.json() as {
+      changes: Record<string, { keys: { epoch: number; chainIv: string | null }[] }>;
+    };
+    const key0 = changes[GROUP]!.keys.find((k) => k.epoch === 0);
+    expect(key0).toBeDefined();
+    expect(key0!.chainIv).toBeNull();
+  });
+
   it('still lets a member replace their own wrap, so a retry is safe', async () => {
     const raw = await session(ADA);
     await app!.inject({ method: 'POST', url: `/api/groups/${GROUP}/keys`, headers: hdrs(raw), payload: { wraps: [wrap(ADA, 0)] } });

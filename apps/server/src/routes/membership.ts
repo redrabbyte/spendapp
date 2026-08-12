@@ -314,7 +314,21 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
         if (existing.length > 0) return;
         await tx
           .insert(schema.groupKeys)
-          .values(wraps.map((w) => ({ groupId, epoch: w.epoch, userId: w.userId, epk: w.epk, iv: w.iv, ct: w.ct, createdAt: now })));
+          .values(
+            wraps.map((w) => ({
+              groupId,
+              epoch: w.epoch,
+              userId: w.userId,
+              epk: w.epk,
+              iv: w.iv,
+              ct: w.ct,
+              // Stored unread like the wrap itself. The server cannot open it,
+              // and cannot make one: that takes the previous epoch's key.
+              chainIv: w.chainIv ?? null,
+              chainCt: w.chainCt ?? null,
+              createdAt: now,
+            })),
+          );
         claimed = true;
       });
       return { stored: claimed ? wraps.length : 0, skipped: 0, minted: claimed };
@@ -345,8 +359,28 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
 
     await db
       .insert(schema.groupKeys)
-      .values(wraps.map((w) => ({ groupId, epoch: w.epoch, userId: w.userId, epk: w.epk, iv: w.iv, ct: w.ct, createdAt: now })))
-      .onDuplicateKeyUpdate({ set: { epk: sql`values(epk)`, iv: sql`values(iv)`, ct: sql`values(ct)` } });
+      .values(
+        wraps.map((w) => ({
+          groupId,
+          epoch: w.epoch,
+          userId: w.userId,
+          epk: w.epk,
+          iv: w.iv,
+          ct: w.ct,
+          chainIv: w.chainIv ?? null,
+          chainCt: w.chainCt ?? null,
+          createdAt: now,
+        })),
+      )
+      .onDuplicateKeyUpdate({
+        set: {
+          epk: sql`values(epk)`,
+          iv: sql`values(iv)`,
+          ct: sql`values(ct)`,
+          chainIv: sql`values(chain_iv)`,
+          chainCt: sql`values(chain_ct)`,
+        },
+      });
 
     return { stored: wraps.length, skipped: parsed.data.wraps.length - wraps.length };
   });

@@ -167,6 +167,8 @@ async function collectGroupChanges(
       epk: schema.groupKeys.epk,
       iv: schema.groupKeys.iv,
       ct: schema.groupKeys.ct,
+      chainIv: schema.groupKeys.chainIv,
+      chainCt: schema.groupKeys.chainCt,
     })
     .from(schema.groupKeys)
     .where(and(eq(schema.groupKeys.groupId, groupId), eq(schema.groupKeys.userId, userId)));
