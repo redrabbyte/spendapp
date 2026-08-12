@@ -295,3 +295,84 @@ d('publishing group keys', () => {
     expect(retry.statusCode).toBe(200);
   });
 });
+
+d('leaving a group', () => {
+  beforeEach(reset);
+
+  const wrap = (userId: string, epoch: number) => ({ userId, epoch, epk: b64(32), iv: b64(12), ct: b64(48) });
+
+  async function graceHolds(epochs: number[]) {
+    const raw = await session(ADA);
+    await app!.inject({
+      method: 'POST',
+      url: `/api/groups/${GROUP}/keys`,
+      headers: hdrs(raw),
+      payload: { wraps: epochs.map((e) => wrap(GRACE, e)) },
+    });
+  }
+
+  const keysOf = async (userId: string) =>
+    (await db.select().from(schema.groupKeys).where(and(eq(schema.groupKeys.groupId, GROUP), eq(schema.groupKeys.userId, userId))))
+      .map((r) => r.epoch)
+      .sort();
+
+  it('takes the leaver\'s keys with them', async () => {
+    await graceHolds([0, 1]);
+    expect(await keysOf(GRACE)).toEqual([0, 1]);
+
+    const raw = await session(GRACE);
+    const res = await app!.inject({ method: 'POST', url: `/api/groups/${GROUP}/leave`, headers: hdrs(raw) });
+    expect(res.statusCode).toBe(200);
+
+    expect(await keysOf(GRACE)).toEqual([]);
+    // Nobody else's access is touched by somebody leaving.
+    await graceHolds([]);
+  });
+
+  it('does not hand the old keys back when they rejoin', async () => {
+    // The leak: a scoped invite is meant to start the ledger from today, but
+    // the server used to return every key row the account had ever been given,
+    // so rejoining restored the whole history — including the stretch they
+    // were not a member for, since leaving does not rotate.
+    await graceHolds([0, 1, 2]);
+    const graceLeaves = await session(GRACE);
+    await app!.inject({ method: 'POST', url: `/api/groups/${GROUP}/leave`, headers: hdrs(graceLeaves) });
+
+    await db
+      .insert(schema.groupMembers)
+      .values({ groupId: GROUP, userId: GRACE, joinedAt: new Date(), role: 'member' })
+      .onDuplicateKeyUpdate({ set: { leftAt: null } });
+
+    const raw = await session(GRACE);
+    const sync = await app!.inject({
+      method: 'POST',
+      url: '/api/sync',
+      headers: hdrs(raw),
+      payload: { protocolVersion: 1, cursors: {}, mutations: [] },
+    });
+    const { changes } = sync.json() as { changes: Record<string, { keys: { epoch: number }[] }> };
+    expect(changes[GROUP]!.keys).toEqual([]);
+  });
+
+  it('gives a scoped rejoin only the epoch minted for it', async () => {
+    await graceHolds([0, 1, 2]);
+    const graceLeaves = await session(GRACE);
+    await app!.inject({ method: 'POST', url: `/api/groups/${GROUP}/leave`, headers: hdrs(graceLeaves) });
+    await db
+      .insert(schema.groupMembers)
+      .values({ groupId: GROUP, userId: GRACE, joinedAt: new Date(), role: 'member' })
+      .onDuplicateKeyUpdate({ set: { leftAt: null } });
+
+    // What approving a "from today" request does: mint a fresh epoch for
+    // everyone who is in the group now.
+    const admin = await session(ADA);
+    await app!.inject({
+      method: 'POST',
+      url: `/api/groups/${GROUP}/keys`,
+      headers: hdrs(admin),
+      payload: { mint: true, wraps: [wrap(ADA, 3), wrap(GRACE, 3)] },
+    });
+
+    expect(await keysOf(GRACE)).toEqual([3]);
+  });
+});

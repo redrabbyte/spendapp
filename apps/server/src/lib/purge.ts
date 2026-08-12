@@ -27,6 +27,9 @@ export async function purgeGroup(groupId: string): Promise<void> {
     await tx.delete(schema.activity).where(eq(schema.activity.groupId, groupId));
     await tx.delete(schema.invites).where(eq(schema.invites.groupId, groupId));
     await tx.delete(schema.joinRequests).where(eq(schema.joinRequests.groupId, groupId));
+    // Left behind before this: rows for a group that no longer exists, opening
+    // nothing, belonging to nobody.
+    await tx.delete(schema.groupKeys).where(eq(schema.groupKeys.groupId, groupId));
     await tx.delete(schema.groupMembers).where(eq(schema.groupMembers.groupId, groupId));
     await tx.delete(schema.groups).where(eq(schema.groups.id, groupId));
     await tx

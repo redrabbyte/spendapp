@@ -52,6 +52,22 @@ export async function leaveGroup(userId: string, groupId: string): Promise<'left
       .update(schema.groupMembers)
       .set({ leftAt: now, version })
       .where(and(eq(schema.groupMembers.groupId, groupId), eq(schema.groupMembers.userId, userId)));
+    /**
+     * Their wraps go with them. The rows outlived the membership before, and
+     * sync hands a member every row it holds for them — so rejoining restored
+     * the entire keyring no matter what the invite said. A "from today" link
+     * would mint a fresh epoch and then return every older one beside it,
+     * including the stretch they were not a member for, because leaving does
+     * not rotate. Nobody else's wraps are touched: this is one member giving
+     * up their own copy, which is what leaving is.
+     *
+     * It is also what the app already tells them. Leaving while holding the
+     * only copy of an epoch warns that those entries are lost for good — true
+     * only once the row is actually gone.
+     */
+    await tx
+      .delete(schema.groupKeys)
+      .where(and(eq(schema.groupKeys.groupId, groupId), eq(schema.groupKeys.userId, userId)));
     await logActivity(tx, {
       groupId,
       version,
