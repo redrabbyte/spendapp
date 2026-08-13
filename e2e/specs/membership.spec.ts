@@ -69,7 +69,10 @@ test('a decline can be taken back by the admin who made it', async ({ page, api 
   // so and nothing to click.
   await expect(page.getByText('Waiting for approval')).toHaveCount(0);
   await expect(page.getByText('Declined (1)')).toBeVisible();
-  await expect(page.getByText('Sam')).toBeVisible();
+  // Exactly, because the loose form matches any copy on the page containing
+  // the letters: this group has a key, so the key check sits above with a
+  // paragraph saying everyone "sees the same number", and `sam` is in `same`.
+  await expect(page.getByText('Sam', { exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'Let them in' }).click();
   await expect(page.getByText('Declined')).toHaveCount(0);
