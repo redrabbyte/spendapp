@@ -150,7 +150,40 @@ function GroupKeyCheck({ groupId }: { groupId: string }) {
   /** `epoch` null means the keyring digits, which span every epoch at once. */
   const [check, setCheck] = useState<{ epoch: number | null; sas: string } | null>(null);
 
+  /**
+   * The stored keyring, watched rather than read once.
+   *
+   * Approving someone from today onwards mints an epoch, and so does removing
+   * a member — both are things an admin does from this very screen, and both
+   * leave the digits above them describing a key the group no longer writes
+   * under. An admin who then reads that number down the phone gets a mismatch
+   * that means nothing, which is worse than showing no check at all: the one
+   * signal this is here to send is the one it would be sending falsely.
+   *
+   * Watched through the database rather than re-read by each action, so a key
+   * that arrived from a background sync, a rotation another tab performed, or
+   * the rotation `sync.ts` runs on somebody else's behalf all count the same.
+   * The row is read here to register the dependency — `getKeyring` answers
+   * from a memo cache and may never touch the table, so a live query built
+   * over it alone would observe nothing and never fire.
+   */
+  const stored = useLiveQuery(() => localDb.groupKeys.get(groupId), [groupId]);
+  /**
+   * Which epochs are held and whether each is trusted, which is the whole of
+   * what can change: `absorbInto` skips any epoch already in the ring, so a
+   * held epoch's key never changes under it. Sorted, because the row preserves
+   * insertion order and re-deriving on a reordering would be work for nothing.
+   */
+  const held = stored?.epochs
+    .map((e) => `${e.epoch}:${e.trusted === false ? 0 : 1}`)
+    .sort()
+    .join('|');
+
   useEffect(() => {
+    if (!held) {
+      setCheck(null);
+      return;
+    }
     let live = true;
     void (async () => {
       // Offline, or a server that would rather not say: fall back to the epoch
@@ -169,7 +202,7 @@ function GroupKeyCheck({ groupId }: { groupId: string }) {
     return () => {
       live = false;
     };
-  }, [groupId]);
+  }, [groupId, held]);
 
   if (!check) return null;
   return (
