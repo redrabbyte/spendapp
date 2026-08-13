@@ -14,11 +14,20 @@ import type { FastifyLoggerOptions } from 'fastify';
  * through the logger. What is lost is retrospective attribution, which is the
  * deliberate trade.
  *
- * `url` stays. It no longer carries usernames — the login handshake takes one
- * in a body for exactly this reason — but it does still carry group and
- * account ids on some routes, so a log line remains linkable to an account by
- * anyone holding the database. Short retention is what bounds that; nothing
- * here does.
+ * `url` stays, and what that costs has to be stated accurately, because it was
+ * understated here for a while. It carries no usernames — the login handshake
+ * takes one in a body for exactly this reason — and it no longer carries a
+ * live invite token either: those were path segments until §4.7 moved them
+ * into a URL fragment and a request body, which is the one category here that
+ * was not an identifier but a *credential*, logged in full, on the request
+ * that redeemed it.
+ *
+ * What is left is group and account ids on some routes, so a log line remains
+ * linkable to an account by anyone holding the database. Short retention is
+ * what bounds that; nothing here does.
+ *
+ * Anything added to a URL from now on is added to this log. A path parameter
+ * that is secret does not stay out of it by being hashed at rest.
  */
 export const loggerOptions: FastifyLoggerOptions = {
   serializers: {

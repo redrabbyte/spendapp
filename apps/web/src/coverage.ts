@@ -62,9 +62,38 @@ export async function clearInvalidEntry(groupId: string, id: string): Promise<vo
   await save(groupId, { ...row, invalid: row.invalid.filter((e) => e.id !== id) });
 }
 
+/**
+ * The server handed this device a group key that disagrees with what this
+ * account itself recorded holding (design §4.2).
+ *
+ * There is no benign reading of this. A wrap that opens is proof of nothing —
+ * it is sealed to a public key the server publishes — but a commitment is
+ * sealed under a key only this account's own devices can derive, so a mismatch
+ * means the key on offer was made somewhere other than inside the group.
+ *
+ * Recorded rather than thrown, and never cleared automatically. The rejected
+ * epoch leaves a real hole in what this device can read, and the old code
+ * showed exactly that hole as an ordinary coverage gap — "some entries are
+ * missing" — which reads as a sync problem to wait out. It has to say what it
+ * is, and it has to keep saying it: an alarm that a later clean sync silently
+ * retracts is one nobody will ever see.
+ */
+export async function noteKeyTampering(groupId: string, epochs: Iterable<number>): Promise<void> {
+  const seen = [...new Set(epochs)];
+  if (seen.length === 0) return;
+  const row = (await localDb.coverage.get(groupId)) ?? { groupId, missingEpochs: [] };
+  const merged = [...new Set([...(row.tamperedEpochs ?? []), ...seen])].sort((a, b) => a - b);
+  if (merged.length === (row.tamperedEpochs?.length ?? 0)) return; // nothing new
+  await save(groupId, { ...row, tamperedEpochs: merged });
+}
+
 /** One row, or none at all once there is nothing left to warn about. */
 async function save(groupId: string, row: CoverageRow): Promise<void> {
-  if (row.missingEpochs.length === 0 && (row.invalid?.length ?? 0) === 0) {
+  if (
+    row.missingEpochs.length === 0 &&
+    (row.invalid?.length ?? 0) === 0 &&
+    (row.tamperedEpochs?.length ?? 0) === 0
+  ) {
     await localDb.coverage.delete(groupId);
   } else {
     await localDb.coverage.put(row);

@@ -4,8 +4,14 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { config } from '../config.js';
 import { db, schema } from '../db/index.js';
+import { isAllowedPushEndpoint } from '../lib/pushEndpoint.js';
 
 const subscribeSchema = z.object({
+  /**
+   * Where this server will POST notifications. `z.string().url()` is not a
+   * bound on that — it accepts loopback, link-local and every internal
+   * hostname — so the real check is `isAllowedPushEndpoint` below.
+   */
   endpoint: z.string().url().max(1000),
   keys: z.object({ p256dh: z.string().min(1).max(255), auth: z.string().min(1).max(255) }),
 });
@@ -21,6 +27,10 @@ export async function pushRoutes(app: FastifyInstance): Promise<void> {
     const parsed = subscribeSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid_subscription' });
     const { endpoint, keys } = parsed.data;
+    // Refused rather than stored and quietly never sent to: a subscription
+    // that looks accepted and never delivers is the harder bug to find, and
+    // the client can say "this browser's push service is not allowed here".
+    if (!isAllowedPushEndpoint(endpoint)) return reply.code(400).send({ error: 'push_endpoint_not_allowed' });
     const now = new Date();
     await db
       .insert(schema.pushSubscriptions)

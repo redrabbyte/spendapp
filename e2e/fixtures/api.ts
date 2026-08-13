@@ -6,6 +6,9 @@ import {
   deriveKek,
   deriveMasterKey,
   publicKeyFor,
+  inviteJoinSchema,
+  inviteTokenSchema,
+  publishKeyCommitmentsSchema,
   publishKeysSchema,
   fromBase64Url,
   open,
@@ -60,8 +63,17 @@ const TEST_KDF = { memoryKiB: 8_192, iterations: 1, parallelism: 1 };
 const TEST_SALT = new Uint8Array(16).fill(7);
 const TEST_PRIVATE_KEY = new Uint8Array(32).fill(9);
 export const TEST_PUBLIC_KEY = toBase64Url(publicKeyFor(TEST_PRIVATE_KEY));
-/** sha256('tok'), the hash the server stores for the seeded invite. */
-export const INVITE_TOKEN_HASH = '1a7674eb4ee78df7e1ac439a93c3fa8e3c945784d4dec9fd8e3011738b2f1d62';
+/**
+ * The seeded invite, and the hash the server would store for it.
+ *
+ * A realistic token rather than the three letters this used to be. The real
+ * `inviteTokenSchema` bounds the shape — 10 to 43 base64url characters, which
+ * is what `randomBytes(16).toString('base64url')` produces — and a fixture
+ * whose token the server would reject is a fixture that cannot tell you the
+ * client is sending something acceptable.
+ */
+export const INVITE_TOKEN = 'tokAAAAAAAAAAAAAAAAAA';
+export const INVITE_TOKEN_HASH = 'ace88aab6c3a33d83cdbbd5f5d029c85cf4469d2eb9ed3cdb31729ba9497599d';
 
 let keyFixture: Promise<{
   kdfSalt: string;
@@ -477,6 +489,11 @@ function changesFor(state: ApiState, cursors: Record<string, number> = {}): Reco
       group,
       members: members.filter((m) => m.version > cursor),
       keys: state.groupKeys.get(id) ?? [],
+      // None: the fake server has never seen this browser write one, which is
+      // the same position a real server is in for a brand-new account. The
+      // client then falls back to trusting the hand-over, which is what these
+      // specs exercise.
+      keyCommitments: [],
       entryGrants: (state.entryGrants.get(id) ?? []).filter((g) => g.userId === ME.id),
       rotationPending: false,
       expenses: expenses.filter((e) => e.version > cursor),
@@ -815,6 +832,21 @@ export async function installApi(context: BrowserContext, state: ApiState): Prom
       return json(route, { granted: data.grants.length, skipped: 0 });
     }
 
+    /**
+     * Commitments the client publishes as it absorbs keys (design §4.2).
+     *
+     * Accepted and dropped. Nothing here reads one — they are sealed under the
+     * account KEK, which this fixture does not have — but the route has to
+     * exist and has to validate, because an unhandled POST would be recorded
+     * as a client fault and fail the run at teardown.
+     */
+    const commitmentsMatch = /^\/api\/groups\/([^/]+)\/key-commitments$/.exec(path);
+    if (commitmentsMatch && method === 'POST') {
+      const data = check(publishKeyCommitmentsSchema, body());
+      if (!data) return;
+      return json(route, { stored: data.commitments.length, skipped: 0 });
+    }
+
     const keysMatch = /^\/api\/groups\/([^/]+)\/keys$/.exec(path);
     if (keysMatch && method === 'POST') {
       const data = check(publishKeysSchema, body());
@@ -854,7 +886,9 @@ export async function installApi(context: BrowserContext, state: ApiState): Prom
     if (/^\/api\/groups\/[^/]+\/invites$/.test(path)) {
       const shareHistory = (body() as { shareHistory?: boolean } | null)?.shareHistory !== false;
       state.lastInviteShareHistory = shareHistory;
-      return json(route, { token: 'tok', path: '/invite/tok', shareHistory });
+      // The token in the fragment, which is where a live capability belongs:
+      // never on the wire, so never in a log (design §4.7).
+      return json(route, { token: INVITE_TOKEN, path: `/invite#${INVITE_TOKEN}`, shareHistory });
     }
 
     /**
@@ -898,12 +932,16 @@ export async function installApi(context: BrowserContext, state: ApiState): Prom
     }
     // Following a link only ever *asks* — an admin still has to approve, so
     // this can never return 'joined' for someone who is not already a member.
-    if (/^\/api\/invites\/[^/]+\/join$/.test(path) && method === 'POST') {
+    if (path === '/api/invites/join' && method === 'POST') {
+      // `check` fulfils the 400 itself, so the handler has to stop here —
+      // falling through fulfils a second time and Playwright throws.
+      if (!check(inviteJoinSchema, body())) return;
       const [groupId] = [...state.groups.keys()];
       return json(route, { status: 'pending', groupId: groupId ?? '' });
     }
 
-    if (/^\/api\/invites\/[^/]+$/.test(path)) {
+    if (path === '/api/invites/lookup' && method === 'POST') {
+      if (!check(inviteTokenSchema, body())) return;
       const [groupId] = [...state.groups.keys()];
       // Placeholders nobody has taken, plus members who left and have not
       // already been taken over — exactly what the server offers (design §5).

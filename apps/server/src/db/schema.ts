@@ -186,6 +186,41 @@ export const groupKeys = mysqlTable(
 );
 
 /**
+ * What a member's own device recorded about an epoch's key, sealed under that
+ * member's account KEK (design §4.2).
+ *
+ * Every other sealed thing here is wrapped to a *public* key this server hands
+ * out, so nothing in a wrap says who made it — which is why a device holding
+ * no keyring yet had no way to tell a real hand-over from one this server
+ * substituted. A commitment closes that: it is sealed under a key derived from
+ * the account's identity *private* key, so this server can store it, cannot
+ * read it, and above all cannot make one. A second device, unlocked with the
+ * same password, opens its own commitments and checks the delivered keys
+ * against them.
+ *
+ * Written once and never rewritten — see routes/keyCommitments.ts. A row that
+ * could be replaced is not a commitment, and an endpoint that replaced one on
+ * request would hand the attack straight back.
+ */
+export const keyCommitments = mysqlTable(
+  'key_commitments',
+  {
+    groupId: id('group_id').notNull(),
+    epoch: int('epoch').notNull(),
+    /** Owner. Only their own devices open this, and only they wrote it. */
+    userId: id('user_id').notNull(),
+    iv: varchar('iv', { length: 32 }).notNull(),
+    ct: varchar('ct', { length: 255 }).notNull(),
+    createdAt: ts('created_at').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.groupId, t.epoch, t.userId] }),
+    // "everything I have ever committed to in this group", asked on every pull
+    index('kc_user_group').on(t.userId, t.groupId),
+  ],
+);
+
+/**
  * One entry's content key, wrapped to one member (design §4.8).
  *
  * The narrow counterpart to group_keys: that table hands over an epoch, this
@@ -350,11 +385,28 @@ export const pushSubscriptions = mysqlTable('push_subscriptions', {
   failCount: int('fail_count').notNull().default(0),
 });
 
-export const processedMutations = mysqlTable('processed_mutations', {
-  mutationId: id('mutation_id').primaryKey(),
-  userId: id('user_id').notNull(),
-  createdAt: ts('created_at').notNull(),
-});
+/**
+ * Mutations already applied, so a client that retries a delivered batch does
+ * not apply it twice.
+ *
+ * Keyed on the mutation id **and the user**. On the id alone, "has this been
+ * processed?" was a question about the whole instance rather than about the
+ * caller: once any account had used id X, a different account submitting X was
+ * told `applied` with no work done, and its mutation was dropped. The ids are
+ * client-generated UUIDv4, so that took an attacker who could observe or guess
+ * a queued id and pre-insert it — but the scope was missing all the same, and
+ * the row's `userId` was there without ever being compared.
+ */
+export const processedMutations = mysqlTable(
+  'processed_mutations',
+  {
+    mutationId: id('mutation_id').notNull(),
+    /** Who applied it. Half the key, not a note beside it. */
+    userId: id('user_id').notNull(),
+    createdAt: ts('created_at').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.mutationId, t.userId] })],
+);
 
 export const fxRates = mysqlTable(
   'fx_rates',

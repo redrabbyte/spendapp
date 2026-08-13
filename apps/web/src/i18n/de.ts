@@ -57,6 +57,28 @@ export const de: Catalogue = {
   'gap.activity': 'Der Verlauf beginnt mit deinem Beitritt. Frühere Einträge, Kommentare und Belege werden nicht angezeigt.',
   'gap.members': 'Du bist erst später dazugekommen und kannst den vollen Verlauf dieser Gruppe deshalb nicht an neue Mitglieder weitergeben.',
 
+  'logout.notCleared': 'Du bist abgemeldet, aber auf diesem Gerät liegen deine Daten noch.',
+  'logout.notClearedWhy':
+    'Deine Schlüssel und deine Kopie der Abrechnung konnten nicht gelöscht werden — meist, weil ein anderer Tab dieser App sie noch geöffnet hat und auch der Server nicht erreichbar war. Schließe andere Tabs und versuch es erneut, oder lösche die Daten dieser Seite in den Browsereinstellungen.',
+  'logout.tryAgain': 'Erneut versuchen',
+
+  'invitePage.noToken': 'Dieser Einladungslink ist unvollständig. Frag die Person, die ihn geschickt hat, nach dem vollständigen oder einem neuen Link.',
+  'invitePage.oldLink':
+    'Dieser Einladungslink hat ein älteres Format, das nicht mehr akzeptiert wird. Frag nach einem neuen — jedes Mitglied der Gruppe kann einen erstellen.',
+
+  'keycheck.title': 'Schlüsselprüfung dieser Gruppe',
+  'keycheck.epoch': 'Schlüssel {epoch}',
+  'keycheck.explainEpoch':
+    'Alle in dieser Gruppe haben diesen Schlüssel, deshalb sehen alle dieselbe Zahl dafür. Vergleiche sie mit jemand anderem aus der Gruppe — persönlich oder am Telefon, nicht über diese App — nachdem du beigetreten bist oder ein Gerät hinzugefügt hast. Sieh zuerst auf die Schlüsselnummer: ist sie unterschiedlich, hat eine Seite die Synchronisierung noch nicht abgeschlossen — das ist normal. Stimmt die Schlüsselnummer überein und die Ziffern nicht, hat eine Seite den falschen Schlüssel bekommen.',
+  'keycheck.explainHistory':
+    'Alle in dieser Gruppe haben ihre gesamte Historie, deshalb sehen alle dieselbe Zahl. Vergleiche sie mit jemand anderem aus der Gruppe — persönlich oder am Telefon, nicht über diese App — nachdem du beigetreten bist oder ein Gerät hinzugefügt hast. Unterscheiden sich die Zahlen, hat eine Seite die falschen Schlüssel bekommen.',
+
+  'tamper.title': 'Dieser Server hat einen Gruppenschlüssel geschickt, der nicht zu deiner eigenen Aufzeichnung passt.',
+  'tamper.explain':
+    'Deine Geräte führen eine private Notiz über jeden Schlüssel, den diese Gruppe verwendet hat — mit deinem Passwort versiegelt, sodass niemand sonst sie lesen oder ändern kann. Gerade ist ein Schlüssel angekommen, der dieser Notiz widerspricht. Niemand innerhalb der Gruppe kann so etwas erzeugen; dazu ist nur in der Lage, wer diesen Server betreibt.',
+  'tamper.advice':
+    'Er wurde abgelehnt, deshalb lassen sich manche Einträge auf diesem Gerät nicht öffnen. Trage nichts Neues in diese Gruppe ein und kläre außerhalb der App mit den anderen Mitgliedern, ob bei ihnen noch alles wie erwartet aussieht.',
+
   // --- unlocking and passwords --------------------------------------------
   'unlock.title': 'Dieses Gerät entsperren',
   'unlock.explain': 'Du bist als {username} angemeldet, aber auf diesem Gerät liegen keine Schlüssel. Nur dein Passwort kann sie wiederherstellen — der Server kann es nicht.',
@@ -620,6 +642,8 @@ export const de: Catalogue = {
 
   // --- errors from the API ------------------------------------------------
   'error.unexpected': 'Etwas ist schiefgelaufen. Versuch es noch einmal.',
+  'error.push_endpoint_not_allowed':
+    'Dieser Browser nutzt einen Benachrichtigungsdienst, an den dieser Server nicht sendet. Bitte die Betreiberin oder den Betreiber, ihn freizuschalten, oder nutze einen anderen Browser.',
   'error.authentication_required': 'Du bist abgemeldet. Melde dich an und versuch es noch einmal.',
   'error.not_found': 'Das gibt es nicht mehr.',
   'error.invalid_input': 'Das sieht nicht richtig aus — prüf das Formular und versuch es noch einmal.',

@@ -1,16 +1,24 @@
 import {
+  commitmentAad,
+  deriveCommitmentKey,
+  deriveEpochSas,
+  deriveKeyringSas,
   fromBase64Url,
   generateGroupKey,
+  keyFingerprint,
   open,
   seal,
+  timingSafeEqual,
   toBase64Url,
   unwrapKeyWith,
   wrapKeyTo,
+  type KeyCommitmentDto,
   type WrappedKeyDto,
 } from '@spendapp/shared';
 import { api } from './api';
 import { localDb } from './db';
 import { loadKeys } from './keys';
+import { cachedUserId } from './session';
 import { AppError } from './i18n/errors';
 
 /**
@@ -79,21 +87,85 @@ async function verifyChain(
 }
 
 /**
+ * What this account itself recorded about an epoch, opened with its own KEK.
+ *
+ * The server stores these and cannot read or write one, so a fingerprint that
+ * comes back out of a commitment is a statement by *us*, at a time we held the
+ * real key, about what that key was. That is the only thing in a sync payload
+ * with that property — everything else is sealed to a public key the server
+ * publishes, so nothing in it says who produced it.
+ */
+async function openCommitments(
+  commitmentKey: Uint8Array,
+  groupId: string,
+  userId: string,
+  commitments: KeyCommitmentDto[],
+): Promise<Map<number, Uint8Array>> {
+  const out = new Map<number, Uint8Array>();
+  for (const c of commitments) {
+    try {
+      out.set(
+        c.epoch,
+        await open(
+          commitmentKey,
+          { iv: fromBase64Url(c.iv), ciphertext: fromBase64Url(c.ct) },
+          commitmentAad(groupId, c.epoch, userId),
+        ),
+      );
+    } catch {
+      // Not ours to open — a row left behind by a previous identity after a
+      // re-key, or one the server moved between epochs and the AAD caught.
+      // Either way it commits to nothing, so it decides nothing.
+    }
+  }
+  return out;
+}
+
+/**
  * Unwrap everything the server sent for this group and cache it. Called with
  * the sync payload, so keys land before the ciphertext they open.
  */
-export async function absorbWrappedKeys(groupId: string, wrapped: WrappedKeyDto[]): Promise<number[]> {
-  if (wrapped.length === 0) return [];
+export async function absorbWrappedKeys(
+  groupId: string,
+  wrapped: WrappedKeyDto[],
+  commitments: KeyCommitmentDto[] = [],
+): Promise<AbsorbResult> {
+  const nothing = { added: [], tampered: [] };
+  if (wrapped.length === 0) return nothing;
   const account = await loadKeys();
-  if (!account) return []; // not unlocked yet; the next sync will bring them again
+  if (!account) return nothing; // not unlocked yet; the next sync brings them again
+  const me = cachedUserId();
 
   const ring = (await getKeyring(groupId)) ?? new Map<number, HeldKey>();
-  const added = await absorbInto(ring, groupId, account.privateKey, wrapped);
-  if (added.length > 0) await persist(groupId, ring);
-  // Which epochs arrived, not whether any did: the caller compares them
-  // against what it previously had to drop, and rewinds the group's cursor if
-  // this key opens something already behind the high-water mark.
-  return added;
+  // Keyed off the identity private key, not the KEK: it is the half of the
+  // account the server never sees *and* the half a password change keeps.
+  const committed = me
+    ? await openCommitments(await deriveCommitmentKey(account.privateKey), groupId, me, commitments)
+    : new Map();
+  const result = await absorbInto(ring, groupId, account.privateKey, wrapped, committed);
+  if (result.added.length > 0) await persist(groupId, ring);
+  // Publishing is a side effect of absorbing rather than a separate pass, so
+  // an epoch is committed to at the first moment we are entitled to say
+  // anything about it, and every later device of this account inherits the
+  // anchor. Fire-and-forget: a sync that failed to publish tries again on the
+  // next one, and holding up decryption for it would trade a certainty now
+  // for one later.
+  void publishCommitments(groupId, ring, committed).catch(() => {});
+  /**
+   * `added` is which epochs arrived rather than whether any did: the caller
+   * compares them against what it previously had to drop, and rewinds the
+   * group's cursor if a key opens something already behind the high-water
+   * mark. `tampered` goes back to the caller too rather than being recorded
+   * here — coverage.ts reads this module, and recording it from inside would
+   * close a cycle between them.
+   */
+  return result;
+}
+
+export interface AbsorbResult {
+  added: number[];
+  /** Epochs whose delivered key contradicted this account's own commitment. */
+  tampered: number[];
 }
 
 /**
@@ -107,16 +179,29 @@ export async function absorbInto(
   groupId: string,
   privateKey: Uint8Array,
   wrapped: WrappedKeyDto[],
-): Promise<number[]> {
+  /**
+   * Fingerprints this account previously sealed under its own KEK, by epoch.
+   * Empty on a genuine first join to a group this account has never held a key
+   * for — there is nothing to have committed to yet — and that is the one case
+   * still resting on the delivery itself.
+   */
+  committed: ReadonlyMap<number, Uint8Array> = new Map(),
+): Promise<AbsorbResult> {
   /**
    * Nothing held yet, so this delivery *is* the hand-over — the full keyring an
    * approving member wrapped to us, or the single epoch a history-scoped invite
    * grants. Neither has an earlier key to chain to, and the one for a scoped
    * invite never will, so the anchor is the approval itself: the admin read our
    * digits back to us before wrapping. Everything after this has to chain.
+   *
+   * That anchor is thin — an approval authenticates *us* to the admin, not the
+   * keys travelling back — which is why a commitment overrides it wherever one
+   * exists. It is checked first below and it is the only check that can reject
+   * an epoch outright.
    */
   const handover = ring.size === 0;
   const added: number[] = [];
+  const tampered: number[] = [];
   // Lowest first, so an epoch is checked against a predecessor this same
   // delivery may have just supplied.
   for (const w of [...wrapped].sort((a, b) => a.epoch - b.epoch)) {
@@ -127,6 +212,24 @@ export async function absorbInto(
         iv: fromBase64Url(w.iv),
         ciphertext: fromBase64Url(w.ct),
       });
+
+      const commitment = committed.get(w.epoch);
+      if (commitment) {
+        // We said, while holding the real key, what this epoch's key was. A
+        // delivery that disagrees is not a stale row or a legacy shape — no
+        // honest party can produce one — so it is refused rather than merely
+        // held untrusted, and the caller is told.
+        if (!timingSafeEqual(commitment, await keyFingerprint(key))) {
+          tampered.push(w.epoch);
+          continue;
+        }
+        // And accepted without needing a chain: our own past word is a better
+        // anchor than a proof, and a scoped ring may hold no predecessor.
+        ring.set(w.epoch, { key, trusted: true });
+        added.push(w.epoch);
+        continue;
+      }
+
       const proof = await verifyChain(ring, groupId, w.epoch, key, w.chainIv, w.chainCt);
       // A proof that is present and wrong is not a legacy row — it is someone
       // claiming a lineage they do not have. Drop the epoch rather than hold it.
@@ -138,7 +241,128 @@ export async function absorbInto(
       // re-keyed, say. Skipping beats failing the whole sync over one blob.
     }
   }
-  return added;
+  return { added, tampered };
+}
+
+/**
+ * Record what we hold, so a later device of this account can check its own
+ * hand-over against it.
+ *
+ * Only trusted epochs, and only ones not already committed to: an untrusted
+ * key is one we would not write under, and committing to it would launder
+ * exactly the delivery this is meant to catch into an anchor for the next
+ * device. Best-effort and fire-and-forget — a sync that failed to publish
+ * tries again on the next one, and holding up decryption for it would trade a
+ * present certainty for a future one.
+ */
+async function publishCommitments(
+  groupId: string,
+  ring: Keyring,
+  committed: ReadonlyMap<number, Uint8Array>,
+): Promise<void> {
+  const account = await loadKeys();
+  const me = cachedUserId();
+  if (!account || !me) return;
+  const fresh = [...ring].filter(([epoch, held]) => held.trusted && !committed.has(epoch));
+  if (fresh.length === 0) return;
+  const commitmentKey = await deriveCommitmentKey(account.privateKey);
+  const commitments = await Promise.all(
+    fresh.map(async ([epoch, held]) => {
+      const sealed = await seal(commitmentKey, await keyFingerprint(held.key), commitmentAad(groupId, epoch, me));
+      return { epoch, iv: toBase64Url(sealed.iv), ct: toBase64Url(sealed.ciphertext) };
+    }),
+  );
+  await api(`/api/groups/${groupId}/key-commitments`, { method: 'POST', body: { commitments } });
+}
+
+/**
+ * Digits that say two members hold the same keys for a group (design §4.3).
+ *
+ * The join SAS runs before approval and authenticates the joiner's public key
+ * to the admin. Nothing authenticates the keys sent back the other way, and on
+ * a first join there is no commitment to check them against either — so this
+ * is the confirmation for that case: both sides read the number off their own
+ * screen, and a substituted keyring cannot make them agree.
+ */
+export async function keyringSas(groupId: string): Promise<string | null> {
+  const ring = await getKeyring(groupId);
+  if (!ring || ring.size === 0) return null;
+  return deriveKeyringSas(groupId, [...ring].map(([epoch, held]) => [epoch, held.key] as [number, Uint8Array]));
+}
+
+/**
+ * The digits for the newest epoch this device holds, and which epoch that is.
+ *
+ * The highest epoch *held*, deliberately, not the highest trusted one that
+ * `currentEpoch` returns. An epoch delivered with no chain lands untrusted but
+ * still readable — `absorbInto` adds it, and `keyForEpoch` hands it out — so
+ * it is a key the server can have the member reading fabricated entries under
+ * while writing continues safely under the epoch below. Reporting the trusted
+ * epoch would report the half that is already fine and hide the half that is
+ * not.
+ *
+ * The epoch travels with the digits because it is what makes a mismatch
+ * readable: someone a sync behind differs on both, and that is an ordinary
+ * thing rather than an attack.
+ */
+export async function epochSas(groupId: string): Promise<{ epoch: number; sas: string } | null> {
+  const ring = await getKeyring(groupId);
+  if (!ring || ring.size === 0) return null;
+  const epoch = Math.max(...ring.keys());
+  return { epoch, sas: await deriveEpochSas(groupId, epoch, ring.get(epoch)!.key) };
+}
+
+/**
+ * Whether every member of this group holds every epoch of it — the one case in
+ * which comparing whole keyrings says anything, because it is the only case in
+ * which two honest members' keyrings are equal.
+ *
+ * Counted from `key-coverage`, which reports per epoch how many current
+ * members hold a wrap for it, against the members who have a public key to
+ * have been wrapped to at all. Placeholders have no account and so cannot hold
+ * a key; they are not absences.
+ *
+ * The server answers this, and could lie. It gains nothing by it: claiming
+ * uniformity that does not exist produces two numbers that fail to match,
+ * which is a false alarm rather than a silent pass, and denying uniformity
+ * that does exist falls back to the single-epoch digits, which still catch a
+ * substituted current key. Neither direction can make a forged key read as
+ * genuine, so this is allowed to be a hint about *which* check to offer and
+ * never an input to a check itself.
+ */
+export async function ringsAreUniform(groupId: string): Promise<boolean> {
+  const [coverage, keys] = await Promise.all([
+    api<{ epochs: EpochCoverage[] }>(`/api/groups/${groupId}/key-coverage`),
+    api<{ members: MemberKey[] }>(`/api/groups/${groupId}/member-keys`),
+  ]);
+  return ringsUniformIn(coverage.epochs, keys.members.filter((m) => m.publicKey).length);
+}
+
+/** One row of `key-coverage`: how many current members hold this epoch. */
+export interface EpochCoverage {
+  epoch: number;
+  holders: number;
+  mine: boolean;
+}
+
+/**
+ * The decision, over the two counts and nothing else — no network — because it
+ * is what decides which check a member is offered and so the part worth
+ * testing exhaustively.
+ *
+ * Uniform means every epoch from 0 upwards, held by every member who has a
+ * public key to have been wrapped to. Anything less and two honest keyrings
+ * can differ, which is the whole reason the wider check was misfiring.
+ */
+export function ringsUniformIn(epochs: EpochCoverage[], holders: number): boolean {
+  if (holders === 0 || epochs.length === 0) return false;
+  // Contiguous from epoch 0, so a group whose oldest epochs have fallen out of
+  // every keyring does not read as complete history. Duplicated rows would
+  // otherwise pass the count on their own.
+  const seen = new Set(epochs.map((e) => e.epoch));
+  if (seen.size !== epochs.length) return false;
+  if (Math.max(...seen) !== seen.size - 1) return false;
+  return epochs.every((e) => e.mine && e.holders === holders);
 }
 
 /**

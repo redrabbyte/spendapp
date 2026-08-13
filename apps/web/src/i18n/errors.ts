@@ -50,6 +50,11 @@ const KEYS: Record<ApiErrorCode, MessageKey> = {
   attachment_too_short: 'error.unexpected',
   body_required: 'error.unexpected',
   invalid_subscription: 'error.unexpected',
+  // Actionable, unlike the rest of this block: the browser's push service is
+  // not one this server will connect out to, and only the operator can change
+  // that. Saying "something went wrong" would send somebody to re-tap a
+  // toggle that will never work.
+  push_endpoint_not_allowed: 'error.push_endpoint_not_allowed',
 };
 
 /** The sentence to show for whatever the API said went wrong. */

@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { and, eq, isNull, lt, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
+import { inviteJoinSchema, inviteTokenSchema } from '@spendapp/shared';
 import { config } from '../config.js';
 import { db, schema } from '../db/index.js';
 import { activeAdminIds, isMember } from '../lib/groups.js';
@@ -28,15 +29,30 @@ export async function inviteRoutes(app: FastifyInstance): Promise<void> {
       expiresAt: new Date(now.getTime() + config.inviteTtlDays * 86_400_000),
       shareHistory,
     });
-    return { token, path: `/invite/${token}`, maxUses: 1, shareHistory };
+    // The token goes in the *fragment*, not the path. A fragment is never put
+    // on the wire — not in the request line, not in `Referer` — so the one
+    // place a live capability used to be guaranteed to land, the access log of
+    // whatever serves this app, no longer sees it at all. See the note on
+    // `findValidInvite` below for the rest of the reasoning.
+    return { token, path: `/invite#${token}`, maxUses: 1, shareHistory };
   });
 
-  // Public landing-page lookup: group name + inviter only, rate-limited.
-  app.get(
-    '/api/invites/:token',
+  /**
+   * Public landing-page lookup: group name + inviter only, rate-limited.
+   *
+   * A POST that reads nothing, for the same reason `/api/auth/params` is one:
+   * a path parameter is logged. This one is worse than a username — the token
+   * *is* the capability — and it reached the application log, the reverse
+   * proxy's log, and browser history on the way. Moving it into a body costs
+   * nothing here and takes it out of all three.
+   */
+  app.post(
+    '/api/invites/lookup',
     { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
     async (req, reply) => {
-      const invite = await findValidInvite((req.params as { token: string }).token);
+      const parsed = inviteTokenSchema.safeParse(req.body);
+      if (!parsed.success) return reply.code(404).send({ error: 'invite_invalid' });
+      const invite = await findValidInvite(parsed.data.token);
       if (!invite) return reply.code(404).send({ error: 'invite_invalid' });
       // The claimable list names every placeholder in the group and carries
       // their ids, so it is withheld until the caller has signed in. A link
@@ -68,16 +84,19 @@ export async function inviteRoutes(app: FastifyInstance): Promise<void> {
    * intercepted one gets a stranger no further than a row an admin will see
    * and decline.
    */
-  app.post('/api/invites/:token/join', { preHandler: app.requireUser }, async (req, reply) => {
-    const token = (req.params as { token: string }).token;
+  app.post('/api/invites/join', { preHandler: app.requireUser }, async (req, reply) => {
+    const parsed = inviteJoinSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(404).send({ error: 'invite_invalid' });
+    const token = parsed.data.token;
     const invite = await findValidInvite(token);
     if (!invite) return reply.code(404).send({ error: 'invite_invalid' });
     const userId = req.user!.id;
 
     if (await isMember(userId, invite.groupId)) return { status: 'joined' as const, groupId: invite.groupId };
 
-    const claimMemberId = (req.body as { claimMemberId?: unknown } | null)?.claimMemberId;
-    const claim = typeof claimMemberId === 'string' ? claimMemberId : null;
+    // Bounded by the schema now rather than taken raw off the body: it reaches
+    // a char(36) column, and an oversized string used to become a 500.
+    const claim = parsed.data.claimMemberId ?? null;
 
     const existing = await db
       .select({ status: schema.joinRequests.status })
@@ -136,8 +155,10 @@ export async function inviteRoutes(app: FastifyInstance): Promise<void> {
     return { status: 'pending' as const, groupId: invite.groupId };
   });
 
-  app.delete('/api/invites/:token', { preHandler: app.requireUser }, async (req, reply) => {
-    const { token } = req.params as { token: string };
+  app.post('/api/invites/revoke', { preHandler: app.requireUser }, async (req, reply) => {
+    const parsed = inviteTokenSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(404).send({ error: 'not_found' });
+    const { token } = parsed.data;
     const rows = await db.select().from(schema.invites).where(eq(schema.invites.tokenHash, hashToken(token))).limit(1);
     const invite = rows[0];
     if (!invite || !(await isMember(req.user!.id, invite.groupId))) {
@@ -149,7 +170,6 @@ export async function inviteRoutes(app: FastifyInstance): Promise<void> {
 }
 
 async function findValidInvite(token: string) {
-  if (!/^[A-Za-z0-9_-]{10,43}$/.test(token)) return null;
   const rows = await db
     .select({
       groupId: schema.invites.groupId,

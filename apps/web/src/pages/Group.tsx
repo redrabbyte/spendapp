@@ -16,6 +16,7 @@ import { InviteLink } from '../components/InviteLink';
 import { HistoryGap } from '../components/HistoryGap';
 import { ImportDialog } from '../components/ImportDialog';
 import { InvalidEntries } from '../components/InvalidEntries';
+import { KeyTamperAlarm } from '../components/KeyTamperAlarm';
 import { MembersTab } from '../components/MembersTab';
 import { SyncPendingBadge } from '../components/SyncPendingBadge';
 import { useMoney } from '../i18n/useMoney';
@@ -206,6 +207,10 @@ export function GroupPage() {
 
       {/* Above the panel, not inside one: a partial view is a property of the
           whole group, and it is true on whichever tab you happen to open. */}
+      {/* Above the coverage note, and on every tab: a forged key is not a
+          view-of-the-group problem, and the note below would otherwise explain
+          the resulting hole as an ordinary gap in history. */}
+      <KeyTamperAlarm groupId={group.id} />
       <HistoryGap groupId={group.id} tab={tab} />
       <InvalidEntries groupId={group.id} members={allMembers} />
 

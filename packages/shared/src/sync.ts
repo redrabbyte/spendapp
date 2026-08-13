@@ -342,11 +342,33 @@ export interface EntryGrantDto {
   ct: string;
 }
 
+/**
+ * This user's own record of what an epoch's key really was (design §4.2).
+ *
+ * Stored by the server, unreadable to it, and unforgeable by it: producing one
+ * takes a key derived from the account's identity private key, which the
+ * server has only the public half of. It is what lets a device that
+ * holds no keyring — a second browser, a cleared cache — tell a genuine
+ * hand-over from a server-substituted one, which the wrap alone cannot say.
+ */
+export interface KeyCommitmentDto {
+  epoch: number;
+  iv: string;
+  ct: string;
+}
+
 export interface GroupChanges {
   group: GroupDto;
   members: MemberDto[];
   /** Every epoch this user can open. Sent whole; it is a handful of rows. */
   keys: WrappedKeyDto[];
+  /**
+   * What this account previously recorded about those epochs. Sent whole
+   * alongside the keys for the same reason: arriving a sync later than the
+   * wrap it checks would mean trusting the wrap first, which is the whole
+   * thing this is here to avoid.
+   */
+  keyCommitments: KeyCommitmentDto[];
   /** Single entries this user was granted. Sent whole, like the keyring. */
   entryGrants: EntryGrantDto[];
   /**

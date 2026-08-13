@@ -143,6 +143,205 @@ d('changing a password', () => {
   });
 });
 
+/**
+ * Commitments are the anchor for the first keyring hand-over (design §4.2),
+ * and they are worth exactly as much as the two rules the route enforces: that
+ * the owner comes from the session, and that a row is never rewritten. Both
+ * are invisible when they break — the app carries on working and only the
+ * guarantee goes away — so they are pinned here rather than trusted to the
+ * client that happens to call them today.
+ */
+d('committing to a group key', () => {
+  beforeEach(async () => {
+    await db.delete(schema.keyCommitments);
+    await reset();
+  });
+
+  const commitment = (epoch: number) => ({ epoch, iv: b64(12), ct: b64(48) });
+
+  it('files a commitment against the caller, never against a named user', async () => {
+    const raw = await session(ADA);
+    const res = await app!.inject({
+      method: 'POST',
+      url: `/api/groups/${GROUP}/key-commitments`,
+      headers: hdrs(raw),
+      // A body naming somebody else would be the whole attack: writing Grace's
+      // anchor lets the writer decide what Grace's next device will accept.
+      payload: { commitments: [{ ...commitment(0), userId: GRACE }] },
+    });
+    expect(res.statusCode).toBe(200);
+
+    const rows = await db.select().from(schema.keyCommitments).where(eq(schema.keyCommitments.groupId, GROUP));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.userId).toBe(ADA);
+  });
+
+  it('never rewrites one, so a commitment cannot be retracted', async () => {
+    const raw = await session(ADA);
+    const first = commitment(0);
+    expect(
+      (
+        await app!.inject({
+          method: 'POST',
+          url: `/api/groups/${GROUP}/key-commitments`,
+          headers: hdrs(raw),
+          payload: { commitments: [first] },
+        })
+      ).statusCode,
+    ).toBe(200);
+
+    // The same epoch, a different blob. If this landed, a client that had been
+    // talked into committing to a forged key could erase the real record — and
+    // the next device would have nothing to catch the substitution with.
+    const again = await app!.inject({
+      method: 'POST',
+      url: `/api/groups/${GROUP}/key-commitments`,
+      headers: hdrs(raw),
+      payload: { commitments: [commitment(0)] },
+    });
+    expect(again.statusCode).toBe(200);
+    expect(again.json()).toMatchObject({ stored: 0, skipped: 1 });
+
+    const [row] = await db.select().from(schema.keyCommitments).where(eq(schema.keyCommitments.groupId, GROUP));
+    expect(row!.ct).toBe(first.ct);
+  });
+
+  it('stores the new epochs in a batch that repeats an old one', async () => {
+    // A retry after a partial upload is ordinary. Refusing the batch over the
+    // epoch already there would leave the rest permanently uncommitted.
+    const raw = await session(ADA);
+    await app!.inject({
+      method: 'POST',
+      url: `/api/groups/${GROUP}/key-commitments`,
+      headers: hdrs(raw),
+      payload: { commitments: [commitment(0)] },
+    });
+    const res = await app!.inject({
+      method: 'POST',
+      url: `/api/groups/${GROUP}/key-commitments`,
+      headers: hdrs(raw),
+      payload: { commitments: [commitment(0), commitment(1), commitment(2)] },
+    });
+    expect(res.json()).toMatchObject({ stored: 2, skipped: 1 });
+  });
+
+  it('is closed to somebody outside the group, like every other key route', async () => {
+    const raw = await session(OUTSIDER);
+    const res = await app!.inject({
+      method: 'POST',
+      url: `/api/groups/${GROUP}/key-commitments`,
+      headers: hdrs(raw),
+      payload: { commitments: [commitment(0)] },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(await db.select().from(schema.keyCommitments)).toHaveLength(0);
+  });
+
+  it('serves them back to their owner and to nobody else', async () => {
+    const ada = await session(ADA);
+    await app!.inject({
+      method: 'POST',
+      url: `/api/groups/${GROUP}/key-commitments`,
+      headers: hdrs(ada),
+      payload: { commitments: [commitment(0)] },
+    });
+
+    // Ada's own sync carries it — this is the delivery path the check depends
+    // on, and a commitment that arrived a sync late would be decoration.
+    const mine = await app!.inject({
+      method: 'POST',
+      url: '/api/sync',
+      headers: hdrs(ada),
+      payload: { protocolVersion: SYNC_PROTOCOL.current, cursors: {}, mutations: [] },
+    });
+    expect(mine.json().changes[GROUP].keyCommitments).toHaveLength(1);
+
+    // Grace is in the same group and gets none of them: a commitment is about
+    // one account's own past, and handing Ada's to Grace would let Grace's
+    // device be steered by a record it never wrote.
+    const grace = await app!.inject({
+      method: 'POST',
+      url: '/api/sync',
+      headers: hdrs(await session(GRACE)),
+      payload: { protocolVersion: SYNC_PROTOCOL.current, cursors: {}, mutations: [] },
+    });
+    expect(grace.json().changes[GROUP].keyCommitments).toEqual([]);
+  });
+});
+
+/**
+ * Idempotency is per caller, not per instance.
+ *
+ * The dedup table already carried a `userId` and the lookup never compared it,
+ * so "has this mutation been processed?" was answered for everybody at once.
+ * The symptom is silent in both directions — the victim's client is told
+ * `applied` and crosses the mutation off its outbox, and the server does no
+ * work — which is why it survived: nothing about it looks like a failure.
+ */
+d('idempotency', () => {
+  beforeEach(async () => {
+    await db.delete(schema.processedMutations);
+    await reset();
+  });
+
+  const sync = (raw: string, mutations: unknown[]) =>
+    app!.inject({
+      method: 'POST',
+      url: '/api/sync',
+      headers: hdrs(raw),
+      payload: { protocolVersion: SYNC_PROTOCOL.current, cursors: {}, mutations },
+    });
+
+  /** A group create, the simplest mutation that writes something checkable. */
+  const createGroup = (id: string, mutationId: string) => ({
+    id: mutationId,
+    v: 1,
+    clientTs: new Date().toISOString(),
+    type: 'group.create',
+    groupId: id,
+    data: { id, name: 'Trip', defaultCurrency: 'EUR', wrappedKey: { epk: b64(32), iv: b64(12), ct: b64(48) } },
+  });
+
+  it('does not let one account short-circuit another account\'s mutation', async () => {
+    // Ada uses a mutation id. Grace then sends her own, different mutation
+    // under the same id — as she would if it had been observed or guessed.
+    const MUTATION = '99999999-9999-4999-8999-999999999999';
+    const ADAS_GROUP = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+    const GRACES_GROUP = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+
+    const ada = await sync(await session(ADA), [createGroup(ADAS_GROUP, MUTATION)]);
+    expect(ada.json().results[0]).toMatchObject({ status: 'applied' });
+
+    const grace = await sync(await session(GRACE), [createGroup(GRACES_GROUP, MUTATION)]);
+    expect(grace.json().results[0]).toMatchObject({ status: 'applied' });
+
+    // The half that was broken: Grace's group has to actually exist. It used
+    // to be reported `applied` with no work done, and her write was lost.
+    const groups = await db.select().from(schema.groups).where(eq(schema.groups.id, GRACES_GROUP));
+    expect(groups, "Grace's mutation was dropped as somebody else's replay").toHaveLength(1);
+  });
+
+  it('still treats the same caller resending as a replay', async () => {
+    // The behaviour being preserved. A client that did not see the response
+    // resends the batch, and the group must not be created twice.
+    const MUTATION = '88888888-8888-4888-8888-888888888888';
+    const GROUP_ID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+    const raw = await session(ADA);
+    await sync(raw, [createGroup(GROUP_ID, MUTATION)]);
+    const again = await sync(raw, [createGroup(GROUP_ID, MUTATION)]);
+    expect(again.json().results[0]).toMatchObject({ status: 'applied' });
+
+    expect(await db.select().from(schema.groups).where(eq(schema.groups.id, GROUP_ID))).toHaveLength(1);
+    // And one row per (mutation, user) — the key, spelled out.
+    const rows = await db
+      .select()
+      .from(schema.processedMutations)
+      .where(eq(schema.processedMutations.mutationId, MUTATION));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.userId).toBe(ADA);
+  });
+});
+
 d('publishing group keys', () => {
   beforeEach(reset);
 
@@ -342,6 +541,57 @@ d('leaving a group', () => {
     await graceHolds([0, 1, 2]);
     const graceLeaves = await session(GRACE);
     await app!.inject({ method: 'POST', url: `/api/groups/${GROUP}/leave`, headers: hdrs(graceLeaves) });
+
+    await db
+      .insert(schema.groupMembers)
+      .values({ groupId: GROUP, userId: GRACE, joinedAt: new Date(), role: 'member' })
+      .onDuplicateKeyUpdate({ set: { leftAt: null } });
+
+    const raw = await session(GRACE);
+    const sync = await app!.inject({
+      method: 'POST',
+      url: '/api/sync',
+      headers: hdrs(raw),
+      payload: { protocolVersion: SYNC_PROTOCOL.current, cursors: {}, mutations: [] },
+    });
+    const { changes } = sync.json() as { changes: Record<string, { keys: { epoch: number }[] }> };
+    expect(changes[GROUP]!.keys).toEqual([]);
+  });
+
+  it('takes an admin-removed member\'s keys too, and records what they held', async () => {
+    // The two ways a membership ends have to leave the same state behind.
+    // Removal used to set `leftAt` and stop there: the wraps stayed, and
+    // `heldEpochs` — the record that lets a from-today rejoin give somebody
+    // their own past and nothing else — was never written.
+    await graceHolds([0, 1, 2]);
+    expect(await keysOf(GRACE)).toEqual([0, 1, 2]);
+
+    const raw = await session(ADA);
+    const res = await app!.inject({
+      method: 'DELETE',
+      url: `/api/groups/${GROUP}/members/${GRACE}`,
+      headers: hdrs(raw),
+    });
+    expect(res.statusCode).toBe(200);
+
+    expect(await keysOf(GRACE)).toEqual([]);
+    const [row] = await db
+      .select({ heldEpochs: schema.groupMembers.heldEpochs })
+      .from(schema.groupMembers)
+      .where(and(eq(schema.groupMembers.groupId, GROUP), eq(schema.groupMembers.userId, GRACE)));
+    expect(row!.heldEpochs).toEqual([0, 1, 2]);
+    // And nobody else loses anything: Ada is still holding her own.
+    expect(await keysOf(ADA)).toEqual([]);
+  });
+
+  it('does not hand a removed member the old keys back when they return', async () => {
+    // The mirror of the leave test above, and the one that was missing — which
+    // is how the removal path drifted out of compliance unnoticed. Without it,
+    // an admin readmitting somebody on a deliberately scoped invite gets the
+    // whole retained keyring restored by sync, on a path no admin decides.
+    await graceHolds([0, 1, 2]);
+    const ada = await session(ADA);
+    await app!.inject({ method: 'DELETE', url: `/api/groups/${GROUP}/members/${GRACE}`, headers: hdrs(ada) });
 
     await db
       .insert(schema.groupMembers)

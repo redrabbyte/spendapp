@@ -43,7 +43,7 @@ export async function syncRoutes(app: FastifyInstance): Promise<void> {
 
       // Push: apply queued mutations in order, idempotently.
       const results: MutationResult[] = [];
-      const alreadyProcessed = await processedIds(mutations);
+      const alreadyProcessed = await processedIds(mutations, userId);
       for (const m of mutations) {
         if (alreadyProcessed.has(m.id)) {
           results.push({ id: m.id, status: 'applied' }); // replay of a delivered batch
@@ -69,12 +69,27 @@ export async function syncRoutes(app: FastifyInstance): Promise<void> {
   );
 }
 
-async function processedIds(mutations: Mutation[]): Promise<Set<string>> {
+/**
+ * Which of these this caller has already had applied.
+ *
+ * Scoped to the caller, which it was not: the lookup matched on the mutation
+ * id alone and never compared the `userId` sitting in the row. So a mutation
+ * id one account had used made *every other* account's mutation of that id a
+ * no-op reported as `applied` — the client crossed it off its outbox and the
+ * write was never made. Unreachable in practice behind a random UUID, and a
+ * missing authorization scope regardless.
+ */
+async function processedIds(mutations: Mutation[], userId: string): Promise<Set<string>> {
   if (mutations.length === 0) return new Set();
   const rows = await db
     .select({ mutationId: schema.processedMutations.mutationId })
     .from(schema.processedMutations)
-    .where(inArray(schema.processedMutations.mutationId, mutations.map((m) => m.id)));
+    .where(
+      and(
+        eq(schema.processedMutations.userId, userId),
+        inArray(schema.processedMutations.mutationId, mutations.map((m) => m.id)),
+      ),
+    );
   return new Set(rows.map((r) => r.mutationId));
 }
 
@@ -188,6 +203,24 @@ async function collectGroupChanges(
     .from(schema.groupKeys)
     .where(and(eq(schema.groupKeys.groupId, groupId), eq(schema.groupKeys.userId, userId)));
 
+  /**
+   * This user's own record of what those epochs held (design §4.2), sealed
+   * under a key only their devices can derive and unreadable here.
+   *
+   * Sent with the keys rather than after them, deliberately. A device that
+   * absorbed a wrap on one sync and only learned the commitment on the next
+   * would have had to trust the wrap first — which is the exact moment this is
+   * meant to guard, so arriving late would make it decoration.
+   */
+  const keyCommitments = await db
+    .select({
+      epoch: schema.keyCommitments.epoch,
+      iv: schema.keyCommitments.iv,
+      ct: schema.keyCommitments.ct,
+    })
+    .from(schema.keyCommitments)
+    .where(and(eq(schema.keyCommitments.groupId, groupId), eq(schema.keyCommitments.userId, userId)));
+
   // Single entries this user was granted (design §4.8), sent whole for the
   // same reason the keyring is: missing one means holding ciphertext with no
   // way to notice the key existed.
@@ -275,6 +308,7 @@ async function collectGroupChanges(
       version: group.version,
     },
     keys,
+    keyCommitments,
     entryGrants: entryGrants.map((g) => ({
       ...g,
       entryType: g.entryType === 'payment' ? ('payment' as const) : ('expense' as const),

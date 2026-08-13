@@ -39,7 +39,7 @@ test('a returning member is told their name comes back, not asked to choose', as
   await seedGroupKey(api, GROUP);
 
   await signIn(page);
-  await page.goto('/invite/tok');
+  await page.goto('/invite#tokAAAAAAAAAAAAAAAAAA');
 
   await expect(page.getByText(/You were in this group before as/)).toBeVisible();
   // The action that restores their history must not read like discarding it.
@@ -56,7 +56,7 @@ test('someone who joined as the wrong person can still pick a different name', a
   await seedGroupKey(api, GROUP);
 
   await signIn(page);
-  await page.goto('/invite/tok');
+  await page.goto('/invite#tokAAAAAAAAAAAAAAAAAA');
 
   // The whole point of leaving and coming back: choose again. Offered as an
   // addition to their own name, which is what actually happens — not as a
@@ -76,7 +76,7 @@ test('a new account taking over a name is not told it is rejoining', async ({ pa
   await seedGroupKey(api, GROUP);
 
   await signIn(page);
-  await page.goto('/invite/tok');
+  await page.goto('/invite#tokAAAAAAAAAAAAAAAAAA');
 
   await page.getByRole('combobox').selectOption(PLACEHOLDER);
   await expect(page.getByRole('button', { name: 'Join as this person' })).toBeVisible();
@@ -88,7 +88,7 @@ test('a departed member can be taken over by a different account', async ({ page
   await seedGroupKey(api, GROUP);
 
   await signIn(page);
-  await page.goto('/invite/tok');
+  await page.goto('/invite#tokAAAAAAAAAAAAAAAAAA');
 
   // Losing a password means losing the account; this is the only way back to
   // the entries recorded against it, so it has to be offered — and labelled,

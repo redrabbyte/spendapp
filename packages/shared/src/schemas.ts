@@ -148,6 +148,53 @@ export const publishKeysSchema = z.object({
 });
 
 /**
+ * An invite token, in a body rather than a path (design §4.7).
+ *
+ * The shape is the 128 bits `randomBytes(16).toString('base64url')` produces,
+ * with room either side for the older widths. Checked before the hash lookup
+ * so an arbitrary string never reaches one, and — now that it is a body — so
+ * the same bound applies to something a caller can make as long as it likes.
+ */
+const inviteToken = z
+  .string()
+  .regex(/^[A-Za-z0-9_-]{10,43}$/)
+  .describe('invite capability token');
+
+export const inviteTokenSchema = z.object({ token: inviteToken });
+
+/**
+ * Following an invite. `claimMemberId` reaches a `char(36)` column, so it is
+ * bounded here — it used to be read straight off the body, where an oversized
+ * string became a 500 rather than a 400.
+ */
+export const inviteJoinSchema = z.object({
+  token: inviteToken,
+  claimMemberId: uuid.optional(),
+});
+
+/**
+ * Recording what an epoch's key really was, sealed under the caller's own KEK
+ * (design §4.2).
+ *
+ * No `userId`: a commitment is only ever about the caller, and the server takes
+ * the owner from the session rather than the body. Accepting one would turn the
+ * anchor for the first hand-over into something anybody could write for
+ * somebody else, which is the attack it exists to stop.
+ */
+export const publishKeyCommitmentsSchema = z.object({
+  commitments: z
+    .array(
+      z.object({
+        epoch: z.number().int().min(0).max(100_000),
+        iv: b64url(32),
+        ct: b64url(255),
+      }),
+    )
+    .min(1)
+    .max(500),
+});
+
+/**
  * Granting single entries (design §4.8): one entry's content key, wrapped to
  * one member. What a claim hands over now, instead of the epoch those entries
  * happen to sit in.

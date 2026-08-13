@@ -60,6 +60,32 @@ export const en = {
   'gap.activity': 'The history starts when you joined. Earlier entries, comments and receipts are not shown.',
   'gap.members': 'You joined partway through, so you cannot pass this group’s full history on to anyone new.',
 
+  'logout.notCleared': 'You are signed out, but this device still holds your data.',
+  'logout.notClearedWhy':
+    'Your keys and your copy of the ledger could not be deleted — usually because another tab of this app still has it open, and the server could not be reached to clear it either. Close any other tabs and try again, or clear this site’s data in your browser settings.',
+  'logout.tryAgain': 'Try again',
+
+  'invitePage.noToken': 'This invite link is incomplete. Ask whoever sent it for the full link, or for a new one.',
+  'invitePage.oldLink':
+    'This invite link is in an older format that is no longer accepted. Ask whoever sent it for a new one — any member of the group can make one.',
+
+  'keycheck.title': 'This group’s key check',
+  // Named so a mismatch can be read correctly. Two people on different key
+  // numbers are out of sync, which is ordinary; the alarming case is the same
+  // key number with different digits, and only saying which key it is lets
+  // anyone tell those apart.
+  'keycheck.epoch': 'Key {epoch}',
+  'keycheck.explainEpoch':
+    'Everyone in this group holds this key, so everyone sees the same number for it. Compare it with someone else in the group — in person or by phone, not through this app — after you join or add a device. Check the key number first: if theirs is different, one of you has not finished syncing, which is normal. If the key numbers match but the digits do not, one of you was given the wrong key.',
+  'keycheck.explainHistory':
+    'Everyone in this group holds its whole history, so everyone sees the same number. Compare it with someone else in the group — in person or by phone, not through this app — after you join or add a device. If the numbers differ, one of you was given the wrong keys.',
+
+  'tamper.title': 'This server sent a group key that does not match your own record.',
+  'tamper.explain':
+    'Your devices keep a private note of each key this group has used, sealed with your password so nobody else can read or change it. A key just arrived that disagrees with that note. Nobody inside the group can produce one — only whoever runs this server is in a position to.',
+  'tamper.advice':
+    'It has been refused, so some entries will not open on this device. Do not add anything new to this group, and check with the other members — out of the app — that they still see what they expect.',
+
   // --- unlocking and passwords --------------------------------------------
   'unlock.title': 'Unlock this device',
   'unlock.explain': 'You are signed in as {username}, but this device has no keys. Your password is the only thing that can rebuild them — the server cannot.',
@@ -629,6 +655,8 @@ export const en = {
 
   // --- errors from the API ------------------------------------------------
   'error.unexpected': 'Something went wrong. Try again.',
+  'error.push_endpoint_not_allowed':
+    'This browser uses a notification service this server does not send to. Ask whoever runs it to allow it, or use a different browser.',
   'error.authentication_required': 'You are signed out. Log in and try again.',
   'error.not_found': 'That is not there any more.',
   'error.invalid_input': 'That does not look right — check the form and try again.',

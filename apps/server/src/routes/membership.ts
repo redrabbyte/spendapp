@@ -1,7 +1,7 @@
 import { and, eq, gt, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { admitSchema, grantEntriesSchema, publishKeysSchema } from '@spendapp/shared';
+import { admitSchema, grantEntriesSchema, publishKeyCommitmentsSchema, publishKeysSchema } from '@spendapp/shared';
 import { db, schema } from '../db/index.js';
 import { isApiError } from '../lib/api-error.js';
 import { activeAdminIds, bumpGroupVersion, isAdmin, isMember, logActivity } from '../lib/groups.js';
@@ -428,6 +428,64 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
   });
 
   /**
+   * Record what an epoch's key really was, for this caller only (design §4.2).
+   *
+   * The anchor the first hand-over otherwise lacks. Everything else stored here
+   * is sealed to a public key this server publishes, so a device holding no
+   * keyring could not tell a genuine delivery from one this server substituted
+   * — it had to trust whatever arrived first. A commitment is sealed under a
+   * key derived from the caller's identity private key, which is never sent
+   * here, so this server can hold one and cannot manufacture one.
+   *
+   * Two rules make it worth anything, and both are enforced below rather than
+   * in the client:
+   *
+   *  - **The owner comes from the session.** A body that could name a userId
+   *    would let anybody write somebody else's anchor, which is the attack.
+   *  - **A row is never rewritten.** A commitment that could be replaced on
+   *    request is not a commitment; a compromised or coerced client could
+   *    quietly retract what it once recorded and re-open the same hole. So an
+   *    epoch already committed to is skipped, not updated, and the count says
+   *    which — a repeat call after a partial upload is an ordinary retry, not
+   *    an error.
+   */
+  app.post('/api/groups/:groupId/key-commitments', { preHandler: app.requireUser }, async (req, reply) => {
+    const { groupId } = req.params as { groupId: string };
+    const userId = req.user!.id;
+    if (!(await isMember(userId, groupId))) return reply.code(404).send({ error: 'not_found' });
+
+    const parsed = publishKeyCommitmentsSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid_input' });
+
+    // Deduplicated here as well as skipped below: a batch naming one epoch
+    // twice would otherwise decide between its own two rows by insert order.
+    const wanted = new Map(parsed.data.commitments.map((c) => [c.epoch, c]));
+    const held = await db
+      .select({ epoch: schema.keyCommitments.epoch })
+      .from(schema.keyCommitments)
+      .where(
+        and(
+          eq(schema.keyCommitments.groupId, groupId),
+          eq(schema.keyCommitments.userId, userId),
+          inArray(schema.keyCommitments.epoch, [...wanted.keys()]),
+        ),
+      );
+    for (const row of held) wanted.delete(row.epoch);
+    if (wanted.size === 0) return { stored: 0, skipped: parsed.data.commitments.length };
+
+    const now = new Date();
+    await db
+      .insert(schema.keyCommitments)
+      .values([...wanted.values()].map((c) => ({ groupId, epoch: c.epoch, userId, iv: c.iv, ct: c.ct, createdAt: now })))
+      // Not an update. Two devices of the same account backfilling at once
+      // commit to the same key, so a collision here is a tie, not a conflict —
+      // and whichever row is already there is by definition the earlier one.
+      .onDuplicateKeyUpdate({ set: { epoch: sql`epoch` } });
+
+    return { stored: wanted.size, skipped: parsed.data.commitments.length - wanted.size };
+  });
+
+  /**
    * Grant single entries (design §4.8).
    *
    * The narrow counterpart to publishing keys: instead of handing over an
@@ -665,10 +723,36 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
       if (!rows[0] || rows[0].leftAt) return false;
 
       const version = await bumpGroupVersion(tx, groupId);
+      /**
+       * The same two steps leaving takes (lib/leave.ts), because there are two
+       * ways a membership ends and they have to leave the same state behind.
+       *
+       * This path used to set `leftAt` and stop. The wraps stayed, and sync
+       * serves a member every row it holds for them, so being readmitted
+       * restored the entire retained keyring — on a path no admin decides and
+       * nothing surfaces. An admin issuing a deliberately scoped "from today"
+       * invite got the whole history handed back behind them, and their own
+       * screen reported that nothing had been restored, because the thing it
+       * counts (`heldEpochs`) was never recorded here either.
+       *
+       * Recording first and then deleting, in that order and in one
+       * transaction: the record is derived from the rows, so a crash between
+       * them would leave a member whose keys are gone with no note of what
+       * they were — and their own past would be unrecoverable on a return.
+       */
+      const held = await tx
+        .select({ epoch: schema.groupKeys.epoch })
+        .from(schema.groupKeys)
+        .where(and(eq(schema.groupKeys.groupId, groupId), eq(schema.groupKeys.userId, userId)));
       await tx
         .update(schema.groupMembers)
-        .set({ leftAt: now, version })
+        .set({ leftAt: now, version, heldEpochs: held.map((r) => r.epoch).sort((a, b) => a - b) })
         .where(and(eq(schema.groupMembers.groupId, groupId), eq(schema.groupMembers.userId, userId)));
+      // Only theirs. Removing somebody is one member losing their own copy,
+      // exactly as leaving is; nobody else's access is affected.
+      await tx
+        .delete(schema.groupKeys)
+        .where(and(eq(schema.groupKeys.groupId, groupId), eq(schema.groupKeys.userId, userId)));
       await logActivity(tx, {
         groupId,
         version,

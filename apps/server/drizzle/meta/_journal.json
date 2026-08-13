@@ -50,6 +50,20 @@
       "when": 1786546398027,
       "tag": "0006_entry_keys_required",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1786614228993,
+      "tag": "0007_key_commitments",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1786615214219,
+      "tag": "0008_scope_dedup_to_user",
+      "breakpoints": true
     }
   ]
 }

@@ -8,7 +8,7 @@ import { strandedNames } from '../departed';
 import { grantEntries } from '../entryKeys';
 import { forgetGroupLocally, localDb } from '../db';
 import { holdsFullHistory } from '../coverage';
-import { rotateGroupKey, shareKeyring } from '../groupKeys';
+import { epochSas, keyringSas, ringsAreUniform, rotateGroupKey, shareKeyring } from '../groupKeys';
 import { addPlaceholderLocal, syncNow } from '../sync';
 import { ScanToAdd } from './ScanToAdd';
 import { useLocale, useT } from '../i18n/useT';
@@ -117,6 +117,72 @@ function SasDigits({ groupId, request }: { groupId: string; request: JoinRequest
       {t('members.checkByVoice')}{' '}
       <span className="font-mono font-medium tracking-wider">{formatSas(sas)}</span>
     </span>
+  );
+}
+
+/**
+ * Digits that say two members hold the same keys for this group.
+ *
+ * The join digits above run *before* approval and authenticate the joiner's
+ * public key to the admin — the direction that stops the wrong person being
+ * let in. Nothing there speaks for the keys travelling back the other way, and
+ * on a first join there is no earlier commitment of this account's to check
+ * them against either. That gap is what this closes: both people read the
+ * number off their own screen, and a key the server substituted on the way
+ * cannot make the two agree.
+ *
+ * Which number depends on the group. Whole-keyring digits are the stronger
+ * check but only mean anything where every member holds the same keyring, and
+ * a group that has ever admitted somebody from today onwards is not that —
+ * there, two honest members differ for a reason that is not an attack. So the
+ * keyring digits are offered only when coverage says every ring is identical,
+ * and otherwise the newest epoch is compared, which every member holds. Never
+ * both: the keyring digits already say everything the epoch digits do, and two
+ * numbers to read down a phone is how a check stops being done at all.
+ *
+ * Shown quietly and always, rather than pushed at anyone. It is a check to
+ * reach for — after a join, after adding a device, or when something looks
+ * wrong — and a banner demanding it on every visit is one people learn to
+ * dismiss, which is the state in which it protects nobody.
+ */
+function GroupKeyCheck({ groupId }: { groupId: string }) {
+  const t = useT();
+  /** `epoch` null means the keyring digits, which span every epoch at once. */
+  const [check, setCheck] = useState<{ epoch: number | null; sas: string } | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      // Offline, or a server that would rather not say: fall back to the epoch
+      // digits, which are the check that always applies.
+      const uniform = await ringsAreUniform(groupId).catch(() => false);
+      if (!live) return;
+      const whole = uniform ? await keyringSas(groupId) : null;
+      if (!live) return;
+      if (whole) {
+        setCheck({ epoch: null, sas: whole });
+        return;
+      }
+      const latest = await epochSas(groupId);
+      if (live && latest) setCheck({ epoch: latest.epoch, sas: latest.sas });
+    })();
+    return () => {
+      live = false;
+    };
+  }, [groupId]);
+
+  if (!check) return null;
+  return (
+    <section className="flex flex-col gap-1">
+      <h2 className="text-sm font-medium text-slate-500 dark:text-slate-400">{t('keycheck.title')}</h2>
+      {check.epoch !== null && (
+        <p className="text-xs text-slate-500 dark:text-slate-400">{t('keycheck.epoch', { epoch: check.epoch })}</p>
+      )}
+      <p className="font-mono text-sm font-medium tracking-wider">{formatSas(check.sas)}</p>
+      <p className="text-xs text-slate-500 dark:text-slate-400">
+        {t(check.epoch === null ? 'keycheck.explainHistory' : 'keycheck.explainEpoch')}
+      </p>
+    </section>
   );
 }
 
@@ -779,6 +845,7 @@ export function MembersTab({ members, groupId, meId }: { members: MemberDto[]; g
           </button>
         )}
       </section>
+      <GroupKeyCheck groupId={groupId} />
     </div>
   );
 }

@@ -1,7 +1,10 @@
 import { expect, seedGroup, test } from '../fixtures/api';
 
 const GROUP = '33333333-3333-4333-8333-333333333333';
-const EXPECTED = 'http://127.0.0.1:4173/invite/tok';
+// The token is in the fragment, deliberately: a fragment is never sent to a
+// server, so it cannot reach the API's request log, the proxy's access log, or
+// the `Referer` of anything the invite page loads (design §4.7).
+const EXPECTED = 'http://127.0.0.1:4173/invite#tokAAAAAAAAAAAAAAAAAA';
 
 test.beforeEach(async ({ api }) => {
   seedGroup(api, GROUP, 'Trip', [

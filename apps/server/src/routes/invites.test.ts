@@ -85,8 +85,29 @@ d('invites', () => {
       payload: {},
     });
     expect(res.statusCode).toBe(200);
-    return (res.json() as { token: string }).token;
+    const body = res.json() as { token: string; path: string };
+    // The whole point of M1: what gets handed out puts the capability in the
+    // fragment, which never reaches a server and so never reaches a log.
+    expect(body.path).toBe(`/invite#${body.token}`);
+    return body.token;
   }
+
+  /**
+   * Both of these take the token in a body. A path parameter is logged — by
+   * this app, which keeps `req.url` on purpose, and by whatever proxy is in
+   * front of it — and this one is not an identifier but a live capability.
+   */
+  // Unauthenticated, like the landing page it serves — but still a non-GET,
+  // so it carries the CSRF header every other write does.
+  const lookup = (token: string) =>
+    app!.inject({
+      method: 'POST',
+      url: '/api/invites/lookup',
+      headers: { 'x-requested-with': 'spendapp' },
+      payload: { token },
+    });
+  const join = (token: string, headers: Record<string, string>) =>
+    app!.inject({ method: 'POST', url: '/api/invites/join', headers, payload: { token } });
 
   it('stores no usable token — a dump of the table admits nobody', async () => {
     const token = await createInvite();
@@ -98,7 +119,7 @@ d('invites', () => {
 
   it('still resolves a link that was handed out', async () => {
     const token = await createInvite();
-    const res = await app!.inject({ method: 'GET', url: `/api/invites/${token}` });
+    const res = await lookup(token);
     expect(res.statusCode).toBe(200);
     expect((res.json() as { groupName: string }).groupName).toBe('Paris trip');
   });
@@ -118,13 +139,13 @@ d('invites', () => {
     const [viaSql] = await db.execute(`SELECT SHA2('${token}', 256) AS h`);
     expect((viaSql as unknown as { h: string }[])[0]!.h).toBe(sha256(token));
 
-    const res = await app!.inject({ method: 'GET', url: `/api/invites/${token}` });
+    const res = await lookup(token);
     expect(res.statusCode).toBe(200);
   });
 
   it('gives an admin the hash to read digits from, never the token', async () => {
     const token = await createInvite();
-    await app!.inject({ method: 'POST', url: `/api/invites/${token}/join`, headers: await asUser(JOINER), payload: {} });
+    await join(token, await asUser(JOINER));
 
     const res = await app!.inject({
       method: 'GET',
@@ -143,8 +164,8 @@ d('invites', () => {
     const token = await createInvite();
     const [joiner, other] = await Promise.all([asUser(JOINER), asUser(OTHER)]);
     const results = await Promise.all([
-      app!.inject({ method: 'POST', url: `/api/invites/${token}/join`, headers: joiner, payload: {} }),
-      app!.inject({ method: 'POST', url: `/api/invites/${token}/join`, headers: other, payload: {} }),
+      join(token, joiner),
+      join(token, other),
     ]);
     const codes = results.map((r) => r.statusCode).sort();
     expect(codes).toEqual([200, 410]);
@@ -157,15 +178,44 @@ d('invites', () => {
 
   it('revokes by hash, so a revoked link stops working', async () => {
     const token = await createInvite();
-    const del = await app!.inject({ method: 'DELETE', url: `/api/invites/${token}`, headers: await asUser(ADMIN) });
+    const del = await app!.inject({
+      method: 'POST',
+      url: '/api/invites/revoke',
+      headers: await asUser(ADMIN),
+      payload: { token },
+    });
     expect(del.statusCode).toBe(200);
-    const res = await app!.inject({ method: 'GET', url: `/api/invites/${token}` });
-    expect(res.statusCode).toBe(404);
+    expect((await lookup(token)).statusCode).toBe(404);
+  });
+
+  it('never puts a live token in a URL, which is what gets logged', async () => {
+    // The regression this guards is not a broken feature — it is a working one
+    // that quietly writes a capability into the request log, the proxy's log
+    // and browser history. Nothing about the app looks different when it does,
+    // so the property has to be asserted rather than noticed.
+    const token = await createInvite();
+    const joiner = await asUser(JOINER);
+    const calls = [
+      await lookup(token),
+      await join(token, joiner),
+      await app!.inject({ method: 'POST', url: '/api/invites/revoke', headers: await asUser(ADMIN), payload: { token } }),
+    ];
+    for (const res of calls) {
+      expect(res.raw.req.url ?? '', 'the token reached a URL').not.toContain(token);
+    }
+  });
+
+  it('refuses a token shaped like anything but one, without a database round trip', async () => {
+    // It reaches a hash lookup and a char(36) column further in. Bounded here
+    // so an oversized or malformed body is a 404 rather than a 500.
+    for (const token of ['', 'short', 'x'.repeat(500), '../../etc/passwd', 'has spaces in it']) {
+      expect((await lookup(token)).statusCode, token.slice(0, 20)).toBe(404);
+    }
   });
 
   it('keeps the join request pointing at its invite', async () => {
     const token = await createInvite();
-    await app!.inject({ method: 'POST', url: `/api/invites/${token}/join`, headers: await asUser(JOINER), payload: {} });
+    await join(token, await asUser(JOINER));
     const [row] = await db
       .select()
       .from(schema.joinRequests)

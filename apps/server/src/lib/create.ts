@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import type { ApplyResult } from './expenses.js';
 import { bumpGroupVersion, isMember, logActivity } from './groups.js';
@@ -119,5 +119,10 @@ async function recordMutation(mutationId: string, userId: string): Promise<void>
   await db
     .insert(schema.processedMutations)
     .values({ mutationId, userId, createdAt: new Date() })
-    .onDuplicateKeyUpdate({ set: { userId } });
+    // A no-op, and it has to stay one. This used to re-own the row —
+    // `set: { userId }` — which is what confirmed the key was never scoped to
+    // a user: whoever wrote an id last owned it. With the key covering both,
+    // a collision here is this same caller retrying, and there is nothing to
+    // update.
+    .onDuplicateKeyUpdate({ set: { mutationId: sql`mutation_id` } });
 }

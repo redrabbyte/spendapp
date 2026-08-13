@@ -14,7 +14,7 @@ import { api, ApiError } from './api';
 import { openExpense, openPayment, sealAttachment, sealComment, sealExpense, sealPayment } from './envelope';
 import { absorbEntryGrants, loadStoredGrants } from './entryKeys';
 import { reconcileReadership } from './readership';
-import { noteMissingEpochs, refreshCoverage } from './coverage';
+import { noteKeyTampering, noteMissingEpochs, refreshCoverage } from './coverage';
 import { KEYS_CACHED_EVENT } from './keys';
 import {
   absorbWrappedKeys,
@@ -195,7 +195,14 @@ export async function syncNow(): Promise<void> {
       if (!ch.keys?.length) continue;
       // What this group had already given up on before these keys arrived.
       const dropped = (await localDb.coverage.get(groupId))?.missingEpochs ?? [];
-      const added = await absorbWrappedKeys(groupId, ch.keys);
+      // The commitments travel with the keys they check. Absorbing without
+      // them would mean trusting the delivery first and verifying it a sync
+      // later, by which point this device has already written under it.
+      const { added, tampered } = await absorbWrappedKeys(groupId, ch.keys, ch.keyCommitments ?? []);
+      // Before the coverage refresh below, so a forged key is never presented
+      // as an ordinary gap in history: it is the server handing this device a
+      // key it made up, and the two must not read the same to a user.
+      if (tampered.length > 0) await noteKeyTampering(groupId, tampered);
       await refreshCoverage(groupId);
       // A key that opens something already dropped means those rows are behind
       // this group's cursor and will never be offered again. That happens both

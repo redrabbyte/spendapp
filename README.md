@@ -88,6 +88,15 @@ reading tables gets ciphertext. What stays readable is the metadata the server
 must route on: group names, who is in which group, entry counts, sizes and
 timestamps.
 
+Two things anchor a key to a person rather than to whatever the server hands
+over. On a join, the digits both sides read aloud authenticate the joiner's
+public key to the admin approving them. And every device records, under a key
+derived from its own account and never sent anywhere, what each epoch's key
+really was — so a second device, or one whose cache was cleared, can tell a
+genuine hand-over from a substituted one and refuses the substitute out loud.
+The members tab also shows a key check number: every member holding the same
+keys sees the same digits, which is how two people confirm it by voice.
+
 **Consequences worth knowing before you deploy:**
 
 - **A forgotten password loses the data.** There is no reset and deliberately
@@ -100,6 +109,10 @@ timestamps.
 - **No server-side search, reporting or aggregation**, permanently.
 - Keys are cached unwrapped in IndexedDB, so the app works offline from a cold
   start. This protects data on the server, not on an unlocked stolen phone.
+- **The very first key a brand-new account is given is still taken on trust.**
+  There is nothing recorded yet to check it against, which is what the key
+  check digits are for — compare them with another member once, out of band,
+  and every delivery after that is anchored.
 
 ### Release check
 
@@ -164,9 +177,11 @@ neither needs the operator:
   not be portable in any useful sense.
 - **Delete my account** asks for the password again, leaves every group
   (handing on admin, and destroying any group where they were the last member),
-  then clears the credentials, keys, sessions, push subscriptions, invites and
-  consent record. The row survives as a tombstone holding only an id and a
-  display name: the id is written inside sealed splits that nothing can rewrite,
-  and the name is what keeps other members' balances legible. A test pins that
-  every other column is cleared, so adding one to `users` fails until deletion
-  accounts for it.
+  then clears the credentials, keys, sessions, push subscriptions, invites,
+  every key wrap and grant addressed to them, and the consent record. The row
+  survives as a tombstone holding only an id and a display name: the id is
+  written inside sealed splits that nothing can rewrite, and the name is what
+  keeps other members' balances legible. Two tests pin this — one that every
+  other column of `users` is cleared, and one that every *table* is either
+  emptied or excused in writing, so adding either fails until deletion accounts
+  for it.

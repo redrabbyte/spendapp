@@ -29,6 +29,20 @@ export const config = {
   vapidPublicKey: process.env.VAPID_PUBLIC_KEY ?? null,
   vapidPrivateKey: process.env.VAPID_PRIVATE_KEY ?? null,
   vapidSubject: process.env.VAPID_SUBJECT ?? 'mailto:admin@example.com',
+  /**
+   * Hosts this server will POST a push notification to (see lib/pushEndpoint).
+   * Empty means the built-in list of the services browsers actually use, which
+   * is the right answer for every ordinary deployment; set it only to add a
+   * push service that is not on it. Anything not listed is refused at
+   * subscription time — the endpoint comes from the browser, and without a
+   * bound on it this process will connect anywhere its network can reach.
+   */
+  pushEndpointHosts: (process.env.PUSH_ENDPOINT_HOSTS ?? '')
+    .split(',')
+    .map((host) => host.trim().toLowerCase())
+    .filter(Boolean),
+  /** How long an outbound push may take before it is abandoned. */
+  pushTimeoutMs: Number(process.env.PUSH_TIMEOUT_MS ?? 10_000),
   // Public origin of the app.
   appOrigin: process.env.APP_ORIGIN ?? 'http://localhost:5173',
   // Proxy hops in front of this process, innermost first, in proxy-addr syntax.

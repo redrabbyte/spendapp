@@ -42,6 +42,49 @@ export const SURVIVES_DELETION = [
 
 export const CLEARED_BY_DELETION = Object.keys(CLEARED_ON_DELETE);
 
+/**
+ * Tables `deleteAccount` empties for the account, and the ones it leaves.
+ *
+ * The column list above stops a new *column* on `users` outliving deletion.
+ * This is the same guard one level up, because the same thing happened again
+ * at table level: `key_commitments` and `entry_grants` both carry a `user_id`
+ * and neither was being deleted, so rows about an erased account stayed. It is
+ * the identical failure mode — nothing breaks, the account still vanishes from
+ * the app, and only the erasure quietly stops being complete.
+ *
+ * Every table in the schema has to appear in one list or the other, which is
+ * what `account.test.ts` checks. Adding a table is then a choice rather than
+ * an omission.
+ */
+export const EMPTIED_BY_DELETION = [
+  'sessions',
+  'pushSubscriptions',
+  'joinRequests',
+  'groupKeys',
+  'entryGrants',
+  'keyCommitments',
+  'processedMutations',
+  'invites',
+] as const;
+
+/** Tables a deletion deliberately does not touch, and why. */
+export const UNTOUCHED_BY_DELETION = [
+  // The account row itself is cleared in place, not deleted: other members'
+  // sealed splits name its id and nothing can rewrite them.
+  'users',
+  // Group-scoped, not user-scoped. A group the deleted account was the last
+  // real member of is purged whole by lib/purge.ts; one with members left
+  // belongs to them, and their ledger has to keep adding up.
+  'groups',
+  'groupMembers',
+  'expenses',
+  'payments',
+  'attachments',
+  'activity',
+  // Nobody's: a public table of exchange rates.
+  'fxRates',
+] as const;
+
 export interface DeletionPreviewGroup {
   groupId: string;
   name: string;
@@ -154,6 +197,13 @@ export async function eraseAccount(userId: string): Promise<void> {
     // already useless without the private half; keeping them would be keeping
     // ciphertext addressed to a deleted person.
     await tx.delete(schema.groupKeys).where(eq(schema.groupKeys.userId, userId));
+    // Everything else addressed to that same vanished key. A grant is a wrap
+    // like any other; a commitment is this account's own note about a key,
+    // sealed under something derived from the identity key that has just gone,
+    // so it is unreadable to everyone including us — and erasing an account
+    // means erasing its rows, not only the ones that would still open.
+    await tx.delete(schema.entryGrants).where(eq(schema.entryGrants.userId, userId));
+    await tx.delete(schema.keyCommitments).where(eq(schema.keyCommitments.userId, userId));
     await tx.delete(schema.processedMutations).where(eq(schema.processedMutations.userId, userId));
     // Links they handed out. Revoking is not enough — the row names them.
     await tx.delete(schema.invites).where(eq(schema.invites.createdBy, userId));

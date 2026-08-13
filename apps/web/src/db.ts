@@ -69,6 +69,18 @@ export interface CoverageRow {
    * missing rather than quietly getting it wrong.
    */
   invalid?: { id: string; author: string; reason: string }[];
+  /**
+   * Epochs the server delivered a key for that contradicted this account's own
+   * commitment (design §4.2).
+   *
+   * Kept apart from `missingEpochs` because it is a different statement about
+   * the world. A missing epoch is "somebody has this and I do not", which is a
+   * normal state of a history-scoped membership and warrants a mild note. This
+   * is "the key I was just handed is not the key I recorded holding" — which no
+   * honest party can produce, and which the previous code surfaced as a silent
+   * decryption gap indistinguishable from missing data.
+   */
+  tamperedEpochs?: number[];
 }
 
 /**
@@ -221,10 +233,60 @@ export async function forgetGroupLocally(groupId: string): Promise<void> {
   // shared across groups, so it is left to expire on its own.
 }
 
-/** Called on logout: local data must not survive on a shared device. */
-export async function wipeLocalDb(): Promise<void> {
-  await localDb.delete();
+/**
+ * Called on logout: local data must not survive on a shared device.
+ *
+ * This database holds the account KEK, the unwrapped private key and every
+ * group key on it. `Dexie.delete()` alone was not enough to be sure they went:
+ *
+ *  - **The delete could lose.** `delete()` waits for every connection to
+ *    close, and this tab's live queries reopen the database as fast as it goes
+ *    away. Closing first is what stops them: a closed Dexie does not reopen
+ *    itself, so the `blocked` standoff cannot start.
+ *  - **A `blocked` delete waited forever.** Another tab of the same app holds
+ *    a connection this one cannot close, and `delete()` then simply never
+ *    settles. It is the caller's timeout that has to end that, and the caller
+ *    has to be told which way it went.
+ *  - **The remaining guarantee was a header.** `Clear-Site-Data` on the logout
+ *    response covers all of this, and arrives only if the request does — which
+ *    is exactly what does not happen on the shared device, offline, that the
+ *    stated goal above is about.
+ *
+ * `indexedDB.deleteDatabase` as the fallback for the same reason there is a
+ * fallback at all: it is one level below Dexie, so a Dexie whose connection
+ * bookkeeping is the problem cannot take it down with it.
+ *
+ * Returns whether the data is actually gone, so the caller can decide what to
+ * do about a "no" rather than redirect over the top of it.
+ */
+export async function wipeLocalDb(): Promise<boolean> {
+  // Before the delete, not after: an open connection is what a delete blocks
+  // on, and the live queries in this tab reopen one on every keystroke.
+  try {
+    localDb.close();
+  } catch {
+    /* already closed */
+  }
+
+  let deleted = false;
+  try {
+    await localDb.delete();
+    deleted = true;
+  } catch {
+    // Dexie could not do it — a blocked handle, a corrupt schema. The raw API
+    // below is not bound by Dexie's view of who has the database open.
+    deleted = await new Promise<boolean>((resolve) => {
+      const req = indexedDB.deleteDatabase('spendapp');
+      req.onsuccess = () => resolve(true);
+      req.onerror = () => resolve(false);
+      // Another tab is holding it. Nothing here can close that tab, and
+      // reporting success would be a lie about the one thing this promises.
+      req.onblocked = () => resolve(false);
+    });
+  }
+
   // The SW's receipt image cache too — Clear-Site-Data covers it server-side,
   // but wipe explicitly so nothing depends on header support.
   if ('caches' in window) await caches.delete('receipts').catch(() => {});
+  return deleted;
 }

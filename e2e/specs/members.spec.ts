@@ -51,7 +51,7 @@ test('adds a member who has no account', async ({ page, api }) => {
 test('an invite offers the unclaimed members but never preselects one', async ({ page, api }) => {
   // The signed-in account is "Lukas"; rename a placeholder to match it.
   api.members.get(GROUP)![1]!.displayName = 'lukas ';
-  await page.goto('/invite/tok');
+  await page.goto('/invite#tokAAAAAAAAAAAAAAAAAA');
 
   const claim = page.locator('#claim');
   await expect(claim).toBeVisible();
@@ -67,7 +67,7 @@ test('an invite offers the unclaimed members but never preselects one', async ({
 });
 
 test('joining as someone new works while other names are still unclaimed', async ({ page }) => {
-  await page.goto('/invite/tok');
+  await page.goto('/invite#tokAAAAAAAAAAAAAAAAAA');
   // Two placeholders are sitting unclaimed; neither may block a fresh join.
   await expect(page.locator('#claim')).toHaveValue('');
   await expect(page.getByText(/Joining as someone new is always available/)).toBeVisible();
@@ -76,7 +76,7 @@ test('joining as someone new works while other names are still unclaimed', async
 
 test('the claimable list is withheld from anonymous visitors', async ({ page, api }) => {
   api.signedIn = false;
-  await page.goto('/invite/tok');
+  await page.goto('/invite#tokAAAAAAAAAAAAAAAAAA');
   // The landing page still names the group; it must not enumerate members.
   await expect(page.getByText('Trip')).toBeVisible();
   await expect(page.getByText('Are you one of these people?')).toHaveCount(0);

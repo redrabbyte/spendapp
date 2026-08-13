@@ -198,7 +198,7 @@ test('the joiner is taken into the group when an admin approves', async ({ page,
   await seedGroupKey(api, GROUP);
 
   await signIn(page);
-  await page.goto('/invite/tok');
+  await page.goto('/invite#tokAAAAAAAAAAAAAAAAAA');
   await page.getByRole('button', { name: /join group/i }).click();
   await expect(page.getByText(/Request sent/i)).toBeVisible();
 

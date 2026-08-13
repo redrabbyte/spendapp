@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { deriveSas, formatSas, sha256Hex } from '@spendapp/shared';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import { localDb } from '../db';
+import { clearInviteToken, readInviteToken, stashInviteToken } from '../inviteToken';
 import { loadKeys } from '../keys';
 import { syncNow } from '../sync';
 import type { Translator } from '../i18n';
@@ -42,7 +43,10 @@ function claimLabel(t: Translator, c: Claimable): string {
 }
 
 export function InvitePage() {
-  const { token } = useParams<{ token: string }>();
+  // From the fragment, or from the stash if this is the return leg of a login.
+  // Read once: the fragment is cleared below, and re-reading it after that
+  // would turn a signed-in joiner's page into an expired one.
+  const [token] = useState(readInviteToken);
   const { user, loading } = useAuth();
   const t = useT();
   const navigate = useNavigate();
@@ -67,7 +71,18 @@ export function InvitePage() {
 
   useEffect(() => {
     if (!token) return;
-    api<InviteInfo>(`/api/invites/${encodeURIComponent(token)}`)
+    /**
+     * Out of the address bar as soon as it has been read.
+     *
+     * A fragment never reaches a server, but it is still on screen and still
+     * goes into whatever the reader shares next — and this page invites
+     * sharing, since the person following the link is often standing next to
+     * the person who sent it. `replaceState` rather than a route change so the
+     * back button still leaves the page rather than landing on a stripped copy
+     * of it.
+     */
+    if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+    api<InviteInfo>('/api/invites/lookup', { method: 'POST', body: { token } })
       .then(setInfo)
       .catch((err: Error) => setError(err.message));
   }, [token]);
@@ -83,13 +98,13 @@ export function InvitePage() {
     setBusy(true);
     setError(null);
     try {
-      const res = await api<{ groupId: string; status: 'joined' | 'pending' }>(
-        `/api/invites/${encodeURIComponent(token ?? '')}/join`,
-        {
-          method: 'POST',
-          body: claim === AS_NEW ? {} : { claimMemberId: claim },
-        },
-      );
+      const res = await api<{ groupId: string; status: 'joined' | 'pending' }>('/api/invites/join', {
+        method: 'POST',
+        body: claim === AS_NEW ? { token } : { token, claimMemberId: claim },
+      });
+      // Spent, whichever way it went. Leaving it in the tab's storage would
+      // hand the next person at this browser a working link.
+      clearInviteToken();
       // Following a link only asks; an admin still has to say yes. Already
       // being a member is the one case that goes straight through.
       if (res.status === 'pending') {
@@ -114,6 +129,9 @@ export function InvitePage() {
     }
   }
 
+  // No token at all: either an old-format link that has just been rewritten
+  // here, or a bare /invite somebody typed. Saying so beats an endless spinner.
+  if (!token) return <p className="mt-8 text-center text-red-600 dark:text-red-400">{t('invitePage.noToken')}</p>;
   if (error && !info) return <p className="mt-8 text-center text-red-600 dark:text-red-400">{error}</p>;
   if (!info || loading)
     return <p className="mt-8 text-center text-slate-500 dark:text-slate-400">{t('group.loading')}</p>;
@@ -224,12 +242,41 @@ export function InvitePage() {
         </>
       ) : (
         <Link
-          to={`/login?next=${encodeURIComponent(`/invite/${token}`)}`}
+          // The token travels in this tab's storage, not in `next` — a query
+          // string is logged exactly like the path this was moved out of.
+          to="/login?next=%2Finvite"
+          onClick={() => token && stashInviteToken(token)}
           className="rounded bg-teal-700 px-6 py-2 font-medium text-white"
         >
           {t('invitePage.logInToJoin')}
         </Link>
       )}
+    </div>
+  );
+}
+
+/**
+ * A link from before the token moved into the fragment (design §4.7).
+ *
+ * Not redirected into the new shape, deliberately. By the time this component
+ * renders, the browser has already asked the web server for
+ * `/invite/<token>` — the token is in that access log line and in the
+ * `Referer` of anything the page loads. Quietly carrying on would hide that
+ * the one thing this change was for has already happened for this link.
+ *
+ * So it asks for a new one. Invites are cheap, single-use and short-lived, and
+ * any member can issue one.
+ */
+export function OldInviteLink() {
+  const t = useT();
+  return (
+    <div className="mx-auto mt-10 flex max-w-sm flex-col items-center gap-3 text-center">
+      <p className="rounded bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
+        {t('invitePage.oldLink')}
+      </p>
+      <Link to="/" className="text-sm text-teal-700 underline dark:text-teal-300">
+        {t('invitePage.backToGroups')}
+      </Link>
     </div>
   );
 }

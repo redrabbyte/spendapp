@@ -128,6 +128,22 @@ below. If you do want one, give it a short retention and say so in your privacy
 policy — and note that a Caddy `log` writing to a file rotates on Caddy's own
 schedule (90 days by default), not the system journal's.
 
+**The security headers are yours to send.** This is the one part of the
+configuration that is not optional, and the one it is easiest to leave out,
+because leaving it out changes nothing you can see. The API sets headers on its
+own JSON responses, but a Content-Security-Policy constrains a *document*, and
+the document is this file server's to serve — so `/api/*` headers protect
+nothing that executes. In an end-to-end-encrypted app the page holds the
+decrypted ledger, the account key and the group keys in memory, and this policy
+is what stops injected script from taking them.
+
+The build injects the same policy into `index.html` as a `<meta>` tag, so a
+misconfigured web server is not a total loss. Send the headers anyway: a meta
+tag cannot carry `frame-ancestors` (browsers ignore it there), so without them
+the app can be framed and clickjacked, and HSTS and `nosniff` never reach the
+assets at all. Keep the policy identical to `apps/web/src/documentPolicy.ts` —
+`apps/web/src/documentPolicy.test.ts` fails if the two drift apart.
+
 Caddy:
 
 ```caddy
@@ -140,6 +156,17 @@ spend.example.com {
 	}
 
 	handle {
+		header {
+			Content-Security-Policy "default-src 'self'; base-uri 'self'; script-src 'self' 'wasm-unsafe-eval'; object-src 'none'; connect-src 'self'; form-action 'self'; worker-src 'self'; manifest-src 'self'; font-src 'self'; frame-src 'none'; img-src 'self' blob:; style-src 'self' 'unsafe-inline'; upgrade-insecure-requests; frame-ancestors 'none'"
+			X-Frame-Options "DENY"
+			X-Content-Type-Options "nosniff"
+			Referrer-Policy "no-referrer"
+			Permissions-Policy "camera=(self), microphone=(), geolocation=(), payment=(), usb=(), midi=(), magnetometer=(), gyroscope=(), accelerometer=(), display-capture=()"
+			Strict-Transport-Security "max-age=31536000; includeSubDomains"
+			Cross-Origin-Opener-Policy "same-origin"
+			Cross-Origin-Resource-Policy "same-origin"
+		}
+
 		@immutable path /assets/*
 		header @immutable Cache-Control "public, max-age=31536000, immutable"
 		@revalidate path / /index.html /sw.js /manifest.webmanifest
@@ -151,7 +178,21 @@ spend.example.com {
 }
 ```
 
-nginx:
+nginx, where the headers go in their own file because `add_header` does not
+inherit into a `location` that sets one of its own — the asset and `sw.js`
+blocks below both do, and would silently lose every header set above them:
+
+```nginx
+# /etc/nginx/snippets/spendapp-security.conf
+add_header Content-Security-Policy "default-src 'self'; base-uri 'self'; script-src 'self' 'wasm-unsafe-eval'; object-src 'none'; connect-src 'self'; form-action 'self'; worker-src 'self'; manifest-src 'self'; font-src 'self'; frame-src 'none'; img-src 'self' blob:; style-src 'self' 'unsafe-inline'; upgrade-insecure-requests; frame-ancestors 'none'" always;
+add_header X-Frame-Options "DENY" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header Referrer-Policy "no-referrer" always;
+add_header Permissions-Policy "camera=(self), microphone=(), geolocation=(), payment=(), usb=(), midi=(), magnetometer=(), gyroscope=(), accelerometer=(), display-capture=()" always;
+add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+add_header Cross-Origin-Opener-Policy "same-origin" always;
+add_header Cross-Origin-Resource-Policy "same-origin" always;
+```
 
 ```nginx
 server {
@@ -160,13 +201,30 @@ server {
 	access_log off;
 
 	location /api/ { proxy_pass http://127.0.0.1:3000; }
-	location /assets/ { add_header Cache-Control "public, max-age=31536000, immutable"; }
-	location = /sw.js { add_header Cache-Control "no-cache"; }
-	location / { try_files $uri /index.html; }
+	location /assets/ {
+		include snippets/spendapp-security.conf;
+		add_header Cache-Control "public, max-age=31536000, immutable" always;
+	}
+	location = /sw.js {
+		include snippets/spendapp-security.conf;
+		add_header Cache-Control "no-cache" always;
+	}
+	location / {
+		include snippets/spendapp-security.conf;
+		try_files $uri /index.html;
+	}
 }
 ```
 
-The API sets its own security headers, so don't override them on `/api/*`.
+Don't add headers to `/api/*` — the API sets its own there, and a second
+`Content-Security-Policy` on a response is intersected with the first, not
+replaced, so a well-meant addition can only ever tighten it into breakage.
+
+Check it landed, on the document rather than on the API:
+
+```sh
+curl -sI https://spend.example.com/ | grep -i 'content-security-policy\|x-frame-options\|strict-transport'
+```
 
 ## Layout on the host
 

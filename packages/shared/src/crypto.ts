@@ -287,6 +287,17 @@ const wrapInfo = (epk: Uint8Array, recipient: Uint8Array): string =>
 export const SAS_DIGITS = 20;
 
 /**
+ * The tail of a 64-bit HKDF output as decimal digits, which is what every SAS
+ * here is. Shared so the three of them cannot drift apart in width, and so a
+ * change to that width is a change in one place.
+ */
+const sasDigits = (bits: Uint8Array): string => {
+  let n = 0n;
+  for (const b of bits) n = (n << 8n) | BigInt(b);
+  return n.toString().padStart(SAS_DIGITS, '0').slice(-SAS_DIGITS);
+};
+
+/**
  * Digits both sides read aloud before an admin approves a join. Derived from
  * the *joiner's own public key*, so a different joiner yields different digits
  * — deriving it from the invite token alone would be theatre, since anyone
@@ -303,14 +314,119 @@ export async function deriveSas(
   groupId: string,
 ): Promise<string> {
   const ikm = utf8.encode(`${inviteToken}|${toBase64Url(joinerPublicKey)}|${groupId}`);
-  const bits = await hkdf(ikm, 'spendapp/sas/v2', 8);
-  let n = 0n;
-  for (const b of bits) n = (n << 8n) | BigInt(b);
-  return n.toString().padStart(SAS_DIGITS, '0').slice(-SAS_DIGITS);
+  return sasDigits(await hkdf(ikm, 'spendapp/sas/v2', 8));
 }
 
 /** The same digits in groups of five, which is how a person reads them out. */
 export const formatSas = (sas: string): string => sas.replace(/(\d{5})(?=\d)/g, '$1 ');
+
+// ---------------------------------------------------------------------------
+// Group key commitment and confirmation (design §4.2, hardening the hand-over)
+// ---------------------------------------------------------------------------
+
+/**
+ * A one-way name for a group key, safe to compare and safe to store.
+ *
+ * Domain-separated from every other use of this key so a fingerprint can never
+ * double as key material, and derived rather than a bare hash so that holding
+ * one gives no head start on the key it names.
+ */
+export const keyFingerprint = (key: Uint8Array): Promise<Uint8Array> => hkdf(key, 'spendapp/key-fingerprint/v1');
+
+/**
+ * The key a device seals its own key commitments under.
+ *
+ * Derived from the account's **identity private key**, and that choice is the
+ * whole design:
+ *
+ *  - The server has the *public* half and publishes it. It cannot derive this,
+ *    so it can store a commitment, cannot read one, and above all cannot forge
+ *    one. That is what makes a commitment evidence rather than another blob.
+ *  - The private half survives a password change — `changePassword` keeps the
+ *    identity keypair deliberately, because every group key is wrapped to it,
+ *    and the server refuses a rekey that alters it (`identity_key_immutable`).
+ *    Sealing under the KEK instead would have been simpler and quietly wrong:
+ *    a new password means a new KEK, so every commitment this account had ever
+ *    written would become unopenable, unreplaceable — a row already exists —
+ *    and the anchor would be silently gone for good on the next fresh device.
+ *
+ * Domain-separated so this can never collide with a wrap's shared secret.
+ */
+export const deriveCommitmentKey = (identityPrivateKey: Uint8Array): Promise<Uint8Array> =>
+  hkdf(identityPrivateKey, 'spendapp/key-commitment-key/v1');
+
+/**
+ * What a device seals to remember which key an epoch really had.
+ *
+ * This is the anchor the first hand-over otherwise lacks. A wrap arrives from
+ * the server sealed to a public key the server itself publishes, so nothing in
+ * it says a member produced it — but a commitment is sealed under a key only
+ * this account's devices can derive. So a later device, unlocked with the same
+ * password, can check a delivered epoch against what this account actually
+ * held, and a server substituting the key cannot produce a matching
+ * commitment.
+ *
+ * The AAD names the group, the epoch and the owner, so a commitment cannot be
+ * moved to a different epoch or replayed at a different user by the server
+ * that stores it.
+ */
+export const commitmentAad = (groupId: string, epoch: number, userId: string): Uint8Array =>
+  utf8.encode(`spendapp/key-commitment/v1|${groupId}|${epoch}|${userId}`);
+
+/**
+ * Digits that say two devices hold the same key for one epoch.
+ *
+ * This is the check with something to prove. The join SAS authenticates the
+ * *joiner's* public key to the admin, which is the direction that stops the
+ * wrong person being let in; it says nothing about the keys travelling back.
+ * And a hand-over is the one delivery `absorbInto` trusts unconditionally —
+ * the ring is empty, so there is no predecessor to chain to and no commitment
+ * of this account's to contradict. A server that substitutes the key at that
+ * moment reads everything the member writes afterwards and can author entries
+ * the member takes for the group's. Reading these digits aloud is the only
+ * thing standing in the way.
+ *
+ * One epoch rather than the keyring, because every current member holds the
+ * newest epoch by construction — `rotateGroupKey` wraps it to all of them —
+ * so this number is comparable across the whole group. The keyring digits are
+ * not: a history-scoped member's ring matches nobody's, and they are exactly
+ * who the check most needs to serve.
+ *
+ * The epoch is named alongside the digits (see `deriveKeyringSas` for when the
+ * wider check applies), so two people compare like with like rather than
+ * reading a mismatch out of one of them being a sync behind.
+ */
+export async function deriveEpochSas(groupId: string, epoch: number, key: Uint8Array): Promise<string> {
+  const ikm = utf8.encode(`${groupId}|${epoch}:${toBase64Url(await keyFingerprint(key))}`);
+  return sasDigits(await hkdf(ikm, 'spendapp/epoch-sas/v1', 8));
+}
+
+/**
+ * Digits over the whole held keyring, for the case where every member holds
+ * all of it.
+ *
+ * Strictly stronger than the single-epoch digits when it applies: it covers
+ * every key a hand-over delivered rather than the newest one, so a forged
+ * older epoch shows up even where the chain cannot speak — at the oldest epoch
+ * held, which has no predecessor to prove it. That is why it supersedes rather
+ * than accompanies. Showing both would ask people to compare two numbers when
+ * the second says everything the first does.
+ *
+ * It only applies when the rings are identical, though, which is why the
+ * caller checks coverage before reaching for it. Between members with
+ * different history these digits *always* differ, and a check that cries wolf
+ * on a supported flow is one people learn to wave through.
+ *
+ * Domain-separated from the single-epoch digits so the two can never be
+ * compared against each other by mistake.
+ */
+export async function deriveKeyringSas(groupId: string, keysByEpoch: Iterable<[number, Uint8Array]>): Promise<string> {
+  const ordered = [...keysByEpoch].sort((a, b) => a[0] - b[0]);
+  const parts = await Promise.all(
+    ordered.map(async ([epoch, key]) => `${epoch}:${toBase64Url(await keyFingerprint(key))}`),
+  );
+  return sasDigits(await hkdf(utf8.encode(`${groupId}|${parts.join('|')}`), 'spendapp/keyring-sas/v1', 8));
+}
 
 /** Constant-time equality, for comparing SAS values and MACs. */
 export function timingSafeEqual(a: Uint8Array, b: Uint8Array): boolean {

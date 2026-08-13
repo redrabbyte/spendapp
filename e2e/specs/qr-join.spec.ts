@@ -211,7 +211,7 @@ test('an admin sees the same digits the joiner is shown', async ({ page, api }) 
   // Derived from the same inputs §4.3 names, with the token hashed: that is
   // what the server stores and what the joiner hashes to, so neither side
   // needs the live invite to agree on the digits.
-  const tokenHash = await sha256Hex('tok');
+  const tokenHash = await sha256Hex('tokAAAAAAAAAAAAAAAAAA');
   const sas = await deriveSas(tokenHash, fromBase64Url(TEST_PUBLIC_KEY), GROUP);
   await expect(page.getByText(formatSas(sas))).toBeVisible();
 

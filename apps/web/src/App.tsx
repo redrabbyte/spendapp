@@ -13,7 +13,7 @@ import { useT } from './i18n/useT';
 import { ExpenseDetailPage } from './pages/ExpenseDetail';
 import { GroupPage } from './pages/Group';
 import { GroupsPage } from './pages/Groups';
-import { InvitePage } from './pages/Invite';
+import { InvitePage, OldInviteLink } from './pages/Invite';
 import { JoinByCodePage } from './pages/JoinByCode';
 import { LoginPage } from './pages/Login';
 
@@ -156,7 +156,12 @@ export function App() {
       <main className="p-4">
         <Routes>
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/invite/:token" element={<InvitePage />} />
+          <Route path="/invite" element={<InvitePage />} />
+          {/* Links handed out before the token moved into the fragment. The
+              token is in the path here, which is the leak — it has already
+              reached the access log by the time this renders, so there is
+              nothing to salvage and the page says to ask for a new link. */}
+          <Route path="/invite/:token" element={<OldInviteLink />} />
           <Route
             path="/"
             element={

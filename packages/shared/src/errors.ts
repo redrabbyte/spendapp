@@ -61,6 +61,10 @@ export const API_ERRORS = [
 
   // push
   'invalid_subscription',
+  // The browser's push service is not one this server will connect out to
+  // (see server lib/pushEndpoint.ts). Only the operator can change that, so it
+  // is a distinct code rather than folded into invalid_subscription.
+  'push_endpoint_not_allowed',
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERRORS)[number];

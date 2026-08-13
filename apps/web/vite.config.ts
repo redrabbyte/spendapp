@@ -1,12 +1,29 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
+import { DOCUMENT_META_TAGS } from './src/documentPolicy';
+
+/**
+ * Put the document's security policy in the document.
+ *
+ * Build only: the dev server's HMR client runs inline script and `eval`, so a
+ * meta CSP in the checked-in `index.html` would break `pnpm dev` and get
+ * deleted by whoever hit it first. Injecting here means the policy cannot be
+ * lost that way, and cannot be forgotten by an operator either — it ships
+ * inside the file rather than depending on the web server in front of it.
+ */
+const documentPolicy = (): Plugin => ({
+  name: 'spendapp:document-policy',
+  apply: 'build',
+  transformIndexHtml: (html) => html.replace('</head>', `  ${DOCUMENT_META_TAGS}\n  </head>`),
+});
 
 export default defineConfig({
   // Stamped at build time (UTC date + time); shown small under the title.
   define: { __BUILD_DATE__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' ')) },
   plugins: [
+    documentPolicy(),
     react(),
     tailwindcss(),
     VitePWA({
