@@ -65,8 +65,21 @@ self.addEventListener('push', (event) => {
         : '';
       await self.registration.showNotification(payload.group ?? 'SpendApp', {
         body,
-        icon: '/icon.svg',
-        badge: '/icon.svg',
+        // Android builds the status-bar icon out of the badge's *alpha
+        // channel* alone: every opaque pixel is repainted white and the colour
+        // is thrown away. Both of these pointed at icon.svg, a rounded
+        // rectangle filled edge to edge, so the notification bar drew exactly
+        // what it was handed — a solid white square. Chrome would not have got
+        // that far in any case: it decodes notification images as bitmaps and
+        // does not render SVG for `icon`, `badge` or `image`.
+        //
+        // badge-96.png therefore carries its shape in transparency, and has to
+        // keep doing so — a badge with an opaque background is the bug coming
+        // back. `icon` is the large icon inside the notification rather than
+        // the one in the status bar, so it may be in colour; it still has to
+        // be a bitmap.
+        icon: '/icon-192.png',
+        badge: '/badge-96.png',
         data: { url: payload.url ?? '/' },
       });
       // Nudge any open tab to sync so the app is fresh when focused.
