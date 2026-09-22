@@ -20,6 +20,7 @@ import { getRates, suggestRate } from '../fx';
 import { hasUsableTotal, type FiscalReceipt } from '../receiptCode';
 import { ReceiptScan } from './ReceiptScan';
 import { upsertExpenseLocal } from '../sync';
+import { exactPlan } from '../exactSplit';
 import { percentPlan } from '../percentSplit';
 import { uuid } from '../uuid';
 import { AppError } from '../i18n/errors';
@@ -32,6 +33,19 @@ import { useT } from '../i18n/useT';
 const toInput = (minor: number, ccy: string): string => formatMinor(minor, ccy).split(' ')[0]!;
 
 const trimNum = (n: number): string => String(Math.round(n * 100) / 100);
+
+const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+
+/**
+ * The same proportions in the smallest whole numbers that state them: basis
+ * points of 50/30/20 percent become 5/3/2 shares rather than 5000/3000/2000.
+ * Zeros divide out on their own — gcd(0, n) is n — so a member the split
+ * leaves out stays at 0 shares.
+ */
+const smallestWhole = (values: readonly number[]): number[] => {
+  const by = values.reduce(gcd, 0);
+  return by > 0 ? values.map((v) => v / by) : [...values];
+};
 
 // datetime-local shows device-local wall time. Convert a stored UTC instant
 // (or legacy date-only, or nothing → now) into that local input value.
@@ -132,6 +146,15 @@ export function ExpenseEditor({ group, members, meId, existing, onDone, collapsi
   );
   const [error, setError] = useState<string | null>(null);
 
+  const parseSafe = (s: string | undefined): number => {
+    if (!s?.trim()) return 0;
+    try {
+      return parseToMinor(s, currency);
+    } catch {
+      return 0;
+    }
+  };
+
   // Blank percentage fields take an even cut of what the entered ones leave,
   // and every field is counted in basis points — see percentSplit.ts for why
   // both of those matter. One plan feeds the running total, what the fields
@@ -141,17 +164,39 @@ export function ExpenseEditor({ group, members, meId, existing, onDone, collapsi
     percent,
   );
 
+  /**
+   * The total the amount fields are measured against, or null while they are
+   * the total themselves.
+   *
+   * Only a stated total can have a remainder: one that was typed, scanned,
+   * carried in from a saved entry, or added up from several payers. Where the
+   * total instead follows the amounts (single payer, nothing typed), there is
+   * nothing left over to hand to the blank fields — see the auto-sum effect
+   * below, and exactSplit.ts.
+   */
+  const statedTotal = multiPayer || amountManual ? parseSafe(amount) : null;
+  // The same bookkeeping as the percentage tab, in money: blank fields take an
+  // even cut of what the entered ones leave of that total.
+  const exactSplit = exactPlan(
+    members.map((m) => m.userId),
+    exact,
+    statedTotal,
+    currency,
+  );
+
   function buildMeta(): OwedInput {
     const ordered = members.map((m) => m.userId);
     switch (mode) {
       case 'equal':
         return { mode, userIds: ordered.filter((id) => equalSet.has(id)) };
       case 'exact':
+        if (exactSplit.invalid.length > 0) throw new AppError('app.badAmount');
         return {
           mode,
-          entries: ordered
-            .filter((id) => exact[id]?.trim())
-            .map((id) => ({ userId: id, amountMinor: parseToMinor(exact[id]!, currency) })),
+          entries: exactSplit.participants.map((userId) => ({
+            userId,
+            amountMinor: exactSplit.minor.get(userId) ?? 0,
+          })),
         };
       case 'percent':
         if (percentSplit.invalid.length > 0) throw new AppError('app.badPercentage');
@@ -175,49 +220,76 @@ export function ExpenseEditor({ group, members, meId, existing, onDone, collapsi
 
   // Cross-fill: once the active mode resolves to a valid split, prefill the
   // equivalent representations for the other modes so switching tabs shows
-  // matching numbers. exact<->percent are mutual; equal and shares seed exact,
-  // and percent only where it could not fill itself in (below) — but shares is
-  // never auto-derived, since there is no clean inverse from arbitrary amounts
-  // back to whole shares.
+  // matching numbers rather than an empty form and a split to type out again.
   useEffect(() => {
+    let amt: number;
     let owed: { userId: string; owedMinor: number }[];
     try {
-      owed = computeOwed(parseToMinor(amount, currency), buildMeta());
+      amt = parseToMinor(amount, currency);
+      owed = computeOwed(amt, buildMeta());
     } catch {
       return; // mid-typing or not-yet-valid (e.g. percentages not summing to 100)
     }
-    const nextExact = Object.fromEntries(owed.map((o) => [o.userId, toInput(o.owedMinor, currency)]));
     let bp: number[];
     try {
       bp = allocateByWeights(10_000, owed.map((o) => ({ userId: o.userId, weight: o.owedMinor })));
     } catch {
       return; // total is zero — nothing to apportion
     }
-    if (mode !== 'exact') setExact((prev) => (sameRecord(prev, nextExact) ? prev : nextExact));
-    // The percent tab fills its own blanks with an even share of what is left,
-    // so seeding it with an even split would only swap elastic fields for
-    // pinned ones saying the same thing — and then typing one number would no
-    // longer move the others. Write down a split the tab could not have
-    // reached by itself; hand an even one back by clearing the fields, which
-    // also keeps a stale uneven split from surviving a switch to equal mode.
-    if (mode !== 'percent') {
-      // Over every member, not only the ones in the split: somebody the active
-      // mode leaves out owes 0%, and under the percent tab's rules that has to
-      // be written down, since a blank field would hand them a share back.
-      const ids = members.map((m) => m.userId);
-      const owedBp = new Map(owed.map((o, i) => [o.userId, bp[i]!]));
-      const seeded = ids.map((id) => owedBp.get(id) ?? 0);
+    // Every tab is written over every member, not only the ones in the split:
+    // somebody the active mode leaves out owes nothing, and that has to be
+    // written down, since under the two elastic tabs' rules a blank field
+    // would hand them a share back.
+    const ids = members.map((m) => m.userId);
+    const owedBp = new Map(owed.map((o, i) => [o.userId, bp[i]!]));
+    const seededBp = ids.map((id) => owedBp.get(id) ?? 0);
+    const evenBp = allocateByWeights(
+      10_000,
+      ids.map((userId) => ({ userId, weight: 1 })),
+    );
+    const isEven = seededBp.every((v, i) => v === evenBp[i]);
+    // The exact and percent tabs fill their own blanks with an even share of
+    // what is left, so seeding one with an even split would only swap elastic
+    // fields for pinned ones saying the same thing — and then typing one
+    // number would no longer move the others. Write down a split the tab could
+    // not have reached by itself; hand an even one back by clearing the
+    // fields, which also keeps a stale uneven split from surviving a switch to
+    // equal mode.
+    if (mode !== 'exact') {
+      const owedMinor = new Map(owed.map((o) => [o.userId, o.owedMinor]));
+      const seeded = ids.map((id) => owedMinor.get(id) ?? 0);
       const even = allocateByWeights(
-        10_000,
+        amt,
         ids.map((userId) => ({ userId, weight: 1 })),
       );
-      const nextPercent = seeded.every((v, i) => v === even[i])
+      // Unlike the percent tab, this one only fills its blanks when it has a
+      // total to measure them against; where the total is the sum of these
+      // very fields, clearing them would clear the total with them.
+      const nextExact =
+        statedTotal !== null && seeded.every((v, i) => v === even[i])
+          ? {}
+          : Object.fromEntries(ids.map((id, i) => [id, toInput(seeded[i]!, currency)]));
+      setExact((prev) => (sameRecord(prev, nextExact) ? prev : nextExact));
+    }
+    if (mode !== 'percent') {
+      const nextPercent = isEven
         ? {}
-        : Object.fromEntries(ids.map((id, i) => [id, trimNum(seeded[i]! / 100)]));
+        : Object.fromEntries(ids.map((id, i) => [id, trimNum(seededBp[i]! / 100)]));
       setPercent((prev) => (sameRecord(prev, nextPercent) ? prev : nextPercent));
     }
+    // Shares from those same basis points, scaled to whole numbers — a tab
+    // that only accepts integers is no use prefilled with 33.33. An even split
+    // is one share each rather than the 3334/3333/3333 the rounding leaves
+    // behind: those are whole numbers too, and still nobody's idea of an even
+    // split. Blank means left out here, not "decide for me", so the fields are
+    // written rather than cleared.
+    if (mode !== 'shares') {
+      const whole = isEven ? ids.map(() => 1) : smallestWhole(seededBp);
+      const nextShares = Object.fromEntries(ids.map((id, i) => [id, String(whole[i])]));
+      setShares((prev) => (sameRecord(prev, nextShares) ? prev : nextShares));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, amount, currency, equalSet, exact, percent, shares, members]);
+  }, [mode, amount, amountManual, multiPayer, currency, equalSet, exact, percent, shares, members]);
 
   // Multi-payer: the total is whatever the payers put in — keep the amount
   // field in lockstep (it's read-only while multi-payer is on).
@@ -259,16 +331,8 @@ export function ExpenseEditor({ group, members, meId, existing, onDone, collapsi
     setAmount((prev) => (prev === next ? prev : next));
   }, [multiPayer, mode, amountManual, exact, currency, members]);
 
-  const parseSafe = (s: string | undefined): number => {
-    if (!s?.trim()) return 0;
-    try {
-      return parseToMinor(s, currency);
-    } catch {
-      return 0;
-    }
-  };
   const exactEntered = members.reduce((s, m) => s + parseSafe(exact[m.userId]), 0);
-  const exactRemaining = parseSafe(amount) - exactEntered;
+  const exactRemaining = exactSplit.remaining;
 
   const percentRemaining = percentSplit.remaining;
 
@@ -718,7 +782,16 @@ export function ExpenseEditor({ group, members, meId, existing, onDone, collapsi
                     <input
                       className={smallInput}
                       inputMode="decimal"
-                      placeholder={t('editor.amount')}
+                      // What this field would take if it is left alone, the way
+                      // the percentage tab shows it: grey, so typing writes a
+                      // number of your own instead of editing one you never
+                      // entered. Without a total to share out there is nothing
+                      // to promise, and it stays the worked example of the format.
+                      placeholder={
+                        exactSplit.auto.has(m.userId)
+                          ? toInput(exactSplit.minor.get(m.userId) ?? 0, currency)
+                          : t('editor.amount')
+                      }
                       value={exact[m.userId] ?? ''}
                       onChange={(e) => setExact({ ...exact, [m.userId]: e.target.value })}
                     />

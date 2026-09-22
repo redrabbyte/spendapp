@@ -164,6 +164,7 @@ export const en = {
   'app.badRate': 'Those amounts give a rate that cannot be right.',
   'app.pickTwoCurrencies': 'Pick two different currencies.',
   'app.invalidRate': 'Enter a valid rate.',
+  'app.badAmount': 'Amounts have to be valid numbers, and cannot be negative.',
   'app.badPercentage': 'Percentages have to be numbers, and cannot be negative.',
   'app.badShares': 'Shares have to be whole numbers.',
   'app.paidSum': 'The amounts paid add up to {paid}, but the expense is {total}.',

@@ -156,6 +156,7 @@ export const de: Catalogue = {
   'app.badRate': 'Aus diesen Beträgen ergibt sich kein sinnvoller Kurs.',
   'app.pickTwoCurrencies': 'Wähl zwei verschiedene Währungen.',
   'app.invalidRate': 'Gib einen gültigen Kurs ein.',
+  'app.badAmount': 'Beträge müssen gültige Zahlen sein und dürfen nicht negativ sein.',
   'app.badPercentage': 'Prozentwerte müssen Zahlen sein und dürfen nicht negativ sein.',
   'app.badShares': 'Anteile müssen ganze Zahlen sein.',
   'app.paidSum': 'Die gezahlten Beträge ergeben {paid}, die Ausgabe beträgt aber {total}.',
