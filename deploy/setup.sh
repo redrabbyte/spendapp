@@ -52,7 +52,7 @@ SUDO=''
 [ "$(id -u)" -ne 0 ] && SUDO=sudo
 
 command -v apt-get >/dev/null || {
-  echo "This script targets Debian/Ubuntu. Install git, Node >= 22.13, pnpm and" >&2
+  echo "This script targets Debian/Ubuntu. Install git, Node >= 22.23.4, pnpm and" >&2
   echo "MySQL 8 by hand, then run deploy/deploy.sh." >&2
   exit 1
 }
@@ -63,10 +63,11 @@ say "packages"
 $SUDO apt-get update -qq
 $SUDO apt-get install -y -qq git curl ca-certificates gnupg
 
-# Node >= 22.13 — required by pnpm 11.
-node_major=$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)
-node_minor=$(node -p 'process.versions.node.split(".")[1]' 2>/dev/null || echo 0)
-if [ "$node_major" -lt 22 ] || { [ "$node_major" -eq 22 ] && [ "$node_minor" -lt 13 ]; }; then
+# Node >= 22.23.4. pnpm 11 needs 22.13; 22.23.4 is the October 2026 security
+# release (Brotli decoder RCE, TLS hostname bypasses). An older 22 is upgraded
+# in place, since apt-get install moves an installed package to the candidate.
+node_version=$(node -p 'process.versions.node' 2>/dev/null || echo 0)
+if dpkg --compare-versions "$node_version" lt 22.23.4; then
   say "installing Node 22"
   # -E is a sudo flag, so it must drop out along with $SUDO when run as root.
   # shellcheck disable=SC2086
