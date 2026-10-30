@@ -18,8 +18,15 @@ import { describePushWithin } from './pushFilter';
 
 precacheAndRoute(self.__WB_MANIFEST);
 
-// SPA navigation fallback; the API is never handled by the SW.
-registerRoute(new NavigationRoute(createHandlerBoundToURL('index.html'), { denylist: [/^\/api\//] }));
+// SPA navigation fallback; the API is never handled by the SW. Neither are the
+// root crawler files a deployment may serve beside the app: without this, a
+// visitor who has the app installed opening /robots.txt gets the shell, and the
+// router bounces them to /login.
+registerRoute(
+  new NavigationRoute(createHandlerBoundToURL('index.html'), {
+    denylist: [/^\/api\//, /^\/(robots\.txt|sitemap\.xml|llms\.txt)$/],
+  }),
+);
 
 // Receipt images: uuid-addressed + immutable → small offline cache. What is
 // cached is the sealed file; the page decrypts it, so the cache holds nothing
